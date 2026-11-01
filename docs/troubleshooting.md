@@ -700,6 +700,14 @@ connection more than a fast one. On a poor one:
   [Copying game files, or not](#copying-game-files-or-not)) and press Play: the companion copies the
   data before the game starts.
 
+### No voice chat
+
+In game, chat says "Can't connect to a voice chat server right now. Please try again. (VoiceError:
+14)". Voice chat isn't supported on the device yet: on the Mac the game runs it in a separate helper
+app it starts, and an iPad, iPhone, or Vision Pro won't let an app start another program. Text chat
+is unaffected. Slashplayed doesn't ask for microphone access, since nothing would use it. Progress is
+tracked in [issue #12](https://github.com/paulstraw/slashplayed/issues/12).
+
 ### The connection dropped while backgrounded
 
 The game resumes after a suspension, but the server connection often drops while it's away (seen

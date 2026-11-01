@@ -156,6 +156,8 @@ update". If no update is out, the companion's **Report It…** opens a pre-fille
 - **The window can vanish** after the headset has been off for a few minutes. Press Play again: it
   stops the running client first. [Details](troubleshooting.md#the-window-vanished).
 - **Heat.** Capping the frame rate in game helps. [Details](troubleshooting.md#heat).
+- **No voice chat yet.** The game shows "Can't connect to a voice chat server right now", and
+  Slashplayed doesn't ask for the microphone. [Details](troubleshooting.md#no-voice-chat).
 - **A game patch can break it** until Slashplayed catches up. See [Updates](#updates).
 
 To report something else, attach the zip from **Help > Export Diagnostics…**. It leaves out your

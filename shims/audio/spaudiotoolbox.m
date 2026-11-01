@@ -8,6 +8,7 @@
 // - A playback audio session is set up before the unit is created.
 // - After an interruption (the app going to the background, e.g. the headset taken off), the session is
 //   reactivated and the units the client had started are started again; nothing in the client does it.
+// - The microphone is never opened (see "no microphone" below).
 #include "spaudiolog.h"
 #include <objc/message.h>
 #include <math.h>
@@ -16,6 +17,73 @@
 #include <pthread.h>
 
 static void sp_audio_resume(const char *why);
+
+// ---- no microphone. Voice chat can't work on the device: on the Mac the client runs it in a separate
+// helper app it launches, and the device can't launch one. So the app has no
+// NSMicrophoneUsageDescription, and without it TCC kills the process (__abort_with_payload) the moment
+// anything asks for audio input: no prompt, no error. Every way the client could get there is closed:
+// - AVCaptureDevice (AVFoundation, which the client links directly, unshimmed): the client imports
+//   authorizationStatusForMediaType: and requestAccessForMediaType:completionHandler: with
+//   AVMediaTypeAudio and AVMediaTypeVideo. sp_audio_no_microphone makes both answer "denied" (there's
+//   no camera description either), so the system never asks TCC: the answer a Mac user who said no gets.
+// - Input on an output unit (EnableIO on the input scope) or the voice-processing unit ('vpio', input
+//   always on) is refused below with an error.
+// - The HAL calls (spcoreaudio.m) answer from a fake device and touch no hardware, input or not.
+// The audio session stays Playback, which has no input route.
+enum { SP_AUTH_DENIED = 2 /* AVAuthorizationStatusDenied */ };
+
+static bool sp_is_av_capture_type(id type) {
+    // AVMediaTypeAudio and AVMediaTypeVideo are these strings, compared by value as AVFoundation does.
+    return [type isKindOfClass:NSString.class] && ([type isEqual:@"soun"] || [type isEqual:@"vide"]);
+}
+
+// The launcher calls sp_audio_no_microphone once the client has loaded, before its entry point. Not an
+// initializer: this shim doesn't link AVFoundation, so its initializer can run before AVFoundation's;
+// AVFoundation then installs its own AVCaptureDevice methods over these (seen on macOS), and messaging
+// the class that early crashes. By the time dlopen returns, every image the client links is initialized.
+static void sp_refuse_capture(void) {
+    Class cls = objc_getClass("AVCaptureDevice");  // the client links AVFoundation, so it's loaded
+    if (!cls) {
+        sp_stub_log("audio: no AVCaptureDevice, so no capture permission to refuse");
+        return;
+    }
+    ((id (*)(id, SEL))objc_msgSend)(cls, sel_getUid("class"));  // +initialize first, if it swaps methods
+    Method status = class_getClassMethod(cls, sel_getUid("authorizationStatusForMediaType:"));
+    Method request = class_getClassMethod(cls, sel_getUid("requestAccessForMediaType:completionHandler:"));
+    static long (*status_orig)(id, SEL, id);
+    static void (*request_orig)(id, SEL, id, void (^)(BOOL));
+    if (status) {
+        status_orig = (long (*)(id, SEL, id))method_setImplementation(status, imp_implementationWithBlock(
+            ^long(id self_, id type) {
+                if (!sp_is_av_capture_type(type))
+                    return status_orig(self_, sel_getUid("authorizationStatusForMediaType:"), type);
+                SP_LOGF(10, "audio: +[AVCaptureDevice authorizationStatusForMediaType:%s] = denied (no capture)",
+                        [type UTF8String]);
+                return SP_AUTH_DENIED;
+            }));
+    }
+    if (request) {
+        request_orig = (void (*)(id, SEL, id, void (^)(BOOL)))method_setImplementation(request,
+            imp_implementationWithBlock(^(id self_, id type, void (^done)(BOOL)) {
+                if (!sp_is_av_capture_type(type)) {
+                    request_orig(self_, sel_getUid("requestAccessForMediaType:completionHandler:"), type, done);
+                    return;
+                }
+                SP_LOGF(10, "audio: +[AVCaptureDevice requestAccessForMediaType:%s] = NO (no capture)",
+                        [type UTF8String]);
+                // The real call answers later, on a queue of its own; a caller may rely on not being
+                // called back inside its own call.
+                if (done) dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{ done(NO); });
+            }));
+    }
+    sp_stub_log(status && request ? "audio: capture permission refused (no microphone)"
+                                  : "audio: AVCaptureDevice permission methods missing; not all refused");
+}
+
+__attribute__((visibility("default"))) void sp_audio_no_microphone(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ sp_refuse_capture(); });
+}
 
 // Sets up the app's audio session, once.
 static void sp_audio_session(void) {
@@ -80,8 +148,10 @@ static bool sp_is_rio_unit(void *unit) {
 void *sp_AudioComponentFindNext(void *after, const SPComponentDesc *d) __asm__("_AudioComponentFindNext");
 void *sp_AudioComponentFindNext(void *after, const SPComponentDesc *d) {
     SP_REAL(SPFindNext, AudioComponentFindNext);
-    void *c = real ? real(after, d) : NULL;
-    const char *how = "";
+    // The voice-processing unit records as soon as it starts (see "no microphone"): not found.
+    bool vpio = d && d->type == 'auou' && d->subType == 'vpio';
+    void *c = real && !vpio ? real(after, d) : NULL;
+    const char *how = vpio ? " (refused: no microphone)" : "";
     // macOS's output units (HAL, default, system) don't exist on visionOS; RemoteIO is the equivalent.
     if (!c && real && d && d->type == 'auou' &&
         (d->subType == 'ahal' || d->subType == 'def ' || d->subType == 'sys ')) {
@@ -318,7 +388,12 @@ SPStatus sp_AudioUnitSetProperty(void *unit, uint32_t prop, uint32_t scope, uint
     }
     SPStatus st;
     const char *how = "";
-    if (prop == 2000 /* kAudioOutputUnitProperty_CurrentDevice */ && sp_is_rio_unit(unit)) {
+    if (prop == 2003 /* kAudioOutputUnitProperty_EnableIO */ && scope == 1 /* input */ && data && size >= 4 &&
+        *(const uint32_t *)data) {
+        // Turning input on is what opens the microphone (see "no microphone"); turning it off is fine.
+        st = -10851;  // kAudioUnitErr_InvalidPropertyValue
+        how = " (refused: no microphone)";
+    } else if (prop == 2000 /* kAudioOutputUnitProperty_CurrentDevice */ && sp_is_rio_unit(unit)) {
         // RemoteIO always plays to the system's current route; there's no device to pick.
         if (data && size >= 4) sp_rio_device = *(const uint32_t *)data;
         st = 0;

@@ -641,7 +641,7 @@ The hand-written families:
 | `shims/appkit/` | AppKit | `spuikit.m` (the event loop coroutine), `spwindow.m` (screen, window, view geometry), `spevent.m` (input), `spimage.m` (bitmaps, images, cursors), `sphover.m` (look highlights), `spstats.m` (play-session stats), `sploading.m` (the loading screen
 until the client's first frame). `spnotice.m`, built into the CoreFoundation shim: the client's data setup dialog (below). |
 | `shims/coregraphics/` | CoreGraphics | `spdisplay.m`: one display matching NSScreen; cursor association and warping for mouselook. |
-| `shims/audio/` | CoreAudio, AudioToolbox | A fake HAL device, and the macOS HAL output unit mapped to RemoteIO. |
+| `shims/audio/` | CoreAudio, AudioToolbox | A fake HAL device, the macOS HAL output unit mapped to RemoteIO, and no microphone. |
 | `shims/security/` | Security | The client's legacy CSSM crypto calls over CommonCrypto; Secure Transport logging; the bundled root certificates for the client's certificate query. |
 | `shims/ident/` | CoreFoundation, Foundation, IOKit | Tracing of what the client reads about the machine (types, sizes and hashes only), a made-up network interface, and the small identity file login needs from the Mac. |
 
@@ -819,6 +819,16 @@ and scroll events and `NSTextInputClient`), with no event taps. `spevent.m`:
 - **Interruptions.** When the app goes to the background the system interrupts the session and
   RemoteIO stops. Nothing in the client restarts it, so the shim reactivates the session and restarts
   the units the client had started.
+- **No voice chat, no microphone.** On the Mac the client runs voice chat in a separate helper app
+  (`WowVoiceProxy.app`, with the Vivox SDK) that it launches at world entry and talks to across
+  processes. The device can't launch it ([One app, every game](#one-app-every-game)) and the app
+  doesn't bundle it, so the client reports it couldn't start it (VoiceError 14). The app has no
+  `NSMicrophoneUsageDescription`, and without one TCC kills the process on any request for audio
+  input, so nothing may ask: after the client loads, the launcher has the AudioToolbox shim make
+  `AVCaptureDevice`'s permission calls answer "denied" for audio and video (an initializer is too
+  early: AVFoundation installs its own methods over them), and the shim refuses input on an output
+  unit and the voice-processing unit. The fake HAL device touches no hardware. Running the helper
+  in-process is the way to real support ([issue #12](https://github.com/paulstraw/slashplayed/issues/12)).
 
 ## Metal and the metallib retag
 

@@ -21,6 +21,8 @@ Every World of Warcraft game Battle.net offers for the Mac: **Classic Era** (Har
 Discovery included: switch the game mode in game), **TBC Anniversary**, **Mists of Pandaria
 Classic**, and **Retail**. They run on an **iPad** with M2 or later, an **iPhone 15 Pro** or later,
 and **Apple Vision Pro**.
+In-game voice chat isn't supported on the device yet
+([#12](https://github.com/paulstraw/slashplayed/issues/12)).
 
 ## Requirements
 

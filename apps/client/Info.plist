@@ -17,8 +17,6 @@
 	     settings and addons can be edited there. The start screen's Settings opens each game's folder in it. -->
 	<key>LSSupportsOpeningDocumentsInPlace</key><true/>
 	@PLATFORM_KEYS@
-	<!-- Without it TCC aborts the app (__abort_with_payload) when the client opens audio input (voice chat). -->
-	<key>NSMicrophoneUsageDescription</key><string>Voice chat</string>
 	<!-- The headset's pairing (sppair.m) finds Settings' Remote Devices over Bonjour; the first browse asks for
 	     local network access. Only visionOS browses: an iPad or iPhone gets its pairing from the Mac. -->
 	<key>NSBonjourServices</key><array><string>_remotepairing-manual-pairing._tcp</string></array>

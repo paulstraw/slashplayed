@@ -688,6 +688,12 @@ int main(int argc, char **argv) {
         h = dlopen(path.fileSystemRepresentation, RTLD_NOW);
     }
     if (!h) { say([NSString stringWithFormat:@"dlopen: %s", dlerror()]); return 1; }
+    // No microphone: the app has no NSMicrophoneUsageDescription (voice chat can't work on the device), so a
+    // capture permission request would get the process killed. The AudioToolbox shim makes AVCaptureDevice
+    // answer "denied"; only now, with every image the client links initialized (spaudiotoolbox.m says why).
+    void (*no_mic)(void) = (void (*)(void))dlsym(h, "sp_audio_no_microphone");
+    if (no_mic) no_mic();
+    else say([NSString stringWithFormat:@"audio: can't refuse the microphone (%s): voice chat settings may stop the app", dlerror()]);
     say([NSString stringWithFormat:@"update: loaded the %@ image (%.1f s, the prepare included)",
                                    [path isEqual:library] ? @"updated (Library/spgames)" : @"bundled", CFAbsoluteTimeGetCurrent() - t]);
     // The game data's row for the build that just loaded, before the client reads it.
