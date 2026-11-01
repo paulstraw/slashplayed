@@ -2,17 +2,25 @@
 // the generated libspAppKit.m after spuikit.m. The stub classes have no ivars and the client
 // subclasses NSWindow and NSView, so state lives in associated objects.
 //
-// One window, the size of the UIKit window in points, scale 2, at the bottom left of one screen, so
-// window and screen coordinates are the same. AppKit coordinates (origin bottom left) and UIKit's (top
-// left) only differ in y, which nothing here needs yet. When the scene is resized,
-// sp_window_track_scene (called from the client's event pump) resizes the layer, the window and its
-// content view and tells the window's delegate, as AppKit would after a live resize.
+// One window, the size of the game rect in points, at the bottom left of one screen, so window and
+// screen coordinates are the same. The game rect (sp_game_rect) is the UIKit window, except on an
+// iPhone in landscape, where the Dynamic Island's side is cut off by its safe-area inset: the
+// client's layer sits in the rest and the strip beside it stays black (the root view's background),
+// so edge-anchored UI (quest log, spellbook, map) isn't under the island. AppKit coordinates (origin
+// the game rect's bottom left) and UIKit's (the window's top left) differ in y and, on an iPhone, by
+// that x offset (spevent.m converts). When the scene is resized, sp_window_track_scene (called from
+// the client's event pump) resizes the layer, the window and its content view and tells the window's
+// delegate, as AppKit would after a live resize; when only the game rect moves (the phone turned
+// over, the island now on the other side), it moves the layer, the look highlights and the cursor,
+// and the client, whose size didn't change, hears nothing.
 //
 // On visionOS the screen is a fixed size, at least as big as the scene window gets (2218x1307 pt seen);
 // on iPad it's the real screen, landscape. The client
 // reads the display (here and in the CoreGraphics shim, which asks NSScreen) once at startup and caps
 // its drawable at the display's pixel size; a screen the size of the launch window capped it there,
 // and larger windows got a stretched image.
+// On an iPhone the screen stays the whole screen, island side included: the window is narrower than
+// the screen, as a Stage Manager window is, and the drawable cap is the screen's.
 
 #include <objc/message.h>
 
@@ -34,8 +42,36 @@
 
 static void sp_hover_attach(CALayer *layer);  // sphover.m
 
+// The game's part of the scene window, in UIKit points (origin the window's top left). In landscape
+// iOS reports an iPhone's left and right insets the same (62 pt on a 16 Pro), island or not, so the
+// island's side comes from geometry instead: the screen's fixed coordinate space is portrait-up, the
+// island at the middle of its top edge, and that point converted into the window lands on the
+// island's side whichever way the phone is turned (both landscapes are allowed: ClientAssembly.swift's
+// Info.plist, and the script build's). Only that side is cut: the top and bottom insets are the home
+// indicator's, which hides itself (SPRootViewController), and the other side's inset is only there for
+// symmetry. An iPad (insets 0, no island) and the headset keep the whole window.
+static CGRect sp_game_rect(void) {
+    if (!sp_window) return CGRectMake(0, 0, 1280, 720);
+    CGRect b = sp_window.bounds;
+#if !TARGET_OS_VISION
+    if (UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPhone) return b;
+    UIEdgeInsets in = sp_window.safeAreaInsets;
+    CGFloat cut = MAX(in.left, in.right);
+    UIScreen *screen = sp_window.windowScene.screen;
+    if (cut <= 0 || cut * 2 >= b.size.width || !screen) return b;
+    id<UICoordinateSpace> fixed = screen.fixedCoordinateSpace;
+    CGPoint island = [fixed convertPoint:CGPointMake(CGRectGetMidX(fixed.bounds), 0) toCoordinateSpace:sp_window];
+    // Near the middle across: the island is at the top or bottom (portrait, mid-rotation), no side.
+    if (fabs(island.x - CGRectGetMidX(b)) < b.size.width / 4) return b;
+    if (island.x < CGRectGetMidX(b)) b.origin.x += cut;
+    b.size.width -= cut;
+#endif
+    return b;
+}
+
+// The client's window: the game rect's size, at the origin.
 static CGRect sp_scene_rect(void) {
-    CGSize size = sp_window ? sp_window.bounds.size : CGSizeMake(1280, 720);
+    CGSize size = sp_game_rect().size;
     return CGRectMake(0, 0, size.width, size.height);
 }
 
@@ -218,10 +254,11 @@ static void sp_set_rect(id obj, void *key, CGRect r) {
 @end
 
 // The client renders into its view's layer (a CAMetalLayer), so it has to be on screen: it fills the
-// UIKit window, the one content view there is. The present hook (sp_hover_attach) goes in with it, and
-// the loading screen comes down at the first present, so neither may happen for a layer off screen.
+// game rect of the UIKit window, the one content view there is. The present hook (sp_hover_attach) goes
+// in with it, and the loading screen comes down at the first present, so neither may happen for a layer
+// off screen.
 static void sp_layer_show(CALayer *l) {
-    l.frame = sp_window.bounds;
+    l.frame = sp_game_rect();
     l.contentsScale = sp_scale;
     [sp_window.rootViewController.view.layer addSublayer:l];
     sp_hover_attach(l);
@@ -347,7 +384,10 @@ static void sp_scene_connect_late(void) {
 
 // ---- scene resize
 
-static CGSize sp_told_size;  // the scene size the client last heard about
+// The game rect (UIKit points, in the scene window) the client, its layer, the look highlights and the
+// cursor were last fitted to; empty until the first fit.
+static CGRect sp_told_rect;
+static void sp_game_moved(CGRect game);  // spevent.m: the look highlights and the cursor follow the game
 
 static void sp_set_layer_frame(CALayer *l, CGRect frame) {
     Class tx = NSClassFromString(@"CATransaction");  // not linked directly
@@ -357,33 +397,53 @@ static void sp_set_layer_frame(CALayer *l, CGRect frame) {
     [tx commit];
 }
 
-// Called on the client's side of the main thread each time it pumps events. The first time, whenever
-// the UIKit window changed size since, and whenever the client's layer doesn't fill the window (coming
-// back from the background, the client makes a new layer sized for the whole screen), apply it the way AppKit's live resize ends: window frame, content
-// view frame (KVO observers see it), NSViewFrameDidChangeNotification, then windowDidResize: and
-// NSWindowDidResizeNotification.
+// Called on the client's side of the main thread each time it pumps events, which is also how a
+// change in the safe area is noticed (no UIKit callback is needed: the client pumps every frame). The
+// first time, whenever the game rect changed size since, and whenever the client's layer isn't where
+// it was put (coming back from the background, the client makes a new layer sized for the whole
+// screen), apply it the way AppKit's live resize ends: window frame, content view frame (KVO
+// observers see it), NSViewFrameDidChangeNotification, then windowDidResize: and
+// NSWindowDidResizeNotification. When the game rect only moved (an iPhone turned from one landscape to
+// the other: same scene size, the island's strip on the other side), the layer, the look highlights
+// and the cursor move with it and the client isn't told: its window's size and coordinates are the same.
+// The same for a layer the client only displaced: it sets its layer's frame to its view's bounds, origin
+// 0,0, once while handling the first resize (iPhone 16 Pro, 2026-10-31), so the layer goes back to the
+// game rect's origin, and telling the client again would only have it do that again.
 static void sp_window_track_scene(void) {
     if (!sp_window || !sp_client_window) return;
-    CGSize size = sp_window.bounds.size;
+    CGRect game = sp_game_rect();
+    CGSize size = game.size;
     if (size.width <= 0 || size.height <= 0) return;
     id window = sp_client_window;
     NSView *view = objc_getAssociatedObject(window, &sp_content_view_key);
     CALayer *layer = view ? objc_getAssociatedObject(view, &sp_layer_key) : nil;
     if (![layer isKindOfClass:NSClassFromString(@"CALayer")]) layer = nil;
-    BOOL layer_off = layer && !CGRectEqualToRect(layer.frame, sp_window.bounds);
-    if (CGSizeEqualToSize(size, sp_told_size) && !layer_off) return;
+    BOOL layer_off = layer && !CGRectEqualToRect(layer.frame, sp_told_rect);
+    BOOL layer_resized = layer && !CGSizeEqualToSize(layer.frame.size, sp_told_rect.size);
+    BOOL resized = !CGSizeEqualToSize(size, sp_told_rect.size);
+    BOOL moved = !CGPointEqualToPoint(game.origin, sp_told_rect.origin);
+    if (!resized && !moved && !layer_off) return;
     // The first time too: at launch the client sized its layer and drawable for the screen.
     static int layer_fixes;  // logged up to 20 times, in case the client keeps at it
-    if (CGSizeEqualToSize(size, sp_told_size)) {
-        if (++layer_fixes <= 20) sp_stub_log([NSString stringWithFormat:@"client's layer is %gx%g pt, back to the scene's %gx%g",
-                     layer.frame.size.width, layer.frame.size.height, size.width, size.height].UTF8String);
-    } else
-        sp_stub_log([NSString stringWithFormat:@"scene %s %gx%g pt", sp_told_size.width ? "resized to" : "is",
-                     size.width, size.height].UTF8String);
-    sp_told_size = size;
+    if (resized || moved) {
+        CGSize scene = sp_window.bounds.size;
+        NSString *cut = CGRectEqualToRect(game, sp_window.bounds) ? (sp_told_rect.size.width ? @", the game all of it" : @"")
+            : [NSString stringWithFormat:@", the game %gx%g at %g,%g (Dynamic Island %s)", size.width, size.height,
+               game.origin.x, game.origin.y, game.origin.x > 0 ? "left" : "right"];
+        sp_stub_log([NSString stringWithFormat:@"scene %s %gx%g pt%@",
+                     !sp_told_rect.size.width ? "is" : resized ? "resized to" : "is still", scene.width,
+                     scene.height, cut].UTF8String);
+    } else if (++layer_fixes <= 20) {
+        sp_stub_log([NSString stringWithFormat:@"client's layer is %gx%g pt at %g,%g, back to the game's %gx%g at %g,%g",
+                     layer.frame.size.width, layer.frame.size.height, layer.frame.origin.x, layer.frame.origin.y,
+                     size.width, size.height, game.origin.x, game.origin.y].UTF8String);
+    }
+    sp_told_rect = game;
+    if (layer) sp_set_layer_frame(layer, game);
+    sp_game_moved(game);
+    if (!resized && !layer_resized) return;  // moved, or the layer displaced, only
     CGRect frame = CGRectMake(0, 0, size.width, size.height);
     sp_set_rect(window, &sp_frame_key, frame);
-    if (layer) sp_set_layer_frame(layer, sp_window.bounds);
     NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
     if (view) {
         [view setFrame:frame];

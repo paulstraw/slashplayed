@@ -733,9 +733,20 @@ its own.
 
 ## Window, screen and scene tracking
 
-There is one NSWindow, the size of the UIKit window in points, at the origin of one screen, so screen,
+There is one NSWindow, the size of the game rect in points, at the origin of one screen, so screen,
 window and view coordinates are the same AppKit points. `-[NSView setLayer:]` puts the client's
-`CAMetalLayer` in the UIKit window.
+`CAMetalLayer` in the UIKit window, over the game rect.
+
+- **Game rect.** The UIKit window, except on an iPhone in landscape: there the Dynamic Island's side
+  is cut off by its safe-area inset (`sp_game_rect`), and the strip beside the game stays black, so
+  UI anchored to the screen's edge (quest log, spellbook, map) isn't under the island. iOS reports the
+  left and right insets the same, so the island's side comes from where the top of the portrait-up
+  screen (`fixedCoordinateSpace`) lands in the window; the top and bottom (the home indicator, which
+  hides itself) aren't cut. Turning the phone from one landscape to the other moves the game rect
+  without resizing it: the layer, look highlights, and cursor move, and the client isn't told. Input
+  is converted from the game rect; a touch, click, scroll, or hover that starts in the strip is
+  outside the window and reaches no one, as beside a Mac window. An iPad and the headset keep the
+  whole window.
 
 - **Screen.** The client reads the display once at startup and caps its drawable at the display
   mode's pixel size. On visionOS the shim reports a fixed screen at least as big as any window
@@ -744,8 +755,9 @@ window and view coordinates are the same AppKit points. `-[NSView setLayer:]` pu
 - **Scene tracking.** The client's event pump calls `sp_window_track_scene`. At first and after every
   scene resize it sets the window, content view and layer frames, then posts the resize notifications
   and delegate calls AppKit would after a live resize. The client responds by resizing its drawable.
-  The layer is put back whenever it doesn't fill the window (the client sometimes makes a new
-  full-screen layer after a reactivation), and an old layer is removed when the client sets a new one.
+  The layer is put back whenever it doesn't fill the game rect (the client sometimes makes a new
+  full-screen layer after a reactivation, and moves its layer to its view's origin on the first
+  resize), and an old layer is removed when the client sets a new one.
 - **Render scale.** The backing scale: 1 renders a drawable the size of the window in points, 2 a
   Retina-sized one. 1x cuts GPU time sharply; see Heat below. The device owns it: the start screen's
   Settings > Display (Automatic, 1x, or 2x, in the app's `NSUserDefaults` as `sp_scale`) applies to

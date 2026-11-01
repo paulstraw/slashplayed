@@ -3,8 +3,10 @@
 // responder or content view, plus tracking area owners). #included at the end of the generated
 // libspAppKit.m after spuikit.m and spwindow.m.
 //
-// Coordinates: the client's window is the UIKit window at the screen origin, so screen, window and
-// view coordinates are all the same AppKit points (origin bottom left); UIKit's y is flipped.
+// Coordinates: the client's window is the game rect (spwindow.m's sp_game_rect: the UIKit window, less
+// an iPhone's Dynamic Island side) at the screen origin, so screen, window and view coordinates are all
+// the same AppKit points, origin the game rect's bottom left; UIKit's y is flipped, and its x is the
+// game rect's offset more.
 
 #import <GameController/GameController.h>
 #include <objc/message.h>
@@ -90,12 +92,16 @@ static SPEvent *sp_current_event;
 static NSMutableArray *sp_local_monitors;  // [mask, handler] pairs
 static int sp_logged_events;
 
-static CGFloat sp_window_height(void) {
-    return sp_window ? sp_window.bounds.size.height : 720;
+// UIKit points in the scene window <-> AppKit points in the client's window. A point in the strip beside
+// the game converts to one outside the window (x < 0 or past its width), as on a Mac.
+static CGPoint sp_from_uikit(CGPoint p) {
+    CGRect g = sp_game_rect();
+    return CGPointMake(p.x - g.origin.x, g.origin.y + g.size.height - p.y);
 }
 
-static CGPoint sp_from_uikit(CGPoint p) {
-    return CGPointMake(p.x, sp_window_height() - p.y);
+static CGPoint sp_to_uikit(CGPoint p) {
+    CGRect g = sp_game_rect();
+    return CGPointMake(g.origin.x + p.x, g.origin.y + g.size.height - p.y);
 }
 
 static SPEvent *sp_event(NSUInteger type) {
@@ -448,6 +454,14 @@ static size_t sp_hover_count;
 
 static SPHoverLayer *sp_hover_layer;
 
+// spwindow.m's sp_window_track_scene, when it fits or moves the game rect: the highlights' rects are
+// fractions of the client's window, so their container covers the game rect, not the scene window;
+// the cursor is placed from it too.
+static void sp_game_moved(CGRect game) {
+    sp_hover_layer.frame = game;
+    sp_cursor_update();
+}
+
 // rects: fractions of the window, origin bottom left.
 static void sp_hover_set_rects(const CGRect *rects, size_t n) {
     if (n > SP_HOVER_MAX) n = SP_HOVER_MAX;
@@ -496,7 +510,8 @@ static void sp_cursor_update(void) {
     BOOL show = sp_cursor_current && !sp_cursor_hide_count && sp_pointer_inside;
     sp_cursor_view.hidden = !show;
     if (!show) return;
-    CGPoint origin = CGPointMake(sp_mouse.x - sp_cursor_hot.x, sp_window_height() - sp_mouse.y - sp_cursor_hot.y);
+    CGPoint at = sp_to_uikit(sp_mouse);
+    CGPoint origin = CGPointMake(at.x - sp_cursor_hot.x, at.y - sp_cursor_hot.y);
     if (!CGPointEqualToPoint(origin, sp_cursor_view.frame.origin))
         sp_cursor_view.frame = (CGRect){origin, sp_cursor_view.frame.size};
 }
@@ -630,6 +645,7 @@ static void sp_watch_mouse(GCMouse *m) {
     UIEventButtonMask _pointer_mask;      // the buttons the pointer touch last reported
     UIEventButtonMask _mask;              // the buttons reported down
     CGPoint _scroll_last;
+    BOOL _hover_in_game;                  // the hover is over the game, and entered it
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -680,32 +696,73 @@ static void sp_watch_mouse(GCMouse *m) {
     return YES;
 }
 
+#if !TARGET_OS_VISION
+// The black strip beside the game (an iPhone's Dynamic Island side) is outside the client's window, as
+// the desktop is beside a Mac window, so it isn't part of this view once the client has a window: a
+// touch, click or scroll that starts there reaches no one (rather than being clamped to the game's edge,
+// where it would press whatever button is there), and the hover gesture ends at its edge (hover: checks
+// too). A touch that starts in the game still reports all the way into the strip, as a drag out of a
+// Mac window does. The launcher's screens are presented over the root, not in it, so they keep the strip.
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    if (![super pointInside:point withEvent:event]) return NO;
+    return !sp_told_rect.size.width || CGRectContainsPoint(sp_game_rect(), point);
+}
+#endif
+
 - (void)didMoveToWindow {
     [super didMoveToWindow];
     if (self.window) [self becomeFirstResponder];
 }
 
+- (void)sp_pointer_entered:(CGPoint)p {
+    sp_pointer = p;
+    if (!sp_mouse_frozen) sp_mouse = p;
+    sp_pointer_inside = YES;
+    _hover_in_game = YES;
+    sp_post(sp_event(SPMouseEntered));
+    sp_cursor_update();
+}
+
+- (void)sp_pointer_exited {
+    sp_pointer_inside = NO;
+    _hover_in_game = NO;
+    sp_post(sp_event(SPMouseExited));
+    sp_cursor_update();
+}
+
+// A hover over the strip beside the game (an iPhone's island side) is outside the client's window: the
+// pointer leaves the game at its edge (the cursor hides) and enters again on the way back, as a Mac
+// pointer leaving a window does. pointInside: may already end the gesture there; this covers it either
+// way.
 - (void)hover:(UIHoverGestureRecognizer *)g {
-    CGPoint p = sp_from_uikit([g locationInView:self]);
+    CGPoint u = [g locationInView:self];
+    CGPoint p = sp_from_uikit(u);
+    BOOL in_game = CGRectContainsPoint(sp_game_rect(), u);
     switch (g.state) {
     case UIGestureRecognizerStateBegan:
-        sp_pointer = p;
-        if (!sp_mouse_frozen) sp_mouse = p;
-        sp_pointer_inside = YES;
-        sp_post(sp_event(SPMouseEntered));
-        sp_cursor_update();
+        if (in_game) {
+            [self sp_pointer_entered:p];
+        } else if (sp_pointer_inside) {
+            sp_pointer_inside = NO;
+            sp_cursor_update();
+        }
         break;
     case UIGestureRecognizerStateChanged:
-        sp_mouse_moved_to(p, SPMouseMoved, YES);
+        if (in_game && !_hover_in_game) [self sp_pointer_entered:p];
+        else if (!in_game && _hover_in_game) [self sp_pointer_exited];
+        else if (in_game) sp_mouse_moved_to(p, SPMouseMoved, YES);
         break;
     case UIGestureRecognizerStateEnded:
     case UIGestureRecognizerStateCancelled:
         // No move to the end location: the last change already put the mouse there, and an iPhone's
         // AssistiveTouch pointer ends its hover at 0,0 whenever it clicks, which would jump the
-        // mouse to the top left corner on every click.
-        sp_pointer_inside = NO;
-        sp_post(sp_event(SPMouseExited));
-        sp_cursor_update();
+        // mouse to the top left corner on every click. Out over the strip, the exit was already sent.
+        if (_hover_in_game) {
+            [self sp_pointer_exited];
+        } else if (sp_pointer_inside) {
+            sp_pointer_inside = NO;
+            sp_cursor_update();
+        }
         break;
     default:
         break;
