@@ -88,4 +88,13 @@ NSString *sp_install_region(NSString *_Nullable buildInfo, NSString *product);
 // (GameFiles.flavorInfo): its product, as a one-column table.
 NSString *sp_flavor_info(NSString *product);
 
+// The addons the app carries (`addons`: the app's addons/, each <name>/<name>.toc and .lua as addon/ has
+// them; apps/client/build.sh and the companion's ClientAssembly put them there) into a game's folder
+// (`game`: Documents/_<flavor>_), at Interface/AddOns/<name>/, as the companion used to copy them: SPMovie
+// on every device, SPHover with `hover` (the headset: the iPad and iPhone have a real pointer). Each file is
+// written when the game's copy is missing or its bytes differ, and left alone otherwise. Each TOC lists every
+// flavor's Interface number, so one copy suits each game. A line for the log; NO when one couldn't be
+// read or written (*line says which).
+BOOL sp_addons_place(NSString *addons, NSString *game, BOOL hover, NSString *_Nullable *_Nonnull line);
+
 NS_ASSUME_NONNULL_END

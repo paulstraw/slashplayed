@@ -234,16 +234,22 @@ final class ClientAssemblyTests: XCTestCase {
         let helperEnts = base.appending(path: "helper-entitlements.plist")
         var lines: [String] = []
         try await ClientAssembly.assemble(app: app, clients: [("toy", Self.fixture, Self.stamp)], platform: .xros,
-                                          platformResources: res, templates: templates, team: "ABCDE12345",
+                                          platformResources: res, templates: templates, addons: Self.repo.appending(path: "addon"), team: "ABCDE12345",
                                           bundleID: "ABCDE12345.slashplayed", entitlements: ents,
                                           helperEntitlements: helperEnts) { lines.append($0) }
         let files = Set(try FileManager.default.subpathsOfDirectory(atPath: app.path))
-        XCTAssertEqual(files, ["wow-toy", "spbuild-toy", "slashplayed", "Frameworks", "Frameworks/libspAppKit.dylib", "Assets.car", "Info.plist",
+        XCTAssertEqual(files, Set<String>(["wow-toy", "spbuild-toy", "slashplayed", "Frameworks", "Frameworks/libspAppKit.dylib", "Assets.car", "Info.plist",
                               "sproots.plist", "PlugIns", "PlugIns/SPJitHelper.appex", "PlugIns/SPJitHelper.appex/SPJitHelper",
                               "PlugIns/SPJitHelper.appex/Info.plist", "flavors.plist", "wow.icns",
                               "exports.json", "rewrite-map.txt", "licenses", "licenses/zsign.txt", "licenses/openssl.txt",
                               "licenses/idevice.txt", "licenses/rust-std.html", "licenses/goodmountain.txt",
-                              "Goodmountain-Regular.otf"])
+                              "Goodmountain-Regular.otf", "addons", "addons/SPMovie", "addons/SPHover"])
+                       .union(ClientAssembly.addonFiles.map { "addons/" + $0 }))
+        // The addons the launcher places (sp_addons_place), byte for byte as addon/ has them.
+        for file in ClientAssembly.addonFiles {
+            XCTAssertEqual(try Data(contentsOf: app.appending(path: "addons/" + file)),
+                           try Data(contentsOf: Self.repo.appending(path: "addon/" + file)), file)
+        }
         // The launcher's bind check of a newer build reads the same manifest as the companion's.
         XCTAssertEqual(try Data(contentsOf: app.appending(path: "exports.json")), try Data(contentsOf: res.appending(path: "exports.json")))
         // The launcher's assembly of a newer build's image (spassemble.m) reads the same rewrite map.
@@ -273,7 +279,7 @@ final class ClientAssemblyTests: XCTestCase {
         try Self.writeManifest(for: Self.fixture, to: res.appending(path: "exports.json"))
         do {
             try await ClientAssembly.assemble(app: base.appending(path: "Slashplayed.app"), clients: [("toy", Self.fixture, Self.stamp)],
-                                              platform: .xros, platformResources: res, templates: Self.repo.appending(path: "apps/client"),
+                                              platform: .xros, platformResources: res, templates: Self.repo.appending(path: "apps/client"), addons: Self.repo.appending(path: "addon"),
                                               team: "T", bundleID: "T.slashplayed", entitlements: base.appending(path: "e.plist"),
                                               helperEntitlements: base.appending(path: "h.plist")) { _ in }
             XCTFail("assembled with an unrewritten load command")

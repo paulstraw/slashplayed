@@ -388,8 +388,19 @@ still ships images, and an app with images behaves as before.
   plays it. With no bundled image to fall back on, an image `dlopen` refuses is deleted and the launch
   stops on the reason; the next start offers Install again.
 
-The addons and the small identity file login needs from the Mac aren't part of the install: they come
-from the host, as the companion sends them today.
+The small identity file login needs from the Mac isn't part of the install: it comes from the host, as
+the companion sends it today. The addons are the app's own (below), so an installed game has them too.
+
+### The addons
+
+The device app carries the addons, `addons/SPMovie/` and `addons/SPHover/` (their `.toc` and `.lua` as
+`addon/` has them; `apps/client/build.sh` and the companion's `ClientAssembly` both bundle them, on both
+platforms). Before each start, once the game is picked, the launcher puts them in the game's
+`Interface/AddOns/` (`sp_addons_place` in `spcdn.m`): SPMovie on every device, SPHover on the headset only
+(the iPad and iPhone have a real pointer), each file written when the game's copy is missing or its bytes
+differ (`addons: N up to date, wrote …`). Each TOC lists every flavor's Interface number, so one copy
+suits each game. The companion used to copy them with the game files; it doesn't any more, and a changed
+addon reaches a device with the rebuild the companion's resources digest asks for (`ClientBuild`).
 
 What the device holds for it, all in the app's container:
 
@@ -607,8 +618,8 @@ each bucket, so an index one wrote points into archives only it wrote. So the co
 them:
 
 - **Without copying** (the default for a new device, and the only way without a game install on the
-  Mac) it sends `.build.info` and the configs, plus each game's folder (`.flavor.info`, a first
-  `Config.wtf`, the addons), and nothing of the store.
+  Mac) it sends `.build.info` and the configs, plus each game's folder (`.flavor.info` and a first
+  `Config.wtf`; the app places the addons, [The addons](#the-addons)), and nothing of the store.
   The first launch from nothing sets itself up and reaches character select in about 2.5 minutes on the
   iPhone; after that the client fetches what each zone needs as it goes (`docs/research.md`).
 - **With copying**, the store goes whole: every archive and index that differs, archives first and

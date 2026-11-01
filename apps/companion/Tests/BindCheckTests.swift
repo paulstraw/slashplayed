@@ -133,7 +133,7 @@ final class BindCheckTests: XCTestCase {
         var lines: [String] = []
         do {
             try await ClientAssembly.assemble(app: base.appending(path: "Slashplayed.app"), clients: [("classic_era", Self.patched, ClientAssemblyTests.stamp)],
-                                              platform: .xros, platformResources: res, templates: repo.appending(path: "apps/client"),
+                                              platform: .xros, platformResources: res, templates: repo.appending(path: "apps/client"), addons: repo.appending(path: "addon"),
                                               team: "ABCDE12345", bundleID: "ABCDE12345.slashplayed",
                                               entitlements: base.appending(path: "e.plist"),
                                               helperEntitlements: base.appending(path: "h.plist")) { lines.append($0) }

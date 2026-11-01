@@ -106,6 +106,13 @@ cp ../../work/fonts/Goodmountain-Regular.otf "$APP"/
 sp_plist Info.plist "$APP"/Info.plist $BUNDLE_ID
 # The flavors' names (the start screen, spstart.m) and Battle.net's arguments (launcher.m).
 cp flavors.plist "$APP"/
+# The addons, which the launcher puts in each game's folder before it loads (spcdn.m's sp_addons_place:
+# SPMovie everywhere, SPHover on the headset). Both on both platforms, as the companion's ClientAssembly
+# bundles them: the launcher decides.
+for a in SPMovie SPHover; do
+  mkdir -p "$APP"/addons/$a
+  cp ../../addon/$a/$a.toc ../../addon/$a/$a.lua "$APP"/addons/$a/
+done
 # The client looks up its icon, wow.icns, for its data setup dialog's IconURL, and throws on a nil path.
 # The dialog is never drawn (shims/appkit/spnotice.m), so the file only has to exist.
 : > "$APP"/wow.icns

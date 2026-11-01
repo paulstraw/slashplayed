@@ -133,8 +133,6 @@ enum Paths {
     /// The device platform's bundled shims, exports.json, rewrite-map.txt, launcher, and JIT helper.
     static func platformResources(_ device: Device) -> URL { resource(device.platform) }
 
-    /// A bundled addon's folder (addon/<name> in the repo: SPMovie, SPHover).
-    static func addon(_ name: String) -> URL { resource(name) }
 
     /// ~/Library/Logs/Slashplayed.
     static var logs: URL {

@@ -20,13 +20,15 @@ enum ClientBuild {
     /// What builds before the install record left beside a build not yet installed; deleted at the next build.
     private static func legacyNeedsInstall(_ device: Device) -> URL { Paths.clientDir(device).appending(path: "needs-install") }
     /// In build-complete with the flavors: a digest of everything the build takes from this app's bundle
-    /// (the platform's launcher, JIT helper, shims, and icon, and the Info.plist and entitlements
-    /// templates). A companion with different ones, after an update or in development, rebuilds the device
+    /// (the platform's launcher, JIT helper, shims, and icon, the Info.plist and entitlements templates, and
+    /// the addons). A companion with different ones, after an update or in development, rebuilds the device
     /// app instead of leaving the old launcher and shims on it. A build from before the digest has none.
     private static func resourcesMark(_ device: Device) -> String {
         if let mark = resourceMarks.value[device.platform] { return mark }
         var hash = SHA256()
-        for root in [Paths.platformResources(device), Paths.resource("client")] {
+        // The addons too: the device app carries them, and its launcher puts them in each game's folder, so a
+        // changed addon reaches the device with a rebuild.
+        for root in [Paths.platformResources(device), Paths.resource("client"), Paths.resource("addons")] {
             let files = (FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey])?
                 .compactMap { $0 as? URL } ?? [])
                 .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
@@ -346,7 +348,8 @@ enum ClientBuild {
         }
         try await ClientAssembly.assemble(app: app, clients: clients,
                                           platform: platform, platformResources: Paths.platformResources(device),
-                                          templates: Paths.resource("client"), team: team.id, bundleID: bundleID,
+                                          templates: Paths.resource("client"), addons: Paths.resource("addons"),
+                                          team: team.id, bundleID: bundleID,
                                           entitlements: entitlements, helperEntitlements: helperEntitlements,
                                           droppedEntitlements: dropped, onLine: log)
         try await beforeSigning()

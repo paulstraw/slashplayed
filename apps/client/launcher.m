@@ -679,6 +679,13 @@ int main(int argc, char **argv) {
     game_region(flavor);
     default_render_scale(flavor);
     skip_intro(flavor);
+    // The addons the app carries, into the game's folder before the client loads (sp_addons_place): SPMovie
+    // everywhere, SPHover on the headset. The device's own copy, so a game it installed has them too.
+    NSString *addons = nil;
+    sp_addons_place([dir stringByAppendingPathComponent:@"addons"],
+                    [NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Documents/_%@_", flavor]],
+                    TARGET_OS_VISION, &addons);
+    say(addons);
     launch_arguments(flavor, &argc, &argv);
     // Whether a newer build is out than the image's (sppatch.m), which also picks the image: the bundled one
     // or the one an update on the device made, maybe just now (then `buildInfo` is the game data's

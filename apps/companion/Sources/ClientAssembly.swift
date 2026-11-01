@@ -201,16 +201,23 @@ enum ClientAssembly {
     /// changing or renaming the file (scripts/fetch-font.sh, bundle-resources.sh).
     static let fontFile = "Goodmountain-Regular.otf"
 
+    /// The addons the device app carries, at addons/<name>/ (as addon/ has them), which its launcher puts
+    /// in each game's folder before the client loads (apps/client/spcdn.m's sp_addons_place: SPMovie on every
+    /// device, SPHover on the headset), as build.sh's app has them. Both on both platforms: the launcher
+    /// decides. bundle-resources.sh bundles them in Resources/addons/.
+    static let addonFiles = ["SPMovie/SPMovie.toc", "SPMovie/SPMovie.lua", "SPHover/SPHover.toc", "SPHover/SPHover.lua"]
+
     /// Assembles an unsigned Slashplayed.app at `app` from the given clients (flavor raw value → the Mac
     /// client, universal or its arm64 slice, and the build it is, for its Stamp) and the companion's resources: `platformResources` (<platform>/: the shims, the
     /// launcher, the JIT helper's executable, rewrite-map.txt, exports.json, licenses/, the start screen's
     /// font) and `templates` (client/:
-    /// Info.plist, entitlements.plist, flavors.plist, and helper/'s two, as apps/client has them). Writes the filled
+    /// Info.plist, entitlements.plist, flavors.plist, and helper/'s two, as apps/client has them), and `addons`
+    /// (addonFiles: Resources/addons/, or the repo's addon/). Writes the filled
     /// entitlements to `entitlements` and the helper's to `helperEntitlements`, for signing. Throws BindCheck.Unsupported for a
     /// client with an import the shims don't provide (a game patch this version doesn't know), and fails
     /// on an unrewritten load command.
     static func assemble(app: URL, clients: [(flavor: String, executable: URL, stamp: Stamp)], platform: Platform,
-                         platformResources: URL, templates: URL, team: String, bundleID: String,
+                         platformResources: URL, templates: URL, addons: URL, team: String, bundleID: String,
                          entitlements entitlementsFile: URL, helperEntitlements: URL, droppedEntitlements: [String] = [],
                          onLine: (String) -> Void) async throws {
         let fm = FileManager.default
@@ -287,6 +294,15 @@ enum ClientAssembly {
             .write(to: app.appending(path: "Info.plist"), atomically: true, encoding: .utf8)
         // The flavors' names (the start screen, apps/client/spstart.m) and Battle.net's arguments (launcher.m).
         try fm.copyItem(at: templates.appending(path: "flavors.plist"), to: app.appending(path: "flavors.plist"))
+        // The addons (addonFiles), as build.sh's app has them.
+        for file in addonFiles {
+            guard fm.fileExists(atPath: addons.appending(path: file).path) else {
+                throw Failure("The companion has no bundled addon \(file).")
+            }
+            let dest = app.appending(path: "addons/\(file)")
+            try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try fm.copyItem(at: addons.appending(path: file), to: dest)
+        }
         // The client looks up its icon, wow.icns, for its data setup dialog's IconURL, and throws on a nil
         // path. The dialog is never drawn (shims/appkit/spnotice.m), so the file only has to exist.
         try Data().write(to: app.appending(path: "wow.icns"))

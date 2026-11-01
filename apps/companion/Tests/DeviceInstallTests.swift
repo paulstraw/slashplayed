@@ -46,6 +46,39 @@ final class DeviceInstallTests: XCTestCase {
         XCTAssertEqual(sp_install_region([header, "|1|cccc|1.0|wow"].map { $0 + "\n" }.joined(), "wow"), "us")
     }
 
+    /// The addons the launcher puts in a game's folder (sp_addons_place): SPMovie everywhere, SPHover only on
+    /// the headset, as the companion copied them; a file written only when it's missing or its bytes differ.
+    func testAddonsArePlaced() throws {
+        let repo = ClientAssemblyTests.repo, addons = repo.appending(path: "addon")
+        let game = FileManager.default.temporaryDirectory.appending(path: "sp-addons-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: game) }
+        func place(hover: Bool) -> (ok: Bool, line: String) {
+            var line: NSString?
+            let ok = sp_addons_place(addons.path, game.path, hover, &line)
+            return (ok, (line as String?) ?? "")
+        }
+        let movie = game.appending(path: "Interface/AddOns/SPMovie/SPMovie.lua")
+        var r = place(hover: false)
+        XCTAssertTrue(r.ok, r.line)
+        XCTAssertEqual(r.line, "addons: 0 up to date, wrote SPMovie/SPMovie.toc SPMovie/SPMovie.lua")
+        XCTAssertEqual(try Data(contentsOf: movie), try Data(contentsOf: addons.appending(path: "SPMovie/SPMovie.lua")))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: game.appending(path: "Interface/AddOns/SPHover").path))
+        // The same bytes: nothing written (the date stays).
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1)], ofItemAtPath: movie.path)
+        XCTAssertEqual(place(hover: false).line, "addons: 2 up to date")
+        XCTAssertEqual(try movie.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                       Date(timeIntervalSince1970: 1))
+        // Another copy (an older addon) is replaced; on the headset SPHover comes too.
+        try Data("-- old".utf8).write(to: movie)
+        r = place(hover: true)
+        XCTAssertEqual(r.line, "addons: 1 up to date, wrote SPMovie/SPMovie.lua SPHover/SPHover.toc SPHover/SPHover.lua")
+        XCTAssertEqual(try Data(contentsOf: movie), try Data(contentsOf: addons.appending(path: "SPMovie/SPMovie.lua")))
+        // An app without them says so.
+        var line: NSString?
+        XCTAssertFalse(sp_addons_place(game.appending(path: "none").path, game.path, false, &line))
+        XCTAssertTrue((line as String?)?.contains("FAILED SPMovie/SPMovie.toc (not in the app)") == true, "\(String(describing: line))")
+    }
+
     /// The .flavor.info the device writes for a game it installed is the one the companion sends.
     func testFlavorInfoIsTheCompanions() {
         for flavor in Flavor.allCases {

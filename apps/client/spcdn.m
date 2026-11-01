@@ -699,3 +699,31 @@ NSString *sp_install_region(NSString *buildInfo, NSString *product) {
 NSString *sp_flavor_info(NSString *product) {
     return [NSString stringWithFormat:@"Product Flavor!STRING:0\n%@\n", product];
 }
+
+BOOL sp_addons_place(NSString *addons, NSString *game, BOOL hover, NSString **line) {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSMutableArray<NSString *> *written = [NSMutableArray array], *failed = [NSMutableArray array];
+    NSUInteger same = 0;
+    for (NSString *name in hover ? @[@"SPMovie", @"SPHover"] : @[@"SPMovie"])
+        for (NSString *ext in @[@"toc", @"lua"]) {
+            NSString *file = [NSString stringWithFormat:@"%@/%@.%@", name, name, ext];
+            NSData *bytes = [NSData dataWithContentsOfFile:[addons stringByAppendingPathComponent:file]];
+            if (!bytes) {
+                [failed addObject:[file stringByAppendingString:@" (not in the app)"]];
+                continue;
+            }
+            NSString *dest = [game stringByAppendingPathComponent:[@"Interface/AddOns" stringByAppendingPathComponent:file]];
+            if ([[NSData dataWithContentsOfFile:dest] isEqualToData:bytes]) {
+                same++;
+                continue;
+            }
+            [fm createDirectoryAtPath:dest.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil];
+            if ([bytes writeToFile:dest atomically:YES]) [written addObject:file];
+            else [failed addObject:[file stringByAppendingString:@" (couldn't be written)"]];
+        }
+    NSMutableString *text = [NSMutableString stringWithFormat:@"addons: %lu up to date", (unsigned long)same];
+    if (written.count) [text appendFormat:@", wrote %@", [written componentsJoinedByString:@" "]];
+    if (failed.count) [text appendFormat:@"; FAILED %@", [failed componentsJoinedByString:@", "]];
+    *line = text;
+    return !failed.count;
+}
