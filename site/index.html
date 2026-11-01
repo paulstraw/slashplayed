@@ -180,7 +180,8 @@
     /* How it works */
     .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 40px 32px; }
     .step { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
-    .step-num { position: relative; display: grid; place-items: center; width: 56px; height: 56px; font-family: Georgia, serif; font-weight: 700; font-size: 1.25rem; line-height: 1; color: var(--gold); }
+    /* Goodmountain, not Georgia: Georgia's digits are old-style, so they sit below the diamond's center. */
+    .step-num { position: relative; display: grid; place-items: center; width: 56px; height: 56px; font-family: var(--display); font-weight: 400; font-size: 1.25rem; line-height: 1; color: var(--gold); }
     .step-num::before { content: ""; position: absolute; inset: 9px; border: 1.5px solid var(--gold); transform: rotate(45deg); }
     .step h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 1.75rem; line-height: 1.15; color: var(--cream); }
     .step p { margin: 0; max-width: 22rem; color: var(--text-2); }
@@ -358,14 +359,8 @@
             <p class="tile-note">Includes Hardcore and Season of Discovery: switch the game mode in game.</p>
           </li>
           <li><div class="tile">TBC Anniversary<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div></li>
-          <li>
-            <div class="tile">Mists of Pandaria Classic<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div>
-            <p class="tile-note">Played on the Vision Pro and an iPhone 16 Pro; untested on the iPad.</p>
-          </li>
-          <li>
-            <div class="tile">Retail<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div>
-            <p class="tile-note">Played on an M2 iPad, where it runs hot and gets a memory warning, and on an iPhone 16 Pro.</p>
-          </li>
+          <li><div class="tile">Mists of Pandaria Classic<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div></li>
+          <li><div class="tile">Retail<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div></li>
         </ul>
         <div class="soon">
           <h3 class="soon-h"><span class="soon-rule" aria-hidden="true"></span>Coming soon<span class="soon-rule" aria-hidden="true"></span></h3>
