@@ -8,13 +8,30 @@ cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)
 OUT=$ROOT/build/companion
 APP="$OUT/Slashplayed Companion.app"
+# The device builds (shims, launcher, JIT helper, and icon, per platform) read nothing from the app, so
+# they run in the background while Xcode compiles it: on CI's 3-core runner the Release compile is mostly
+# one single-threaded optimizer per architecture, leaving a core for them, and they used to wait for it
+# (about 70s after a 2-minute compile). Their output goes to a log, printed whole once xcodebuild is done,
+# so it isn't interleaved with Xcode's. If xcodebuild fails first, the build phase's script is killed on
+# the way out (a compiler it started may finish on its own, but the phase never marks its output done).
+STAGE=$OUT/resources
+mkdir -p "$OUT"
+BUNDLE_LOG=$(mktemp -t sp-bundle-build)
+./bundle-resources.sh --build "$STAGE" >"$BUNDLE_LOG" 2>&1 &
+BUNDLE_PID=$!
+trap '[ -z "$BUNDLE_PID" ] || kill "$BUNDLE_PID" 2>/dev/null || true; rm -f "$BUNDLE_LOG"' EXIT
 ./idevice-config.sh
 xcodegen generate --quiet
 xcodebuild -project SPCompanion.xcodeproj -scheme SPCompanion -configuration Release \
   -derivedDataPath "$OUT/DerivedData" -quiet build
+BUNDLE_STATUS=0
+wait "$BUNDLE_PID" || BUNDLE_STATUS=$?
+BUNDLE_PID=  # reaped: nothing for the trap to kill (its PID could be reused)
+cat "$BUNDLE_LOG" >&2
+[ "$BUNDLE_STATUS" -eq 0 ] || { echo "bundle-resources.sh --build failed (status $BUNDLE_STATUS; its output is above)" >&2; exit 1; }
 rm -rf "$APP"
 cp -R "$OUT/DerivedData/Build/Products/Release/Slashplayed Companion.app" "$OUT/"
-./bundle-resources.sh "$APP"
+./bundle-resources.sh --install "$STAGE" "$APP"
 # Re-sealed after the resources go in, deliberately without the hardened runtime: its library validation
 # only loads frameworks with the app's own Team ID, and the embedded Sparkle.framework keeps the ad hoc
 # seal Xcode gave it, so it would fail to load ("different Team IDs"). Release builds sign everything

@@ -1,7 +1,12 @@
 #!/bin/sh
 # Copies everything the companion needs at run time into a built "Slashplayed Companion.app", so the app
-# never reads the repo (build.sh runs it; so will the release script):
+# never reads the repo (build.sh, scripts/release/release.sh, and update-test.sh run it):
 #   apps/companion/bundle-resources.sh <app>
+# or in two phases, so the device builds can run while Xcode compiles the app (build.sh does: they read
+# nothing from it, and on CI's 3-core runner they'd otherwise wait about 2 minutes on a compile that
+# leaves a core idle):
+#   apps/companion/bundle-resources.sh --build <staging dir>          the per-platform builds, no app
+#   apps/companion/bundle-resources.sh --install <staging dir> <app>  their output and the rest, into it
 # Contents/Resources/ gets, per device platform (xros, ios), <platform>/: the unsigned shim dylibs, their
 # exports.json (the bind check's manifest) and rewrite-map.txt, the unsigned launcher (slashplayed) and
 # licenses/ (the device app's: zsign's and OpenSSL's, which the launcher links, from scripts/build-zsign.sh,
@@ -18,22 +23,38 @@
 # here, since the user's Mac has no xcodegen). (The identity
 # file mac-identity.c writes comes from its Swift port, MacIdentity.) Needs xcodegen; nothing here is Blizzard's (no client is read).
 set -euo pipefail
-[ $# -eq 1 ] && [ -d "$1/Contents" ] || { echo "usage: $0 <path to Slashplayed Companion.app>" >&2; exit 1; }
-APP=$(cd "$1" && pwd)
+usage() {
+  echo "usage: $0 <path to Slashplayed Companion.app>" >&2
+  echo "       $0 --build <staging dir>" >&2
+  echo "       $0 --install <staging dir> <path to Slashplayed Companion.app>" >&2
+  exit 1
+}
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-RES=$APP/Contents/Resources
-mkdir -p "$RES"
+# Scratch removed on exit: the one-shot's staging dir and the build jobs' logs.
+SCRATCH=
+trap 'rm -rf $SCRATCH' EXIT
+# The build phase makes each <platform>/ whole in $STAGE; the install phase copies it into the app as it is.
+case "${1:-}" in
+  --build) [ $# -eq 2 ] || usage; MODE=build; STAGE=$(mkdir -p "$2" && cd "$2" && pwd) ;;
+  --install) [ $# -eq 3 ] && [ -d "$3/Contents" ] || usage; MODE=install; STAGE=$(cd "$2" && pwd); APP=$(cd "$3" && pwd) ;;
+  *) [ $# -eq 1 ] && [ -d "$1/Contents" ] || usage; MODE=oneshot; STAGE=$(mktemp -d -t sp-stage); SCRATCH=$STAGE
+     APP=$(cd "$1" && pwd) ;;
+esac
 FONT=$ROOT/work/fonts
 for f in "$FONT/Goodmountain-Regular.otf" "$FONT/LICENSE.md"; do
   [ -f "$f" ] || { echo "no ${f#"$ROOT"/} (run scripts/fetch-font.sh)" >&2; exit 1; }
 done
 
+if [ "$MODE" != install ]; then
+# A re-run starts each platform's folder over, and the marker goes until the builds all succeed, so the
+# install phase never takes a failed or half-done build phase's output.
+rm -f "$STAGE/.built"
 for p in xros ios; do
-  rm -rf "${RES:?}/$p" && mkdir -p "$RES/$p/licenses"
-  cp "$ROOT/work/zsign/licenses/zsign.txt" "$ROOT/work/zsign/licenses/openssl.txt" "$RES/$p/licenses/"
-  cp "$ROOT/work/idevice/$p/licenses/idevice.txt" "$ROOT/work/idevice/$p/licenses/rust-std.html" "$RES/$p/licenses/"
-  cp "$FONT/LICENSE.md" "$RES/$p/licenses/goodmountain.txt"
-  cp "$FONT/Goodmountain-Regular.otf" "$RES/$p/"
+  rm -rf "${STAGE:?}/$p" && mkdir -p "$STAGE/$p/licenses"
+  cp "$ROOT/work/zsign/licenses/zsign.txt" "$ROOT/work/zsign/licenses/openssl.txt" "$STAGE/$p/licenses/"
+  cp "$ROOT/work/idevice/$p/licenses/idevice.txt" "$ROOT/work/idevice/$p/licenses/rust-std.html" "$STAGE/$p/licenses/"
+  cp "$FONT/LICENSE.md" "$STAGE/$p/licenses/goodmountain.txt"
+  cp "$FONT/Goodmountain-Regular.otf" "$STAGE/$p/"
 done
 
 # The builds, per platform: the shims, the launcher, the JIT helper, and the icon. None reads another's
@@ -44,7 +65,7 @@ done
 # messages aren't interleaved with the others'. A job's subshell keeps set -e (it isn't on the left of
 # an && or ||, where the shell would ignore it), so its first failing command ends it before the .ok.
 JOBS=$(mktemp -d -t sp-bundle)
-trap 'rm -rf "$JOBS"' EXIT
+SCRATCH="$SCRATCH $JOBS"
 NAMES=
 job() {
   _name=$1; shift
@@ -53,14 +74,14 @@ job() {
 }
 shims() {
   sh "$ROOT/shims/build.sh" "$1"
-  cp "$ROOT/build/$1"/*.dylib "$ROOT/build/$1/exports.json" "$ROOT/shims/generated/rewrite-map.txt" "$RES/$1/"
-  [ "$(ls "$RES/$1"/*.dylib | wc -l)" -gt 0 ] || { echo "no shim dylibs for $1 in build/$1" >&2; exit 1; }
+  cp "$ROOT/build/$1"/*.dylib "$ROOT/build/$1/exports.json" "$ROOT/shims/generated/rewrite-map.txt" "$STAGE/$1/"
+  [ "$(ls "$STAGE/$1"/*.dylib | wc -l)" -gt 0 ] || { echo "no shim dylibs for $1 in build/$1" >&2; exit 1; }
 }
 for p in xros ios; do
   job "shims-$p" shims $p
-  job "launcher-$p" env SP_PLATFORM=$p sh "$ROOT/apps/client/build-launcher.sh" "$RES/$p/slashplayed"
-  job "helper-$p" env SP_PLATFORM=$p sh "$ROOT/apps/client/build-helper.sh" "$RES/$p/SPJitHelper"
-  job "icon-$p" env SP_PLATFORM=$p sh "$ROOT/apps/client/build-icons.sh" "$RES/$p/icon"
+  job "launcher-$p" env SP_PLATFORM=$p sh "$ROOT/apps/client/build-launcher.sh" "$STAGE/$p/slashplayed"
+  job "helper-$p" env SP_PLATFORM=$p sh "$ROOT/apps/client/build-helper.sh" "$STAGE/$p/SPJitHelper"
+  job "icon-$p" env SP_PLATFORM=$p sh "$ROOT/apps/client/build-icons.sh" "$STAGE/$p/icon"
 done
 wait
 FAILED=
@@ -69,6 +90,16 @@ for name in $NAMES; do
   [ -f "$JOBS/$name.ok" ] || FAILED="$FAILED $name"
 done
 [ -z "$FAILED" ] || { echo "bundle-resources: these builds failed (their output is above):$FAILED" >&2; exit 1; }
+touch "$STAGE/.built"
+[ "$MODE" = oneshot ] || { echo "built the bundle's device builds into $STAGE" >&2; exit 0; }
+fi
+
+[ -f "$STAGE/.built" ] || { echo "no finished build phase in $STAGE (run $0 --build $STAGE first)" >&2; exit 1; }
+RES=$APP/Contents/Resources
+mkdir -p "$RES"
+for p in xros ios; do
+  rm -rf "${RES:?}/$p" && cp -R "$STAGE/$p" "$RES/$p"
+done
 
 rm -rf "$RES/client" && mkdir -p "$RES/client/helper"
 cp "$ROOT/apps/client/Info.plist" "$ROOT/apps/client/entitlements.plist" "$ROOT/apps/client/flavors.plist" "$RES/client/"
