@@ -70,6 +70,16 @@ if [[ -n "$hits" ]]; then
   failed=1
 fi
 
+# The site makes no requests off its own origin (no font services, CDNs, scripts, or trackers): anything it
+# loads (a stylesheet, script, font, image, or frame, or a preconnect) is a file next to it. Links out, in
+# <a href>, are fine.
+hits=$(git grep -nIiE '<(link|script|img|source|iframe|video|audio|embed|object)[^>]*(href|src|srcset|data)="?(https?:)?//|url\(["'"'"']?(https?:)?//|@import' -- site/index.html || true)
+if [[ -n "$hits" ]]; then
+  echo "error: site/index.html loads something from another site (serve it from site/, or link to it with <a>):" >&2
+  sed 's/^/  /' <<<"$hits" >&2
+  failed=1
+fi
+
 if (( failed )); then
   exit 1
 fi
