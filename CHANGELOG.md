@@ -12,6 +12,9 @@ All notable changes to Slashplayed are documented here. The format is based on
   still be picked in the device menus after setup, and Play then installed the game there and it
   crashed at once. The menus now list such a device as not supported and don't let you pick it,
   Automatic passes over it, and Play, Update Client, and Copy Game Files stop on it with the reason.
+- The crash report in the device's log named the game's own frames as frames of another library, far
+  past its end. Each frame is now named by the library that holds it, the game's as the client's,
+  and an address in none of them is shown as it is.
 
 ## [1.0.1] - 2026-11-01
 

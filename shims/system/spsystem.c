@@ -1085,9 +1085,32 @@ EXIT_CALL(_Exit, "__Exit")
 // a suspended thread may hold stdio's or dyld's lock. The handler's first step is task_threads, so
 // that call, if another thread is stopped on a fault, logs every thread straight to fd 2 (registers,
 // fault address, stack as image + offset from an image list snapshot), then ends the process 10 s later.
-#define CRASH_IMAGES 1024
-static struct { uintptr_t base; const char *name; } crash_images[CRASH_IMAGES];
+// Each image is listed by its __TEXT's range, and a frame is named by the image whose __TEXT holds it, or
+// as a bare address. Taking the nearest image start below a frame instead named the client's frames
+// libspAppKit+<hundreds of MB> (an iPad's report): the client wasn't in the snapshot. Dlopened after
+// every system library, it's last in dyld's list, which the old 1024 entries may not have reached, so
+// it's named from `text` (found when it loaded) before the list is looked at, and the list is longer.
+#define CRASH_IMAGES 4096
+static struct { uintptr_t start, len; const char *name; } crash_images[CRASH_IMAGES];
 static uint32_t crash_nimages;
+
+// An image's __TEXT, as its address and size. The header is __TEXT's first bytes (file offset 0), so the
+// slide is the header's address less the segment's vmaddr, for a shared-cache library too. Reads only
+// the load commands: async-signal-safe.
+static int image_text(const struct mach_header *h, uintptr_t *start, uintptr_t *len) {
+    const struct mach_header_64 *mh = (const void *)h;
+    if (!mh || mh->magic != MH_MAGIC_64) return 0;
+    const struct load_command *lc = (const void *)(mh + 1);
+    for (uint32_t i = 0; i < mh->ncmds; i++, lc = (const void *)((const char *)lc + lc->cmdsize)) {
+        const struct segment_command_64 *seg = (const void *)lc;
+        if (lc->cmd == LC_SEGMENT_64 && !strcmp(seg->segname, "__TEXT")) {
+            *start = (uintptr_t)h;
+            *len = seg->vmsize;
+            return 1;
+        }
+    }
+    return 0;
+}
 
 static void crash_say(const char *fmt, ...) {
     char buf[256];
@@ -1098,13 +1121,21 @@ static void crash_say(const char *fmt, ...) {
     write(2, buf, n < (int)sizeof buf ? n : (int)sizeof buf - 1);
 }
 
+// A frame as client+offset (into its __TEXT, as the handler's own line and the other shims' caller
+// offsets are), image+offset (into the image's __TEXT, its header), or a bare address when no image
+// holds it (generated code, a stale frame pointer).
 static void crash_frame(int i, uintptr_t pc) {
-    uintptr_t best = 0;
-    const char *name = "?";
+    if (text_len && pc - text < text_len) {
+        crash_say("    %2d client+0x%lx\n", i, pc - text);
+        return;
+    }
     for (uint32_t k = 0; k < crash_nimages; k++)
-        if (crash_images[k].base <= pc && crash_images[k].base > best) best = crash_images[k].base, name = crash_images[k].name;
-    const char *slash = strrchr(name, '/');
-    crash_say("    %2d %s+0x%lx\n", i, slash ? slash + 1 : name, pc - best);
+        if (pc - crash_images[k].start < crash_images[k].len) {
+            const char *slash = strrchr(crash_images[k].name, '/');
+            crash_say("    %2d %s+0x%lx\n", i, slash ? slash + 1 : crash_images[k].name, pc - crash_images[k].start);
+            return;
+        }
+    crash_say("    %2d 0x%lx\n", i, pc);
 }
 
 // ESR of a thread stopped on a fault (exception class other than a syscall), else 0.
@@ -1175,11 +1206,14 @@ kern_return_t sp_task_threads(task_t task, thread_act_array_t *list, mach_msg_ty
         crashed = (*list)[i] != self && crash_fault((*list)[i], &far);
     if (crashed && !atomic_flag_test_and_set(&once)) {
         uint32_t n = _dyld_image_count();
-        for (crash_nimages = 0; crash_nimages < n && crash_nimages < CRASH_IMAGES; crash_nimages++) {
-            crash_images[crash_nimages].base = (uintptr_t)_dyld_get_image_header(crash_nimages);
-            crash_images[crash_nimages].name = _dyld_get_image_name(crash_nimages);
+        crash_nimages = 0;
+        for (uint32_t k = 0; k < n && crash_nimages < CRASH_IMAGES; k++) {
+            const char *name = _dyld_get_image_name(k);
+            if (name && image_text(_dyld_get_image_header(k), &crash_images[crash_nimages].start, &crash_images[crash_nimages].len))
+                crash_images[crash_nimages++].name = name;
         }
         crash_say("[sp:System] crash: the client's exception handler (+0x%lx) is running; %u threads:\n", CALLER, *count);
+        if (n > CRASH_IMAGES) crash_say("[sp:System] crash: only the first %u of %u images are listed\n", CRASH_IMAGES, n);
         for (mach_msg_type_number_t i = 0; i < *count; i++) {
             if ((*list)[i] == self) continue;
             crash_say("  thread %u:\n", i);
