@@ -69,9 +69,32 @@ jobs:
           unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
 
+      # idevice and zsign from source are about five of this job's minutes, and their outputs change only
+      # when what builds them does, so each is cached on exactly that: the runner, the Xcode (clang, lipo,
+      # strip, the SDKs), and every file its script reads. The pins (upstream commits, Rust 1.99.0, OpenSSL)
+      # live in the scripts, so re-pinning changes the key. Two caches, so a change to one doesn't rebuild
+      # the other. Only what the builds below and the companion read is cached (the archives, headers,
+      # native-libs.txt, and license texts; zsign's patched headers, which spzsign.cpp includes), not the
+      # clones or cargo's target/, which are most of the size and nothing downstream opens.
+      # Safe with untrusted PRs: GitHub scopes a cache to the ref that saved it, so a PR's run can read
+      # main's caches but main never reads a PR's, and a poisoned archive can't reach main or a release.
+      # release.yml uses no cache and always builds both from source: what ships never comes from here.
+      - name: Restore idevice
+        id: idevice-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            work/idevice/BUILD.txt
+            work/idevice/include
+            work/idevice/ios
+            work/idevice/xros
+            work/idevice/macos
+          key: idevice-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODE_APP }}-${{ hashFiles('scripts/build-idevice.sh', 'scripts/crate-notices.py', 'scripts/crate-licenses/**') }}
+
       # rustup, pinned and checked like XcodeGen: scripts/build-idevice.sh installs the Rust toolchain it
-      # pins (1.99.0) and the targets through it.
+      # pins (1.99.0) and the targets through it. Nothing else needs Rust, so a cache hit skips it.
       - name: Install rustup
+        if: steps.idevice-cache.outputs.cache-hit != 'true'
         run: |
           curl -fsSL -o "$RUNNER_TEMP/rustup-init" \
             "https://static.rust-lang.org/rustup/archive/$RUSTUP_VERSION/aarch64-apple-darwin/rustup-init"
@@ -84,12 +107,15 @@ jobs:
       # companion bundles (apps/client/build-helper.sh), links it for each device platform: built from
       # source at the pinned commit, a step per platform so a failure names it.
       - name: Build idevice (macOS)
+        if: steps.idevice-cache.outputs.cache-hit != 'true'
         run: scripts/build-idevice.sh macos
 
       - name: Build idevice (visionOS)
+        if: steps.idevice-cache.outputs.cache-hit != 'true'
         run: scripts/build-idevice.sh xros
 
       - name: Build idevice (iPadOS and iOS)
+        if: steps.idevice-cache.outputs.cache-hit != 'true'
         run: scripts/build-idevice.sh ios
 
       # The device app's start screen face, Goodmountain, and its license (apps/client/spstart.m): its
@@ -100,14 +126,31 @@ jobs:
 
       # The launcher's on-device signer (apps/client/spsign.m) links zsign and OpenSSL, and the companion's
       # tests run it on the Mac: built from source by scripts/build-zsign.sh, each at a pinned commit that
-      # the script checks after cloning (a moved tag fails the build), a step per platform.
+      # the script checks after cloning (a moved tag fails the build), a step per platform. Cached like
+      # idevice (see Restore idevice).
+      - name: Restore zsign
+        id: zsign-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            work/zsign/BUILD.txt
+            work/zsign/licenses
+            work/zsign/src/zsign/src
+            work/zsign/ios
+            work/zsign/xros
+            work/zsign/macos
+          key: zsign-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODE_APP }}-${{ hashFiles('scripts/build-zsign.sh', 'scripts/zsign.patch') }}
+
       - name: Build zsign (macOS)
+        if: steps.zsign-cache.outputs.cache-hit != 'true'
         run: scripts/build-zsign.sh macos
 
       - name: Build zsign (visionOS)
+        if: steps.zsign-cache.outputs.cache-hit != 'true'
         run: scripts/build-zsign.sh xros
 
       - name: Build zsign (iPadOS and iOS)
+        if: steps.zsign-cache.outputs.cache-hit != 'true'
         run: scripts/build-zsign.sh ios
 
       # Separate steps so a failure names its platform. The companion build below rebuilds them into the
