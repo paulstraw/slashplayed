@@ -1,0 +1,4 @@
+## Interface: 11509, 20506, 50504, 120105
+## Title: SPMovie
+## Notes: Tapping a cinematic opens its skip dialog, as Escape does, for a device with no keyboard.
+SPMovie.lua

@@ -2,8 +2,8 @@ import Foundation
 
 /// Brings the game files in the device app's Documents/ up to date with the Mac install, laid out as
 /// apps/client/seed.sh lays them out: Documents/.build.info and Data/ (the Mac's World of Warcraft/,
-/// shared by every flavor), and each flavor's own folder (.flavor.info, a first-run Config.wtf, and on
-/// the headset the SPHover addon). A file is copied when the device's copy is missing or differs in size
+/// shared by every flavor), and each flavor's own folder (.flavor.info, a first-run Config.wtf, the
+/// SPMovie addon, and on the headset SPHover). A file is copied when the device's copy is missing or differs in size
 /// or mtime: devicectl keeps the Mac's mtime, so after a patch only the files Battle.net touched are
 /// copied. devicectl can't delete files, so the index files a patch replaced are listed for the device's
 /// launcher to delete at its next start (Library/spdelete.txt, apps/client/launcher.m).
@@ -286,7 +286,7 @@ enum GameFiles {
             consider(url, "Documents/.build.info")
         }
         for flavor in current {
-            try planFlavor(flavor, addon: device.kind == .headset, onDevice: onDevice, consider: { consider($0, $1, sizeOnly: $2) })
+            try planFlavor(flavor, hover: device.kind == .headset, onDevice: onDevice, consider: { consider($0, $1, sizeOnly: $2) })
         }
         func marker(_ text: String) throws -> Copy {
             let url = try staging("spcopying-\(device.udid)-\(text.dropLast()).txt")
@@ -517,7 +517,7 @@ enum GameFiles {
     /// table.
     static func flavorInfo(_ flavor: Flavor) -> String { "Product Flavor!STRING:0\n\(flavor.product)\n" }
 
-    private static func planFlavor(_ flavor: Flavor, addon: Bool, onDevice: [String: (size: Int64, date: Date)],
+    private static func planFlavor(_ flavor: Flavor, hover: Bool, onDevice: [String: (size: Int64, date: Date)],
                                    consider: (URL, String, Bool) -> Void) throws {
         let folder = "Documents/\(flavor.folder)"
         let info = try staging(".flavor-\(flavor.rawValue).info")
@@ -531,13 +531,16 @@ enum GameFiles {
             consider(url, "\(folder)/WTF/Config.wtf", false)
         }
 
-        // SPHover (addon/install.sh), as it is: its TOC lists every flavor's Interface number, so one
-        // copy suits each flavor's folder. Not on the iPad or iPhone: they have a real pointer (hover; on
-        // the iPad also pointer lock for mouselook; on the iPhone through AssistiveTouch).
-        guard addon else { return }
-        let addon = Paths.addon
-        consider(addon.appending(path: "SPHover.toc"), "\(folder)/Interface/AddOns/SPHover/SPHover.toc", false)
-        consider(addon.appending(path: "SPHover.lua"), "\(folder)/Interface/AddOns/SPHover/SPHover.lua", false)
+        // The addons (addon/install.sh), as they are: each TOC lists every flavor's Interface number, so
+        // one copy suits each flavor's folder. SPMovie (a tap opens a cinematic's skip dialog) on every
+        // device. SPHover only on the headset: the iPad and iPhone have a real pointer (hover; on the iPad
+        // also pointer lock for mouselook; on the iPhone through AssistiveTouch).
+        for name in hover ? ["SPMovie", "SPHover"] : ["SPMovie"] {
+            let dir = Paths.addon(name)
+            for file in ["\(name).toc", "\(name).lua"] {
+                consider(dir.appending(path: file), "\(folder)/Interface/AddOns/\(name)/\(file)", false)
+            }
+        }
     }
 
     // MARK: Files

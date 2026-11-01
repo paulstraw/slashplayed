@@ -153,6 +153,8 @@ update". If no update is out, the companion's **Report It…** opens a pre-fille
 - **No intro movie on a game's first launch.** On an empty device the intro never plays, so
   Slashplayed marks it seen; watch it from the game's Cinematics menu.
   [Details](troubleshooting.md#no-intro-movie).
+- **A cinematic can stay black** in the game. Tap the screen, then **Yes**, to skip it.
+  [Details](troubleshooting.md#a-cinematic-stays-black).
 - **The window can vanish** after the headset has been off for a few minutes. Press Play again: it
   stops the running client first. [Details](troubleshooting.md#the-window-vanished).
 - **Heat.** Capping the frame rate in game helps. [Details](troubleshooting.md#heat).

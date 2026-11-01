@@ -14,7 +14,7 @@
 # the build put there (project.yml); this adds idevice's as the companion links it, and the device app's.
 # Once, for both platforms: client/Info.plist and client/entitlements.plist (the device app's templates),
 # client/flavors.plist (copied into the app as it is), and client/helper/'s
-# two (the helper's), the SPHover addon, the signing stub project (signing/SPProfiles.xcodeproj, generated
+# two (the helper's), the addons (SPHover, SPMovie), the signing stub project (signing/SPProfiles.xcodeproj, generated
 # here, since the user's Mac has no xcodegen). (The identity
 # file mac-identity.c writes comes from its Swift port, MacIdentity.) Needs xcodegen; nothing here is Blizzard's (no client is read).
 set -euo pipefail
@@ -74,7 +74,7 @@ rm -rf "$RES/client" && mkdir -p "$RES/client/helper"
 cp "$ROOT/apps/client/Info.plist" "$ROOT/apps/client/entitlements.plist" "$ROOT/apps/client/flavors.plist" "$RES/client/"
 cp "$ROOT/apps/client/helper/Info.plist" "$ROOT/apps/client/helper/entitlements.plist" "$RES/client/helper/"
 rm -f "$RES/jit.py"  # bundled while the Mac's lldb did the prepare
-rm -rf "$RES/SPHover" && cp -R "$ROOT/addon/SPHover" "$RES/SPHover"
+for a in SPHover SPMovie; do rm -rf "${RES:?}/$a" && cp -R "$ROOT/addon/$a" "$RES/$a"; done
 
 # The stub project goes in as a generated .xcodeproj with its sources beside it (xcodegen writes paths
 # relative to the project, so the copy works wherever the app is).

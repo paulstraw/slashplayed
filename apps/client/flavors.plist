@@ -5,8 +5,9 @@ The WoW flavors, the one place that lists what each one is: its name, its produc
 the install's .build.info, and the patch service's product), its client (the Mac client's executable in
 the flavor's folder, which is also its name in the build's install manifest on Blizzard's CDN), the arguments Battle.net launches it with
 less the launch credentials it adds (-launcherlogin is the one that matters: without it the client doesn't
-sign in from the device's login.txt, docs/research.md), and the SPHover addon's ## Interface number
-(addon/SPHover/SPHover.toc lists every flavor's, in this order, as FlavorTests checks).
+sign in from the device's login.txt, docs/research.md), and the addons' ## Interface number
+(addon/SPHover/SPHover.toc and addon/SPMovie/SPMovie.toc list every flavor's, in this order, as
+FlavorTests checks).
 In this order on the device's start screen. Read by scripts/flavor.sh (plutil), the companion's Flavor.swift
 (a resource of the app and its tests), and the launcher (launcher.m, spstart.m: the device app carries it,
 copied by apps/client/build.sh and ClientAssembly.swift alike). A new flavor also needs a case in

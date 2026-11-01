@@ -6,6 +6,16 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Tap a cinematic in the game to skip it: the tap brings up the game's "skip this cinematic?"
+  question, as Escape does on a keyboard. A cinematic that stays black (entering a new zone, say)
+  no longer leaves an iPhone or iPad without a keyboard stuck.
+
+### Known issues
+
+- A cinematic in the game can stay black with no sound on a device. Tap it, then Yes, to skip it.
+
 ## [1.1.0] - 2026-11-01
 
 ### Added

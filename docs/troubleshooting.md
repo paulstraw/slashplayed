@@ -581,10 +581,19 @@ indexes) and grows from there. Later starts take seconds, and a patch fetches on
 
 Slashplayed marks each game's intro movie as seen on its first launch on a device, so the game goes
 straight to its login. A game's first session on an empty device sets up its data first, and an intro
-started then never plays: the game never asks Blizzard for the movie's data, and waits on a black
-screen with only its download bar at the top for as long as it's left. Its next session plays the
-intro at once. To watch it, use **Cinematics** in the game's menu on its login or character screen.
-If a black screen with only the download bar shows up anyway, press **Play** in the companion again.
+started then never plays: the game waits on a black screen with only its download bar at the top for
+as long as it's left. Its next session plays the intro at once. To watch it, use **Cinematics** in the
+game's menu on its login or character screen. If a black screen with only the download bar shows up
+anyway, press **Play** in the companion again.
+
+### A cinematic stays black
+
+In the game, a cinematic (entering a new zone, or one a quest plays) can stay black with no sound
+while the game carries on underneath. It's intermittent on a device: the same cinematic plays
+later. Tap the screen to bring up **Are you sure you want to skip this cinematic?** and tap **Yes**
+(or press Escape on a keyboard). A tap does this on any cinematic in the game, so one that's playing
+can be skipped the same way, and **No** goes back to it. On the login and character screens (the
+intro, the **Cinematics** menu) a tap doesn't: press Escape on a keyboard, or close Slashplayed.
 
 ### "The client stopped"
 

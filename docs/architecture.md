@@ -574,7 +574,7 @@ them:
 
 - **Without copying** (the default for a new device, and the only way without a game install on the
   Mac) it sends `.build.info` and the configs, plus each game's folder (`.flavor.info`, a first
-  `Config.wtf`, the headset's addon), and nothing of the store.
+  `Config.wtf`, the addons), and nothing of the store.
   The first launch from nothing sets itself up and reaches character select in about 2.5 minutes on the
   iPhone; after that the client fetches what each zone needs as it goes (`docs/research.md`).
 - **With copying**, the store goes whole: every archive and index that differs, archives first and
@@ -806,6 +806,11 @@ and scroll events and `NSTextInputClient`), with no event taps. `spevent.m`:
   with `contentsRect`, and places clear UIViews with a `hoverStyle` over the rects. The system draws
   its gaze glow on those, out of process. Addons don't run on the login and character screens, so
   those get no highlights.
+- **Skipping a cinematic by touch.** The game's movie frame leaves a movie only on a key (Escape,
+  Space, or Enter opens its skip dialog, whose Yes and No are clickable). The `SPMovie` addon, on
+  every device, has the frame take clicks and opens that dialog on one, so a tap does what Escape
+  does. A cinematic can stay black on a device (GitHub issue #24), and without a keyboard this is the
+  only way out of it. In game only, as addons are.
 
 ## Audio
 

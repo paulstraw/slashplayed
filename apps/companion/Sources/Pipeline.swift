@@ -423,7 +423,7 @@ final class Pipeline {
     /// Setup Assistant's install step: what Play does before it starts the client, for every game ticked
     /// for `device`, so Slashplayed opens on the device alone afterwards. The build, the install, the
     /// helper's disk image and (iPad, iPhone) USB pairing, the signing identity if asked for, each game's
-    /// build files and SPHover, and the login identity file. Never a copy of the Mac's game files, which
+    /// build files and addons, and the login identity file. Never a copy of the Mac's game files, which
     /// can take an hour: the device streams, and Play copies when copying is on.
     func installForSetup(on device: Device) {
         start([.build, .device, .install, .files, .sendLogin], on: device) {
@@ -1452,7 +1452,7 @@ final class Pipeline {
         throw StepFailure(.files, message)
     }
 
-    /// With copying off, the files are each game's build files and SPHover, not game data: the title says
+    /// With copying off, the files are each game's build files and addons, not game data: the title says
     /// so, as the step's done title does ("Copying game files" read as copying on, the rc6 run).
     /// A copy of game files held back by a USB 2 cable says so under its progress (USBLink.slowCable),
     /// unless the main window already says so by the device's status (slowCable: copying is on), so the

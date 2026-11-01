@@ -33,15 +33,17 @@ final class FlavorTests: XCTestCase {
 
     static let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "../../..").standardizedFileURL
 
-    /// SPHover's one TOC goes into every flavor's folder as it is, so its Interface line lists each
+    /// Each addon's one TOC goes into every flavor's folder as it is, so its Interface line lists each
     /// flavor's number, in flavors.plist's order: a flavor left out flags the addon as out of date there.
-    func testAddonListsEveryFlavorsInterface() throws {
-        let toc = try String(contentsOf: Self.repo.appending(path: "addon/SPHover/SPHover.toc"), encoding: .utf8)
-        let lines = toc.split(separator: "\n").filter { $0.hasPrefix("## Interface:") }
-        XCTAssertEqual(lines.count, 1)
-        let numbers = try XCTUnwrap(lines.first).dropFirst("## Interface:".count)
-            .split(separator: ",").map { Int($0.trimmingCharacters(in: .whitespaces)) }
-        XCTAssertEqual(numbers, Flavor.allCases.map(\.toc))
+    func testAddonsListEveryFlavorsInterface() throws {
+        for name in ["SPHover", "SPMovie"] {
+            let toc = try String(contentsOf: Self.repo.appending(path: "addon/\(name)/\(name).toc"), encoding: .utf8)
+            let lines = toc.split(separator: "\n").filter { $0.hasPrefix("## Interface:") }
+            XCTAssertEqual(lines.count, 1, name)
+            let numbers = try XCTUnwrap(lines.first).dropFirst("## Interface:".count)
+                .split(separator: ",").map { Int($0.trimmingCharacters(in: .whitespaces)) }
+            XCTAssertEqual(numbers, Flavor.allCases.map(\.toc), name)
+        }
         XCTAssertEqual(Flavor.retail.toc, 120105)
     }
 
