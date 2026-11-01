@@ -47,7 +47,57 @@ jobs:
       - name: Scrub and no-hardcoding checks
         run: scripts/check-tree.sh
 
+  # Whether build-and-test has anything to do: a PR that touches only the site, docs/, or Markdown can't
+  # change what it builds or tests (nothing it runs reads them), and the macOS job is the slow, costly one.
+  # Not a workflow-level paths-ignore: that would skip check-tree too, which greps the site and docs, and
+  # main's ruleset requires both checks, and a required check skipped by a path filter stays "Pending" and
+  # blocks merging. A job skipped by its own if: reports "skipped", which GitHub counts as passing.
+  # It errs towards building: any other path, CHANGELOG.md (release.sh reads it, and release-prep PRs
+  # deserve the full run), an empty diff, a push to main, and a failure here all build. Pushes to main
+  # always build, since main is what releases are tagged from and what PRs' caches restore from.
+  # Plain git rather than a paths-filter action, so there's no third-party code to pin or trust.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.diff.outputs.build }}
+    steps:
+      # A pull_request run checks out the PR merged into its base, whose first parent is the base tip, so
+      # two commits of history are enough for the PR's whole diff against what it would merge into.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Decide whether the build is needed
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" != pull_request ]]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"; echo "$EVENT: always builds"; exit 0
+          fi
+          files=$(git diff --name-only HEAD^1 HEAD)
+          build=false
+          [[ -n "$files" ]] || build=true
+          while IFS= read -r f; do
+            [[ -n "$f" ]] || continue
+            case "$f" in
+              CHANGELOG.md) build=true; echo "builds for: $f" ;;
+              site/*|docs/*|*.md) ;;
+              *) build=true; echo "builds for: $f" ;;
+            esac
+          done <<<"$files"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "build=$build"
+
   build-and-test:
+    needs: changes
+    # !cancelled() rather than the implicit success(): if changes fails, its output is empty, and a job
+    # skipped because a needed job failed would read as passing; this way a failure here still builds.
+    # (The split build and test jobs each need this same gate.)
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     runs-on: xcode-27
     timeout-minutes: 60
     steps:
