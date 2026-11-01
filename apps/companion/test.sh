@@ -9,4 +9,8 @@ OUT=$(cd ../.. && pwd)/build/companion-tests
 [ -f ../../work/zsign/macos/libzsign.a ] && [ -f ../../work/zsign/macos/openssl/lib/libcrypto.a ] ||
   { echo "test.sh: no work/zsign/macos/libzsign.a or its libcrypto.a (run scripts/build-zsign.sh macos)" >&2; exit 1; }
 xcodegen generate --quiet
-xcodebuild -project SPCompanion.xcodeproj -scheme SPCompanion -derivedDataPath "$OUT" -quiet test "$@"
+# No test diagnostics: by default xcodebuild spends ~8 s after the last test collecting a system log
+# archive into the result bundle (235 MB against 1.7 MB without), even when every test passed. A
+# caller after one for a failure can still ask: a later -collect-test-diagnostics in "$@" wins.
+xcodebuild -project SPCompanion.xcodeproj -scheme SPCompanion -derivedDataPath "$OUT" -quiet test \
+  -collect-test-diagnostics never "$@"
