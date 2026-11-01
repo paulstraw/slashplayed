@@ -138,7 +138,7 @@ private struct StepPage: View {
         case .account:
             "Any Apple Account works. A free one's Personal Team signs for 7 days at a time, and Play signs again after that. A paid Apple Developer Program team signs for a year."
         case .device:
-            "Slashplayed runs on an iPad with an M2 chip or later, an iPhone 15 Pro or later, and Apple Vision Pro."
+            "Slashplayed runs on an iPad with an M1 chip or later (M1 is untested), an iPhone 15 Pro or later, and Apple Vision Pro."
         case .helper:
             "Each time the game starts, Slashplayed prepares its code on the device, with no Mac needed. It reaches the device's developer services through LocalDevVPN. If a device stops accepting Slashplayed's pairing later, File > Pair Again makes a new one."
         case .games:
@@ -365,6 +365,10 @@ private struct DeviceLine: View {
                              ? "Paired (asleep or away now; that's fine until you play)"
                              : "Paired (not connected now; plug it in with USB when you play)")
                             .foregroundStyle(.secondary)
+                        // Not a problem: an M1 iPad is allowed, only never run.
+                        if let note = info.device.untestedNote(model: info.model) {
+                            Text(note).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .font(.caption)

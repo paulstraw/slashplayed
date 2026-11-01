@@ -1,6 +1,6 @@
 # How Slashplayed works
 
-Slashplayed runs the unmodified Mac World of Warcraft clients (Classic Era, TBC Anniversary, MoP Classic, and Retail) on M2-or-later iPads (iPadOS), iPhone 15 Pro and later (iOS), and Apple Vision Pro (visionOS). It's a
+Slashplayed runs the unmodified Mac World of Warcraft clients (Classic Era, TBC Anniversary, MoP Classic, and Retail) on M1-or-later iPads (iPadOS; untested on M1), iPhone 15 Pro and later (iOS), and Apple Vision Pro (visionOS). It's a
 compatibility layer: the client's own arm64 code runs natively on the device, and a set of shim
 libraries stands in for the macOS frameworks it expects (AppKit, CoreGraphics, Carbon, CoreAudio,
 Security, …), translating to UIKit, RemoteIO and friends. No game code is changed beyond Mach-O
@@ -84,7 +84,9 @@ build phase copies it from the SPM checkout), idevice's as the companion links i
 The client rewrites its own code at startup: it makes regions of its own `__TEXT` writable, writes
 new code there, and makes them executable again. On macOS that's ordinary. On M2-era devices running
 visionOS 26+/iPadOS 26+, the Trusted Execution Monitor (TXM) decides what may execute, and no
-certificate a third party can get grants `MAP_JIT` there.
+certificate a third party can get grants `MAP_JIT` there. The M1 iPads predate TXM (the Page
+Protection Layer, PPL, enforces code signing there instead), and the path below hasn't been run on
+one: it's expected to work, but M1 iPads are allowed as untested (`Device.isUntestedIPad`).
 
 What does work, on visionOS 27 and iPadOS 26 alike (measured in `research/jittest`):
 

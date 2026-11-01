@@ -6,6 +6,12 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- M1 iPads (the 2021 iPad Pros and the 5th-generation iPad Air) can now try Slashplayed. It hasn't
+  been played on one yet, so the companion marks them untested: if you try one, please report how it
+  goes, working or not, on GitHub with the zip from Help > Export Diagnostics….
+
 ## [1.2.0] - 2026-11-01
 
 ### Added

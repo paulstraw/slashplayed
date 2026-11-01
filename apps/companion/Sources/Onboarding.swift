@@ -317,7 +317,7 @@ final class Onboarding {
         if usable.isEmpty {
             if devices.allSatisfy({ !$0.supported }) {
                 return .problem(devices.count == 1 ? "This \(devices[0].device.noun) can't run Slashplayed" : "These devices can't run Slashplayed",
-                                "Slashplayed needs an iPad with an M2 chip or later, an iPhone 15 Pro or later, or a Vision Pro.")
+                                "Slashplayed needs an iPad with an M1 chip or later, an iPhone 15 Pro or later, or a Vision Pro.")
             }
             return .problem("Developer Mode is off",
                             "On the device: Settings > Privacy & Security > Developer Mode (it shows there once the device is paired), then restart it when asked and confirm.")

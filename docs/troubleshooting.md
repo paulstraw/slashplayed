@@ -94,10 +94,15 @@ copying on, every game file is copied again. Only change them on purpose.
   - Vision Pro: on the headset open Settings > General > Remote Devices; then in Xcode choose
     Xcode > Open Developer Tool > Device Hub, select the headset, and pair it.
 - **"This iPad can't run Slashplayed"** (or "This iPhone…", or your device's name): Slashplayed needs
-  an iPad with an M2 chip or later, an iPhone 15 Pro or later, or a Vision Pro. The game is built for
+  an iPad with an M1 chip or later, an iPhone 15 Pro or later, or a Vision Pro. The game is built for
   the M1's instruction set and stops at once on an older chip. The device menus still list such a
   device, marked "not supported", but don't let you pick it, and Play stops before building anything
   for one picked earlier: choose another device.
+- **"Untested: Slashplayed hasn't been tried on an M1 iPad yet"**: M1 iPads (the 2021 iPad Pros and
+  the 5th-generation iPad Air) run the game's instructions, but they protect code differently from
+  the M2 and later, and Slashplayed has only been played on the newer chips. Nothing stops you: play
+  as usual, then please [report how it goes](https://github.com/paulstraw/slashplayed/issues/new/choose),
+  working or not, with the zip from **Help > Export Diagnostics…**.
 - **"Developer Mode is off"**: on the device, Settings > Privacy & Security > Developer Mode (it only
   shows there once the device has been paired with Xcode), turn it on, restart when asked and confirm.
 - **"Xcode can't see the device"** (while making the provisioning profile): Xcode couldn't reach the
