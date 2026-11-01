@@ -165,7 +165,8 @@ void sp_screen_status(UIViewController *screen, NSString *text);  // spstyle.swi
 @end
 
 // The screen, presented on the scene's root (nil when there's no screen to show it on). Sets *pump to UIKit's.
-static SPPatchController *present(void (^*pump)(double)) {
+// `what` names it in the log: "newer-build" (the companion follows that line), or "install".
+static SPPatchController *present(void (^*pump)(double), NSString *what) {
     // It waits on the person: UIKit has to be up for the launch watchdog (on iOS it already is).
     void (^ui)(double) = sp_launch_uikit();
     UIViewController *root = ui ? sp_scene_root() : nil;
@@ -180,11 +181,11 @@ static SPPatchController *present(void (^*pump)(double)) {
     [root presentViewController:screen.view animated:NO completion:^{ shown = YES; }];
     for (double end = now() + 5; !shown && now() < end;) ui(0.05);
     if (!shown || !screen.view.presentingViewController) {
-        say([NSString stringWithFormat:@"the newer-build screen didn't show (the root presents %@)", root.presentedViewController]);
+        say([NSString stringWithFormat:@"the %@ screen didn't show (the root presents %@)", what, root.presentedViewController]);
         return nil;
     }
     // The companion follows this line and Play Anyway's (ClientLauncher.Marker.newerBuild, playAnyway).
-    say(@"showing the newer-build screen");
+    say([NSString stringWithFormat:@"showing the %@ screen", what]);
     return screen;
 }
 
@@ -483,6 +484,15 @@ static NSString *no_identity(NSString **line) {
 
 // ---- the install on the device
 
+// Deletes the kept slice (Library/spslice/, new_slice) once an image has been made from it for a game the app
+// has no image of: the launcher retires a slice only when a bundled image catches up with it
+// (retire_caught_up), which never happens without one, so it would stay (48 MB) for good. Stamp first.
+static void drop_slice(NSString *flavor) {
+    NSString *dir = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/spslice"];
+    [NSFileManager.defaultManager removeItemAtPath:[dir stringByAppendingPathComponent:[@"spbuild-" stringByAppendingString:flavor]] error:nil];
+    [NSFileManager.defaultManager removeItemAtPath:[dir stringByAppendingPathComponent:[flavor stringByAppendingString:@".arm64"]] error:nil];
+}
+
 // A reason for the screen's note: capitalized, with a period. "" for none.
 static NSString *sentence(NSString *why) {
     if (!why.length) return @"";
@@ -527,7 +537,7 @@ NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (
         say(@"install: no product or region");
         return nil;
     }
-    SPPatchController *screen = present(pump);
+    SPPatchController *screen = present(pump, @"install");
     if (!screen) {
         *problem = [NSString stringWithFormat:@"%@ isn't installed on this %@, and there's no screen to install it on.", game, noun];
         return nil;
@@ -593,6 +603,7 @@ NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (
     say([NSString stringWithFormat:@"install: %@ %@ is Library/spgames/%@, %.1f s in all", product, version, image.lastPathComponent,
                                    now() - t]);
     dismiss(screen, ui);
+    drop_slice(flavor);
     say_update([NSString stringWithFormat:@"image: Library/spgames %@ %@ (just installed)", product, version]);
     return image;
 }
@@ -670,7 +681,7 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
                                    stamp[@"Version"], region, now() - t]);
     NSString *game = sp_flavor_name(flavor), *noun = sp_device_noun();
     NSString *news = sp_patch_news(game, row[@"VersionsName"]), *heading = [news stringByAppendingString:@"."];
-    SPPatchController *screen = present(pump);
+    SPPatchController *screen = present(pump, @"newer-build");
     if (!screen) return use(base, @"a newer build is out");
     // Under every state's words: the build this device has, against the news in the heading.
     NSString *has = [NSString stringWithFormat:@"This %@ has %@ %@.", noun, game, stamp[@"Version"]];
@@ -726,6 +737,7 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
             say_update([NSString stringWithFormat:@"%@ %@ is Library/spgames/%@, %.1f s in all", product, version,
                                            image.lastPathComponent, now() - t]);
             dismiss(screen, *pump);
+            if (!bundled) drop_slice(flavor);
             say_update([NSString stringWithFormat:@"image: Library/spgames %@ %@ (just updated)", product, version]);
             return image;
         }
@@ -746,7 +758,7 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
 // When dlopen refuses an updated image (the launcher has deleted it): a few seconds' note on the screen, and
 // the launch goes on with the bundled image. No buttons: the helper is already attached.
 void sp_patch_refused(NSString *flavor, NSString *version, NSString *bundledVersion, void (^*pump)(double)) {
-    SPPatchController *screen = present(pump);
+    SPPatchController *screen = present(pump, @"newer-build");
     if (!screen) return;
     NSString *game = sp_flavor_name(flavor);
     [screen setHeading:[NSString stringWithFormat:@"%@ %@ couldn't be loaded.", game, version]
