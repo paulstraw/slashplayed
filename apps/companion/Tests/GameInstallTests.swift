@@ -75,14 +75,16 @@ final class GameInstallTests: XCTestCase {
         for _ in 0..<2 {
             let start = Date()
             do {
-                _ = try await install.read(root, limit: 1)
+                // A quarter second, not the app's 5: the limit's length isn't what's tested, and both waits
+                // are sat out. The upper bound is loose for a loaded CI runner.
+                _ = try await install.read(root, limit: 0.25)
                 XCTFail("a stalled install answered")
             } catch let e as GameInstall.NotResponding {
                 XCTAssertEqual(e.root, root.path)
             }
             let waited = Date().timeIntervalSince(start)
-            XCTAssertGreaterThanOrEqual(waited, 0.9)
-            XCTAssertLessThan(waited, 3)
+            XCTAssertGreaterThanOrEqual(waited, 0.2)
+            XCTAssertLessThan(waited, 2)
         }
         XCTAssertEqual(reads.value, 1, "a read of a stalled install is waited on, not started again")
         XCTAssertNil(install.known(root: root))
