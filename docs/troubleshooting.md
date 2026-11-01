@@ -616,8 +616,8 @@ jetsam reports). Export Diagnostics and file a bug if it repeats.
 
 Heat is the main limit on session length. On the Vision Pro the device reaches a `serious` thermal
 state after a few minutes to about a quarter of an hour, depending on the game, settings and how
-cool it started; on the iPad the client runs at
-120 fps (it has no frame-rate cap yet) and long sessions get hot. Retail on an M2 iPad reaches
+cool it started; on the iPad the game runs
+uncapped by default, at 120 fps, and long sessions get hot. Retail on an M2 iPad reaches
 `serious` within minutes and gets a memory warning, though the system doesn't stop it. What helps:
 
 - Scale **1x** in the app's Settings on the device (the start screen's gear, Display; Automatic's

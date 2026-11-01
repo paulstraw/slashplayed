@@ -902,7 +902,7 @@ Heat is the main limit on session length on the headset. Measured with the shim'
   time, but reaches `serious` just as soon (2.5–4.6 min, depending on the cool-down before). So the GPU
   isn't what dominates: CPU, the system's own compositing and the display are left. 1x is the default.
 - iPad, Classic Era at 1x: 120 fps, thermal state nominal for the first minutes; long sessions get
-  hot. A frame-rate cap is the next lever.
+  hot. The game runs uncapped by default; its Max Foreground FPS setting is the next lever.
 - iPad, Retail: `serious` by about 6 min in (see the iPad section above).
 
 ## Logs and diagnostics

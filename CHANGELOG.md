@@ -68,8 +68,8 @@ Blizzard Entertainment, and it includes no Blizzard files; use it at your own ri
 
 ### Known issues
 
-- The device gets hot: the headset within minutes, the iPad and iPhone over long sessions (there's
-  no frame-rate cap yet).
+- The device gets hot: the headset within minutes, the iPad and iPhone over long sessions. The game runs
+  uncapped by default; capping it with its Max Foreground FPS setting helps.
 - Leaving the game for more than about 30 seconds (closing its window, taking off the headset, or
   another app in front) can disconnect it and lose that session's settings and keybind changes. Exit
   or log out from the game menu first.
