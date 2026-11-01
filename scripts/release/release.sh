@@ -300,11 +300,19 @@ is_macho() {
 }
 : > "$REF_UUIDS"; : > "$REF_SIZES"
 refs=0
+# A missing place is skipped (a CI runner has no Application Support/Slashplayed), but a find that fails
+# on one that exists stops the release loudly: this group runs in a pipeline subshell under set -e, where a
+# bare failing find would end the script with no message, or a half-read list would weaken the check.
+ref_dir_files() {
+  local dir=$1; shift
+  [[ -d "$dir" ]] || return 0
+  find "$dir" -type f "$@" || { echo "error: couldn't list $dir for the no-Blizzard-bytes check" >&2; exit 1; }
+}
 {
-  [[ -d work ]] && find work -type f \( -name 'wow-*' -o -name 'World of Warcraft*' \) -not -name '*.*' 2>/dev/null
-  find "$HOME/Library/Application Support/Slashplayed" -type f \
+  ref_dir_files work \( -name 'wow-*' -o -name 'World of Warcraft*' \) -not -name '*.*'
+  ref_dir_files "$HOME/Library/Application Support/Slashplayed" \
     -not -path '*.app/slashplayed' -not -path '*.app/Frameworks/*' -not -path '*.app/PlugIns/*' \
-    -not -path '*/DerivedData/*' -not -path '*/Slashplayed/certificate/*' 2>/dev/null
+    -not -path '*/DerivedData/*' -not -path '*/Slashplayed/certificate/*'
   for f in "${SP_INSTALL:-/Applications/World of Warcraft}"/_*_/World\ of\ Warcraft*.app/Contents/MacOS/*; do
     [[ -f "$f" ]] && echo "$f"
   done
