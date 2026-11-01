@@ -83,7 +83,9 @@ enum Confirmation: Identifiable {
 
 // What's true now, read once per reload (the build reads files, and SwiftUI may ask for the body often).
 struct Snapshot {
-    struct Game { let flavor: String, name: String, version: String?, updated: Bool }
+    // `installed`: it has an image to start (sp_game_has_image); `shipped`: the app has one (an app built
+    // without images has none, and the device installs each game itself).
+    struct Game { let flavor: String, name: String, version: String?, updated: Bool, installed: Bool, shipped: Bool }
     var saved = false
     var identity: SPIdentityReading?
     var scale = 0
@@ -128,7 +130,9 @@ final class Settings: ObservableObject {
         s.games = flavors.map { flavor in
             var updated: ObjCBool = false
             let version = sp_game_build(flavor, &updated)?["Version"]
-            return .init(flavor: flavor, name: sp_flavor_name(flavor), version: version, updated: updated.boolValue)
+            let shipped = FileManager.default.fileExists(atPath: Bundle.main.bundleURL.appending(path: "wow-" + flavor).path)
+            return .init(flavor: flavor, name: sp_flavor_name(flavor), version: version, updated: updated.boolValue,
+                         installed: sp_game_has_image(flavor), shipped: shipped)
         }
         s.version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         now = s
@@ -423,8 +427,14 @@ struct SettingsView: View {
     private func game(_ g: Snapshot.Game) -> some View {
         Section(g.name) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(g.version.map { "Build " + $0 } ?? "Build Unknown")
-                Text(g.updated ? "Updated on this device" : "Shipped with the app").font(.subheadline).foregroundStyle(.secondary)
+                if g.installed {
+                    Text(g.version.map { "Build " + $0 } ?? "Build Unknown")
+                    Text(!g.updated ? "Shipped with the app" : g.shipped ? "Updated on this device" : "Installed on this device")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                } else {
+                    Text("Not Installed")
+                    Text("Install \(g.name) on the start screen to play it.").font(.subheadline).foregroundStyle(.secondary)
+                }
             }
             .id("game-" + g.flavor)
             Button("Open in Files") { settings.openInFiles(g.flavor) }

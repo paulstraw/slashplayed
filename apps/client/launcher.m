@@ -21,6 +21,11 @@
 // which makes and signs the new image on the device). That also picks the image: the bundled one, or one
 // an update on the device made in Library/spgames/ (sppatch.m says when). If dlopen refuses an updated one,
 // it's deleted and the bundled one loads. An update's .build.info row is written once its image has loaded.
+// An app built with no client images (build.sh's SP_NO_IMAGES=1, so it ships no Blizzard bytes) offers every
+// game in flavors.plist, those the device hasn't made an image of as "Install <game>" (sp_games); picking one
+// installs it with the update's chain before anything else per game (sppatch.m's sp_patch_install: it needs
+// the signing identity an update needs, and says so without one), and a game installed that way plays and
+// updates from Library/spgames as an updated game does, with no bundled image to fall back on.
 // Once the bundled image is the update's build or a later one (the companion installed it), the update is
 // deleted (retire_caught_up). Before the helper attaches, splogin.m decides how the game signs in
 // (the saved Battle.net sign-in, asked for once, or a token the companion relayed), and writes login.txt
@@ -58,9 +63,11 @@ void sp_login_clear(NSArray<NSString *> *flavors);  // splogin.m
 NSMutableData *sp_login_prepare(BOOL token, void (^*pump)(double), NSString **problem);
 BOOL sp_login_write(NSString *flavor, NSMutableData *bytes);
 UIFont *sp_face(CGFloat size, UIFontTextStyle style, CGFloat maximum, UITraitCollection *traits);  // spstart.m
-NSString *sp_pick_flavor(NSArray<NSString *> *flavors, void (^*pump)(double));  // spstart.m
+NSString *sp_pick_flavor(NSArray<NSString *> *flavors, NSSet<NSString *> *installable, void (^*pump)(double));  // spstart.m
 NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSString *, NSString *> *bundledStamp, NSString *library,
                          NSDictionary<NSString *, NSString *> *libraryStamp, void (^*pump)(double), NSString **buildInfo);  // sppatch.m
+NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (^*pump)(double), NSString **buildInfo,
+                           NSString **problem);
 void sp_patch_refused(NSString *flavor, NSString *version, NSString *bundledVersion, void (^*pump)(double));
 
 // The app's flavors.plist (apps/client/flavors.plist: also scripts/flavor.sh's and the companion's), in
@@ -445,6 +452,14 @@ NSDictionary<NSString *, NSString *> *sp_game_build(NSString *flavor, BOOL *upda
     return *updated ? update : bundled;
 }
 
+// For the Settings sheet too: whether the game has an image the next start would load, by the same rules,
+// so a game the app has no image of (built without them) reads as not installed until the device makes one.
+BOOL sp_game_has_image(NSString *flavor) {
+    if ([NSFileManager.defaultManager fileExistsAtPath:bundled_image(flavor)]) return YES;
+    NSString *library = library_image(flavor);
+    return updated_build(library, flavor) && (library_listed(library) || sp_identity_usable());
+}
+
 // The Settings sheet's Reset Game Settings (spstart.m): deletes the game's WTF/Config.wtf (its graphics, sound,
 // and other settings) and its render scale's first-run marker, so the next start seeds both as on a first
 // launch (default_render_scale, skip_intro). WTF/Account/ (keybindings, macros, addons' SavedVariables) is
@@ -556,6 +571,19 @@ static void launch_arguments(NSString *flavor, int *argc, char ***argv) {
                                    (unsigned long)args.count]);
 }
 
+// Why the client can't be loaded, on the scene (the AppKit shim's sp_uikit_fail, which starts UIKit for it
+// on visionOS and doesn't return), and the launch ends there.
+__attribute__((noreturn)) static void fail_launch(NSString *problem) {
+    // One line: the companion reads it off the console (ClientLauncher.Marker.problem).
+    say([@"can't prepare the client: " stringByAppendingString:[problem stringByReplacingOccurrencesOfString:@"\n\n" withString:@" "]]);
+    NSString *appkit = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Frameworks/libspAppKit.dylib"];
+    void *h = dlopen(appkit.fileSystemRepresentation, RTLD_NOW);
+    void (*fail)(const char *) = h ? (void (*)(const char *))dlsym(h, "sp_uikit_fail") : NULL;
+    if (fail) fail(problem.UTF8String);
+    say([NSString stringWithFormat:@"no UIKit to show it: %s", dlerror()]);
+    exit(1);
+}
+
 int main(int argc, char **argv) {
     // The libSystem shim first: its initializer starts the Documents/spconsole.log tee of stderr, which
     // otherwise starts only when the client loads (no other shim links it). A launch from the home
@@ -583,16 +611,25 @@ int main(int argc, char **argv) {
         return 0;
     }
     NSString *dir = NSBundle.mainBundle.bundlePath;
-    NSMutableArray<NSString *> *flavors = [NSMutableArray array];
-    for (NSString *f in [[NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil]
-             sortedArrayUsingSelector:@selector(compare:)])
-        if ([f hasPrefix:@"wow-"]) [flavors addObject:[f substringFromIndex:4]];
-    if (!flavors.count) { say(@"no wow-<flavor> in the bundle"); return 1; }
-    // flavors.plist's order (the start screen's, and its first is the default); any it doesn't list, last.
-    [flavors sortUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
-        NSUInteger ia = [flavor_entries() indexOfObject:flavor_entry(a)], ib = [flavor_entries() indexOfObject:flavor_entry(b)];
-        return ia < ib ? NSOrderedAscending : ia > ib ? NSOrderedDescending : [a compare:b];
-    }];
+    // The games: the app's images (wow-<flavor>), or in an app built with none every game flavors.plist
+    // lists, the ones the device hasn't made an image of (Library/spgames) installable here (sp_games). In
+    // flavors.plist's order (the start screen's, and its first is the default).
+    NSMutableArray<NSString *> *bundledGames = [NSMutableArray array], *madeGames = [NSMutableArray array], *order = [NSMutableArray array];
+    for (NSString *f in [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil])
+        if ([f hasPrefix:@"wow-"]) [bundledGames addObject:[f substringFromIndex:4]];
+    for (NSDictionary *e in flavor_entries())
+        if ([e[@"id"] isKindOfClass:NSString.class]) [order addObject:e[@"id"]];
+    // Made here, and loadable by the rules the start below applies (sp_game_has_image): one whose signer no
+    // profile lists, with no identity to sign it again, reads as installable, and its install says why not.
+    if (!bundledGames.count)
+        for (NSString *f in order)
+            if (sp_game_has_image(f)) [madeGames addObject:f];
+    NSSet<NSString *> *installable = nil;
+    NSArray<NSString *> *flavors = sp_games(order, bundledGames, madeGames, &installable);
+    if (!flavors.count) { say(@"no games: no wow-<flavor> in the bundle, and none in flavors.plist"); return 1; }
+    if (!bundledGames.count)
+        say([NSString stringWithFormat:@"no client images in the app: %lu games made on this device, %lu to install here",
+                                       (unsigned long)madeGames.count, (unsigned long)installable.count]);
     // Before the start screen, which can wait a long time: a sign-in left in any game's folder shouldn't.
     sp_login_clear(flavors);
     void (^pump)(double) = ^(double seconds) { CFRunLoopRunInMode(kCFRunLoopDefaultMode, seconds, true); };
@@ -604,29 +641,54 @@ int main(int argc, char **argv) {
     if (ui) pump = ui;
 #endif
     NSString *saved = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/splaunch-flavor"];
-    NSString *flavor = NSProcessInfo.processInfo.environment[@"SP_LAUNCH_FLAVOR"];
-    if (!flavor.length) flavor = sp_pick_flavor(flavors, &pump);
-    if (!flavor.length) flavor = [NSString stringWithContentsOfFile:saved encoding:NSUTF8StringEncoding error:nil];
-    flavor = [flavor stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (![flavors containsObject:flavor]) flavor = flavors[0];
-    say([NSString stringWithFormat:@"flavors %@, running %@", [flavors componentsJoinedByString:@" "], flavor]);
+    NSString *flavor, *bundled, *library, *buildInfo = nil, *path = nil;
+    NSDictionary<NSString *, NSString *> *bundledStamp, *libraryStamp;
+    // Until a game with an image to load is picked: a pick of one the device has to install (an app built
+    // without images) installs it first, and one that can't be installed goes back to the start screen
+    // (after its screen says why), or, when the start screen didn't pick it, stops the launch with why.
+    for (;;) {
+        flavor = NSProcessInfo.processInfo.environment[@"SP_LAUNCH_FLAVOR"];
+        BOOL picked = NO;
+        if (!flavor.length) picked = (flavor = sp_pick_flavor(flavors, installable, &pump)).length > 0;
+        if (!flavor.length) flavor = [NSString stringWithContentsOfFile:saved encoding:NSUTF8StringEncoding error:nil];
+        flavor = [flavor stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (![flavors containsObject:flavor]) flavor = flavors[0];
+        say([NSString stringWithFormat:@"flavors %@, running %@", [flavors componentsJoinedByString:@" "], flavor]);
+        // An app without this game's image (built without images) has only what the device made.
+        bundled = [NSFileManager.defaultManager fileExistsAtPath:bundled_image(flavor)] ? bundled_image(flavor) : nil;
+        library = library_image(flavor);
+        bundledStamp = bundled ? image_build(bundled, flavor) : nil;
+        retire_caught_up(flavor, bundledStamp);
+        libraryStamp = library_signed(library, flavor, updated_build(library, flavor));
+        if (bundled || libraryStamp) break;
+        // Nothing to load: the device installs the game itself, from Blizzard's CDN, in the region of the
+        // game data's .build.info row if it has one (sppatch.m).
+        NSString *product = flavor_entry(flavor)[@"product"] ?: @"";
+        NSString *info = [NSString stringWithContentsOfFile:[NSHomeDirectory() stringByAppendingPathComponent:@"Documents/.build.info"]
+                                                   encoding:NSUTF8StringEncoding error:nil];
+        NSString *problem = nil;
+        path = sp_patch_install(flavor, sp_install_region(info, product), picked, &pump, &buildInfo, &problem);
+        if (path) {
+            libraryStamp = image_build(path, flavor);
+            break;
+        }
+        if (!picked) fail_launch(problem);
+        say(@"install: back to the start screen");
+    }
     [flavor writeToFile:saved atomically:YES encoding:NSUTF8StringEncoding error:nil];
     game_region(flavor);
     default_render_scale(flavor);
     skip_intro(flavor);
     launch_arguments(flavor, &argc, &argv);
-    NSString *bundled = bundled_image(flavor);
-    NSString *library = library_image(flavor);
-    NSDictionary<NSString *, NSString *> *bundledStamp = image_build(bundled, flavor);
-    retire_caught_up(flavor, bundledStamp);
-    NSDictionary<NSString *, NSString *> *libraryStamp = library_signed(library, flavor, updated_build(library, flavor));
     // Whether a newer build is out than the image's (sppatch.m), which also picks the image: the bundled one
     // or the one an update on the device made, maybe just now (then `buildInfo` is the game data's
     // .build.info for its build, written once it has loaded). Before the sign-in, so nobody signs in to then
-    // be told, and before the helper attaches. It never stops the launch.
-    NSString *buildInfo = nil;
-    NSString *path = sp_patch_check(flavor, bundled, bundledStamp, library, libraryStamp, &pump, &buildInfo);
-    if ([path isEqual:library]) libraryStamp = image_build(library, flavor);
+    // be told, and before the helper attaches. It never stops the launch. Not after an install just now:
+    // that image is the current build.
+    if (!path) {
+        path = sp_patch_check(flavor, bundled, bundledStamp, library, libraryStamp, &pump, &buildInfo);
+        if ([path isEqual:library]) libraryStamp = image_build(library, flavor);
+    }
     // A Battle.net launcher token the companion relayed (Play with My Mac's Battle.net) and the client
     // hasn't imported yet: just before the client loads, the AppKit shim imports it into net.battle and
     // deletes the file (sp_net_battle_import, below). Only here, not when UIKit starts (on iOS that's
@@ -645,16 +707,7 @@ int main(int argc, char **argv) {
     NSString *problem = copy_unfinished();
     NSMutableData *login = problem ? nil : sp_login_prepare(token, &pump, &problem);
     if (!problem) problem = sp_jit_attach(pump);
-    if (problem) {
-        // One line: the companion reads it off the console (ClientLauncher.Marker.problem).
-        say([@"can't prepare the client: " stringByAppendingString:
-                 [problem stringByReplacingOccurrencesOfString:@"\n\n" withString:@" "]]);
-        void *h = dlopen(appkit.fileSystemRepresentation, RTLD_NOW);
-        void (*fail)(const char *) = h ? (void (*)(const char *))dlsym(h, "sp_uikit_fail") : NULL;
-        if (fail) fail(problem.UTF8String);
-        say([NSString stringWithFormat:@"no UIKit to show it: %s", dlerror()]);
-        return 1;
-    }
+    if (problem) fail_launch(problem);
     if (login) sp_login_write(flavor, login);  // on failure it says so; the token or the game's login screen is left
     // The loading screen (the AppKit shim's sploading.m), from here until the client's first frame, instead
     // of black: the game's name, then the data setup's progress or "Loading…". On visionOS it goes up when
@@ -675,12 +728,19 @@ int main(int argc, char **argv) {
     void *h = dlopen(path.fileSystemRepresentation, RTLD_NOW);
     if (!h && [path isEqual:library]) {
         // An updated image the system won't load (its signature, say): it's deleted, so the next start offers
-        // the update again, and the bundled image loads, with its own .build.info row left as it is.
-        say([NSString stringWithFormat:@"update: the updated image didn't load (%s): deleted, loading the bundled %@ instead",
-                                       dlerror(), bundledStamp[@"Version"]]);
+        // the update again, and the bundled image loads, with its own .build.info row left as it is. With no
+        // bundled image (a game installed on the device), the next start offers to install it again.
+        NSString *refused = @(dlerror() ?: "no reason");
+        say([NSString stringWithFormat:@"update: the updated image didn't load (%@): deleted, %@", refused,
+                                       bundled ? [NSString stringWithFormat:@"loading the bundled %@ instead", bundledStamp[@"Version"]]
+                                               : @"and the app has no image of the game to load instead"]);
         [NSFileManager.defaultManager removeItemAtPath:[library.stringByDeletingLastPathComponent stringByAppendingPathComponent:
                                                         [@"spbuild-" stringByAppendingString:flavor]] error:nil];
         [NSFileManager.defaultManager removeItemAtPath:library error:nil];
+        if (!bundled)
+            fail_launch([NSString stringWithFormat:@"%@ %@, made on this %@, couldn't be loaded, so it's deleted.\n\nOpen "
+                                                   @"Slashplayed again to install it again.", sp_flavor_name(flavor),
+                                                   libraryStamp[@"Version"], sp_device_noun()]);
         sp_patch_refused(flavor, libraryStamp[@"Version"], bundledStamp[@"Version"], &pump);
         buildInfo = nil;
         path = bundled;

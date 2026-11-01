@@ -284,13 +284,15 @@ My Mac's Battle.net** (see [Sandbox redirects](#sandbox-redirects)), which the m
 when one of the device's games is installed. The small identity file login needs from the Mac needs no
 install. Onboarding (`Onboarding.swift`) requires Xcode, the team, the device, LocalDevVPN, and a game
 per device; its last step lists what the Mac has installed and always passes. The dev script
-`apps/client/build.sh` still builds from an install (step 1).
+`apps/client/build.sh` still builds from an install (step 1), or with `SP_NO_IMAGES=1` builds the app with
+no image at all ([Installing a game on the device](#installing-a-game-on-the-device)).
 
 ### The start screen and Settings
 
 Every launch that doesn't name a game (a launch from the home screen) opens on the start screen
 (`spstart.m`, its screen in SwiftUI, `spstartscreen.swift`): the app icon's medallion and a framed
-button per game in `flavors.plist`'s order, all drawn in code. Its face is Goodmountain, which the app
+button per game in `flavors.plist`'s order, all drawn in code (**Install <game>** for one an app without
+images hasn't installed yet, [below](#installing-a-game-on-the-device)). Its face is Goodmountain, which the app
 ships unmodified with its license (`scripts/fetch-font.sh`; it's never committed). The gear opens
 Settings, a stock dark inset-grouped sheet in SwiftUI (`spsettings.swift`), one for iOS and visionOS:
 
@@ -302,8 +304,9 @@ Settings, a stock dark inset-grouped sheet in SwiftUI (`spsettings.swift`), one 
   the log line and `Library/spidentity.txt` use), and **Forget Signing Identity**.
 - **Display**: Scale, Automatic, 1x, or 2x, the backing scale for every launch on this device (Render
   scale, under Window, screen and scene tracking).
-- **A section per game**: the build it starts with, shipped with the app or updated on this device
-  (`sp_game_build`, by the launcher's own rules), **Open in Files**, and **Reset Game Settings**, which deletes the game's
+- **A section per game**: the build it starts with, shipped with the app, updated on this device, or
+  installed on it (`sp_game_build`, by the launcher's own rules; "Not Installed" for a game an app
+  without images hasn't installed yet, [below](#installing-a-game-on-the-device)), **Open in Files**, and **Reset Game Settings**, which deletes the game's
   `WTF/Config.wtf` and `Library/sprenderscale-<flavor>` so the next start seeds them as on a first
   launch (the region and languages too); `WTF/Account/` (keybindings, macros, addons' saved settings) is kept.
 - **About**: the app's version and Acknowledgements, the files in the app's `licenses/`.
@@ -358,6 +361,35 @@ Which image a start loads, in order:
   if not, this start loads the bundled image and the update is kept for a later identity.
 - Otherwise the bundled image. When `dlopen` refuses the `Library/spgames` image it's deleted, a note
   says so for a few seconds, and the bundled image loads with `.build.info` left as it was.
+
+### Installing a game on the device
+
+The same chain installs a game the app has no image of, so a host can install the app without shipping
+any client image (Blizzard's bytes) at all. `SP_NO_IMAGES=1 apps/client/build.sh` builds such an app:
+no `wow-<flavor>` and no `spbuild-<flavor>`, and no game install on the Mac needed. The Mac companion
+still ships images, and an app with images behaves as before.
+
+- **The games.** An app with images offers the games it bundles, as always. An app with none offers
+  every game in `flavors.plist`; those the device hasn't made a loadable `Library/spgames` image of read
+  **Install <game>** on the start screen (`sp_games`, in `spcdn.m`), and Settings says "Not Installed".
+- **The install.** Tapping one runs `sp_patch_install` (`sppatch.m`) before anything else for that game,
+  on the patch screen: the signing identity first (`sp_identity_usable`, before any download; without
+  one the screen says which it is, none, forgotten, expired, unreadable, or not in the app's profile,
+  and that the companion's Update Games on This Device sends one), then the patch service's current
+  build, the slice and its bind check (asking first on cellular), and the update's configs, assembly,
+  signing, and stamp into `Library/spgames/`, plus the game folder's `.flavor.info` if it has none (what
+  the companion sends, `sp_flavor_info`). The region is the product's `.build.info` Branch if the device
+  has a row, else `us`, as the companion's first `Config.wtf` assumes (`sp_install_region`). Any failure
+  shows why with **Back**, which returns to the start screen; a launch that named the game
+  (`SP_LAUNCH_FLAVOR`) stops on the reason instead. The log has `patch: install: …` lines, versions only.
+- **After it.** The launcher loads the new image and writes `.build.info` once it has loaded, as after
+  Update; the client then sets up its empty store and streams. Later starts treat the `Library/spgames`
+  image as the game's only image: the patch check compares it, Update replaces it, and Play Anyway
+  plays it. With no bundled image to fall back on, an image `dlopen` refuses is deleted and the launch
+  stops on the reason; the next start offers Install again.
+
+The addons and the small identity file login needs from the Mac aren't part of the install: they come
+from the host, as the companion sends them today.
 
 What the device holds for it, all in the app's container:
 

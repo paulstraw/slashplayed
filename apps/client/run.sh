@@ -44,7 +44,11 @@ if [ "$SP_START" = 1 ]; then
   [ -n "$SP_START_DRILL" ] && export DEVICECTL_CHILD_SP_START_DRILL=$SP_START_DRILL
   [ -n "$SP_START_TEXT_SIZE" ] && export DEVICECTL_CHILD_SP_START_TEXT_SIZE=$SP_START_TEXT_SIZE
 else
-  [ -f $OUT/Slashplayed.app/wow-$SP_FLAVOR ] || { echo "$SP_FLAVOR isn't in the installed build (build.sh)"; exit 1; }
+  # A build with images has to have this one; one without (build.sh's SP_NO_IMAGES=1) installs it on the
+  # device first if it hasn't yet (sppatch.m's sp_patch_install).
+  if ls $OUT/Slashplayed.app/wow-* >/dev/null 2>&1; then
+    [ -f $OUT/Slashplayed.app/wow-$SP_FLAVOR ] || { echo "$SP_FLAVOR isn't in the installed build (build.sh)"; exit 1; }
+  fi
   [ $# = 0 ] && set -- $SP_ARGS
   echo $SP_FLAVOR > ../../work/clienttest/last-flavor
   export DEVICECTL_CHILD_SP_LAUNCH_FLAVOR=$SP_FLAVOR

@@ -16,6 +16,13 @@
 # SP_OUT puts the build elsewhere (the companion: ~/Library/Application Support/Slashplayed/client-<platform>).
 # <out>/build-complete marks a finished build; needs-install, one not yet installed. (The companion keeps
 # its own record of what each device holds instead: ClientBuild.installNeed.)
+# SP_NO_IMAGES=1 builds the app with no client image (no wow-<flavor>, no spbuild-<flavor>), as a host that
+# ships no Blizzard bytes will: the start screen then offers every game in flavors.plist, and the device
+# installs the one tapped itself (launcher.m, sppatch.m's sp_patch_install), which needs the signing identity
+# an update needs (push-identity.sh). It needs no game install on the Mac (SP_BUILD_FLAVORS is ignored), and
+# it changes nothing of the assembly: there's no image to assemble. run.sh then runs any flavor (one with no
+# image yet is installed first, its screen with no Back). Installed over an app with images, it keeps the
+# container: the games the device made in Library/spgames are installed, and the rest offer Install.
 set -e
 cd "$(dirname "$0")"
 # The app's own Xcode-managed profile (explicit App ID with Increased Memory Limit and Extended Virtual
@@ -27,6 +34,15 @@ cd "$(dirname "$0")"
 sp_need SP_TEAM SP_SIGN_ID SP_BUNDLE_ID
 [ "$SP_NO_INSTALL" = 1 ] || sp_need_device
 FLAVORS=${SP_BUILD_FLAVORS:-$SP_FLAVORS}
+if [ "$SP_NO_IMAGES" = 1 ]; then
+  FLAVORS=
+elif [ -n "$SP_NO_IMAGES" ] && [ "$SP_NO_IMAGES" != 0 ]; then
+  echo "build.sh: SP_NO_IMAGES is 1, 0, or unset, not '$SP_NO_IMAGES'" >&2
+  exit 1
+elif [ -z "$FLAVORS" ]; then
+  echo "build.sh: no game installed in $SP_INSTALL to bundle (SP_NO_IMAGES=1 builds without client images)" >&2
+  exit 1
+fi
 OUT=${SP_OUT:-../../work/clienttest$SP_SUFFIX}
 APP="$OUT"/Slashplayed.app
 BUNDLE_ID=$SP_BUNDLE_ID
@@ -102,10 +118,15 @@ cp "$SP_PROFILE" "$APP"/embedded.mobileprovision
 sed -e "s/@TEAM@/$SP_TEAM/g" -e "s/@BUNDLE_ID@/$BUNDLE_ID/g" entitlements.plist > "$OUT/entitlements.plist"
 sed -e "s/@TEAM@/$SP_TEAM/g" -e "s/@BUNDLE_ID@/$HELPER_ID/g" helper/entitlements.plist > "$OUT/helper-entitlements.plist"
 # Inside out: the helper is sealed into the app's signature, so it's signed before the app.
-codesign -f -s "$SP_SIGN_ID" "$APP"/Frameworks/*.dylib "$APP"/wow-*
+# The images too, when there are any (SP_NO_IMAGES=1 has none, and the glob would stay as it is).
+if [ -n "$FLAVORS" ]; then
+  codesign -f -s "$SP_SIGN_ID" "$APP"/Frameworks/*.dylib "$APP"/wow-*
+else
+  codesign -f -s "$SP_SIGN_ID" "$APP"/Frameworks/*.dylib
+fi
 codesign -f -s "$SP_SIGN_ID" --entitlements "$OUT"/helper-entitlements.plist "$HELPER"
 codesign -f -s "$SP_SIGN_ID" --entitlements "$OUT"/entitlements.plist "$APP"
-for b in "$APP"/wow-*; do otool -L "$b" | tail -n +2 | grep -v -e '@rpath/' -e '^\s*/System/Library/Frameworks/[A-Za-z]*\.framework/[A-Za-z]* ' \
+for b in "$APP"/wow-*; do [ -f "$b" ] || continue; otool -L "$b" | tail -n +2 | grep -v -e '@rpath/' -e '^\s*/System/Library/Frameworks/[A-Za-z]*\.framework/[A-Za-z]* ' \
   -e '^\s*/usr/lib/' && { echo "unrewritten load commands above in $b"; exit 1; }; done
 echo $FLAVORS > "$OUT"/build-complete
 touch "$OUT"/needs-install

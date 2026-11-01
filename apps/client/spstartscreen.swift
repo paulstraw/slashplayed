@@ -145,12 +145,19 @@ private struct Header: View {
 private final class StartModel: ObservableObject {
     @Published var safe = UIEdgeInsets.zero
     let flavors: [String]
+    let installable: Set<String>  // no image on the device yet: the launcher installs the one tapped
     let pick: (String) -> Void
     weak var host: UIViewController?
 
-    init(flavors: [String], pick: @escaping (String) -> Void) {
+    init(flavors: [String], installable: Set<String>, pick: @escaping (String) -> Void) {
         self.flavors = flavors
+        self.installable = installable
         self.pick = pick
+    }
+
+    // The game's button: its name, or "Install <name>" for one the device installs first.
+    func title(_ flavor: String) -> String {
+        installable.contains(flavor) ? "Install " + sp_flavor_name(flavor) : sp_flavor_name(flavor)
     }
 
     // The Settings sheet (spsettings.swift), opening in `drill`'s state when one is given ($SP_START_DRILL).
@@ -201,7 +208,7 @@ private struct StartView: View {
         ScrollView {
             VStack(spacing: 12) {
                 ForEach(model.flavors, id: \.self) { flavor in
-                    Button(sp_flavor_name(flavor)) { model.pick(flavor) }
+                    Button(model.title(flavor)) { model.pick(flavor) }
                         .buttonStyle(GameButtonStyle(height: 66))
                 }
             }
@@ -264,11 +271,13 @@ private final class StartHost: UIHostingController<StartView> {
     }
 }
 
-// spstart.m's: the screen for `flavors` (flavors.plist's order); `pick` gets the one tapped (each tap: it
-// keeps the first).
+// spstart.m's: the screen for `flavors` (flavors.plist's order), the `installable` ones reading "Install
+// <game>"; `pick` gets the one tapped (each tap: it keeps the first).
 @_cdecl("sp_start_screen")
-public func startScreen(_ flavors: NSArray, _ pick: @escaping @convention(block) (NSString) -> Void) -> UIViewController {
-    StartHost(model: StartModel(flavors: flavors.compactMap { $0 as? String }, pick: { pick($0 as NSString) }))
+public func startScreen(_ flavors: NSArray, _ installable: NSArray,
+                        _ pick: @escaping @convention(block) (NSString) -> Void) -> UIViewController {
+    StartHost(model: StartModel(flavors: flavors.compactMap { $0 as? String },
+                                installable: Set(installable.compactMap { $0 as? String }), pick: { pick($0 as NSString) }))
 }
 
 // spstart.m's, for $SP_START_DRILL: the Settings sheet over the screen, in `drill`'s state.

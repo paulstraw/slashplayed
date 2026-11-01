@@ -672,3 +672,30 @@ NSString *sp_build_info_with(NSString *existing, NSString *product, NSString *re
     if (!placed) [out appendFormat:@"%@\n", mine];
     return out;
 }
+
+// ---- installing a game on the device (launcher.m, sppatch.m)
+
+NSArray<NSString *> *sp_games(NSArray<NSString *> *order, NSArray<NSString *> *bundled, NSArray<NSString *> *made,
+                              NSSet<NSString *> **installable) {
+    NSMutableSet<NSString *> *none = [NSMutableSet set];
+    NSArray<NSString *> *games = bundled;
+    if (!bundled.count) {
+        games = order;
+        for (NSString *f in order)
+            if (![made containsObject:f]) [none addObject:f];
+    }
+    *installable = none;
+    return [games sortedArrayUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
+        NSUInteger ia = [order indexOfObject:a], ib = [order indexOfObject:b];
+        return ia < ib ? NSOrderedAscending : ia > ib ? NSOrderedDescending : [a compare:b];
+    }];
+}
+
+NSString *sp_install_region(NSString *buildInfo, NSString *product) {
+    NSString *branch = sp_table_row(buildInfo, @"Product", product)[@"Branch"].lowercaseString;
+    return branch.length ? branch : @"us";
+}
+
+NSString *sp_flavor_info(NSString *product) {
+    return [NSString stringWithFormat:@"Product Flavor!STRING:0\n%@\n", product];
+}

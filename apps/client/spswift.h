@@ -15,6 +15,9 @@ void sp_launch_say(NSString *s);
 NSString *sp_flavor_name(NSString *flavor);
 // The build a game starts with (Version, Build Key, ...), and whether the device made it. nil without a stamp.
 NSDictionary<NSString *, NSString *> *_Nullable sp_game_build(NSString *flavor, BOOL *updated);
+// Whether the game has an image to start: the app's, or one the device made that the next start would load.
+// NO for a game an app built without images offers to install.
+BOOL sp_game_has_image(NSString *flavor);
 NSString *sp_game_reset(NSString *flavor);
 
 // spjit.m: "iPad", "iPhone", or "Vision Pro".
@@ -52,9 +55,10 @@ UIViewController *sp_patch_screen(void (^choose)(NSInteger index));
 void sp_patch_show(UIViewController *screen, NSString *heading, NSString *message, NSString *_Nullable note,
                    NSArray<NSString *> *buttons);
 
-// spstartscreen.swift. The start screen for `flavors` (flavors.plist's order), calling `pick` with the one
-// tapped; and the Settings sheet over it in `drill`'s state ($SP_START_DRILL).
-UIViewController *sp_start_screen(NSArray<NSString *> *flavors, void (^pick)(NSString *flavor));
+// spstartscreen.swift. The start screen for `flavors` (flavors.plist's order), the `installable` ones
+// reading "Install <game>", calling `pick` with the one tapped; and the Settings sheet over it in `drill`'s
+// state ($SP_START_DRILL).
+UIViewController *sp_start_screen(NSArray<NSString *> *flavors, NSArray<NSString *> *installable, void (^pick)(NSString *flavor));
 void sp_start_settings(UIViewController *screen, NSString *drill);
 
 UIViewController *sp_settings_sheet(NSArray<NSString *> *flavors, NSString *_Nullable drill);

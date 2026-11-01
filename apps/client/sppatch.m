@@ -25,6 +25,11 @@
 //
 // $SP_PATCH_DRILL is the patch drill (drill_symbol): it shows the screen with no newer build on the CDN.
 // Only a pre-release companion's Play (BindCheck.deviceDrill) and run.sh pass it.
+//
+// The install (sp_patch_install) is the same chain from nothing, for a game an app built without client
+// images has no image of: the service's current build, its slice, the bind check, and the update, on the
+// same screen, with Back instead of Play Anyway. A game installed that way has only its Library/spgames
+// image, which the check then compares and Play Anyway plays.
 #import <Foundation/Foundation.h>
 #import <Network/Network.h>
 #import <UIKit/UIKit.h>
@@ -321,7 +326,8 @@ static verdict check_new_build(NSString *flavor, NSString *image, NSString *prod
         return unknown;
     }
     // The new slice is about the size of this image (also thinned to arm64).
-    double megabytes = [NSFileManager.defaultManager attributesOfItemAtPath:image error:nil].fileSize / 1e6;
+    // No image yet (an install, sp_patch_install): new_slice's 50.
+    double megabytes = image ? [NSFileManager.defaultManager attributesOfItemAtPath:image error:nil].fileSize / 1e6 : 0;
     NSString *slice = new_slice(flavor, product, region, row, megabytes ?: 50, screen, heading, note, pump, why);
     if (!slice) return unknown;
     double t = now();
@@ -438,12 +444,166 @@ static NSString *update(NSString *flavor, NSString *product, NSString *region, N
     return dest;
 }
 
+// ---- what an update or an install on the device needs: a signing identity
+
+// Why the device can't sign a game's image, in a sentence or two for the screen, and a line for the log
+// (*line): the keychain identity's state (sp_identity_reading), dates and words only. Asked only when
+// sp_identity_usable says no.
+static NSString *no_identity(NSString **line) {
+    SPIdentityReading *reading = sp_identity_reading();
+    NSString *noun = sp_device_noun(), *why;
+    switch (reading.state) {
+        case SPIdentityStateNone:
+            why = [NSString stringWithFormat:@"This %@ has no signing key to make it with.", noun];
+            *line = @"no signing identity";
+            break;
+        case SPIdentityStateForgotten:
+            why = [NSString stringWithFormat:@"This %@'s signing key was forgotten in Settings.", noun];
+            *line = @"the signing identity was forgotten";
+            break;
+        case SPIdentityStateExpired:
+            why = [NSString stringWithFormat:@"The signing key on this %@ has expired.", noun];
+            *line = @"the signing identity has expired";
+            break;
+        case SPIdentityStateUnreadable:
+            why = [NSString stringWithFormat:@"The signing key on this %@ can't be read.", noun];
+            *line = @"the signing identity can't be read";
+            break;
+        case SPIdentityStatePresent:
+        default:
+            // Valid, but no profile the app can see lists its certificate: what it signs wouldn't load.
+            why = [NSString stringWithFormat:@"The signing key on this %@ isn't in the app's profile, so a game signed with "
+                                             @"it wouldn't load.", noun];
+            *line = @"the signing identity isn't listed in the app's profiles";
+            break;
+    }
+    return [why stringByAppendingFormat:@" Slashplayed Companion on your Mac sends one when Update Games on This Device is "
+                                        @"on: turn it on, then press Play with this %@ connected.", noun];
+}
+
+// ---- the install on the device
+
+// A reason for the screen's note: capitalized, with a period. "" for none.
+static NSString *sentence(NSString *why) {
+    if (!why.length) return @"";
+    return [NSString stringWithFormat:@"%@%@.", [why substringToIndex:1].uppercaseString, [why substringFromIndex:1]];
+}
+
+// The patch service's versions row for `product` in `region`, or nil and *why.
+static NSDictionary<NSString *, NSString *> *current_row(NSString *product, NSString *region, void (^pump)(double), NSString **why) {
+    double t = now();
+    NSString *problem = nil;
+    NSString *text = fetch(product, region, @"versions", NO, pump, &problem);
+    NSDictionary<NSString *, NSString *> *row = text ? sp_table_row(text, @"Region", region) : nil;
+    if (text && !row[@"BuildConfig"].length) problem = [NSString stringWithFormat:@"no %@ row", region];
+    if (problem) {
+        *why = [NSString stringWithFormat:@"%@, %.1f s", problem, now() - t];
+        return nil;
+    }
+    say([NSString stringWithFormat:@"install: %@ %@ is current in %@ (%.1f s)", product, row[@"VersionsName"], region, now() - t]);
+    return row;
+}
+
+// Installs a game the device has no image of (an app built without them: sp_games' installable ones), with
+// the update's chain from nothing: the patch service's current build in `region` (sp_install_region), its
+// slice fetched (asking first on a costly network) and its imports checked (check_new_build), then its configs,
+// image, and stamp made and signed here (update), and the game's .flavor.info if its folder has none. Its
+// screen says each step; there's no Play Anyway, as there's nothing else to play. A signing identity is checked
+// first, before anything is downloaded: without one it says what's missing (no_identity).
+//
+// Returns the new image (Library/spgames/wow-<flavor>), with *buildInfo the .build.info text the launcher
+// writes once it has loaded, as after Update. nil and *problem when it can't: with `back`, the screen has
+// said why and waited for Back (the launcher shows the start screen again); without (a launch that named the
+// game), it's dismissed and the launcher shows *problem. install: lines, versions only.
+NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (^*pump)(double), NSString **buildInfo,
+                           NSString **problem) {
+    *buildInfo = nil;
+    *problem = nil;
+    NSString *product = sp_flavor_entry(flavor)[@"product"], *game = sp_flavor_name(flavor), *noun = sp_device_noun();
+    say([NSString stringWithFormat:@"install: %@ has no image on this %@: installing it in %@", product ?: flavor, noun, region]);
+    NSCharacterSet *notRegion = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz"].invertedSet;
+    if (!product.length || !region.length || [region rangeOfCharacterFromSet:notRegion].location != NSNotFound) {
+        *problem = [NSString stringWithFormat:@"%@ can't be installed: the app doesn't know its product or region.", game];
+        say(@"install: no product or region");
+        return nil;
+    }
+    SPPatchController *screen = present(pump);
+    if (!screen) {
+        *problem = [NSString stringWithFormat:@"%@ isn't installed on this %@, and there's no screen to install it on.", game, noun];
+        return nil;
+    }
+    void (^ui)(double) = *pump;  // UIKit's, now (present)
+    NSString *heading = [NSString stringWithFormat:@"Installing %@…", game];
+    // A failure: on the screen with Back, or handed to the launcher to show. What the launcher shows.
+    NSString * (^failed)(NSString *, NSString *, NSString *) = ^NSString *(NSString *title, NSString *body, NSString *note) {
+        if (back) {
+            [screen setHeading:title body:body note:note buttons:@[@"Back"]];
+            wait_for_choice(screen, ui);
+            say(@"install: Back");
+        }
+        dismiss(screen, ui);
+        return note.length ? [NSString stringWithFormat:@"%@ %@\n\n%@", title, body, note]
+                           : [NSString stringWithFormat:@"%@ %@", title, body];
+    };
+    NSString *cant = [NSString stringWithFormat:@"%@ can't be installed on this %@.", game, noun];
+    if (!sp_identity_usable()) {
+        NSString *line = nil, *body = no_identity(&line);
+        say([@"install: message: no identity to sign it with: " stringByAppendingString:line]);
+        *problem = failed(cant, body, nil);
+        return nil;
+    }
+    [screen setHeading:heading body:@"Asking Blizzard for the current version…" note:nil buttons:@[]];
+    NSString *why = nil;
+    NSDictionary<NSString *, NSString *> *row = current_row(product, region, ui, &why);
+    if (!row) {
+        say([NSString stringWithFormat:@"install: couldn't ask the patch service for %@ (%@)", product, why]);
+        *problem = failed(cant, @"Blizzard's patch service couldn't be reached. Check the network, then try again.", sentence(why));
+        return nil;
+    }
+    NSString *version = row[@"VersionsName"].length ? row[@"VersionsName"] : @"(no version)";
+    heading = [NSString stringWithFormat:@"Installing %@ %@…", game, version];
+    verdict v = check_new_build(flavor, nil, product, region, row, screen, heading, nil, ui, &why);
+    if (v == needs_update) {
+        say([NSString stringWithFormat:@"install: message: needs a Slashplayed update: %@ %@ doesn't bind", product, version]);
+        *problem = failed(cant, [NSString stringWithFormat:@"This version of Slashplayed can't run %@ %@ yet. Once there's a "
+                                                           @"Slashplayed update for it, install that, then try again.", game, version], nil);
+        return nil;
+    }
+    if (v == unknown) {
+        say([NSString stringWithFormat:@"install: message: couldn't check %@ %@: %@", product, version, why]);
+        *problem = failed(cant, @"Whether Slashplayed can run it couldn't be checked. Try again on Wi-Fi.", sentence(why));
+        return nil;
+    }
+    [screen setHeading:heading body:[NSString stringWithFormat:@"Making it and signing it on this %@.", noun] note:nil buttons:@[]];
+    double t = now();
+    NSString *image = update(flavor, product, region, row, ui, buildInfo, &why);
+    if (!image) {
+        say([NSString stringWithFormat:@"install: failed after %.1f s: %@", now() - t, why]);
+        *problem = failed(cant, @"Try again later.", sentence(why));
+        return nil;
+    }
+    // The game's folder as Battle.net (and the companion) start it: .flavor.info names its product.
+    NSString *folder = [NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Documents/_%@_", flavor]];
+    NSString *info = [folder stringByAppendingPathComponent:@".flavor.info"];
+    if (![NSFileManager.defaultManager fileExistsAtPath:info]) {
+        [NSFileManager.defaultManager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
+        if (![sp_flavor_info(product) writeToFile:info atomically:YES encoding:NSUTF8StringEncoding error:nil])
+            say(@"install: couldn't write the game's .flavor.info");
+    }
+    say([NSString stringWithFormat:@"install: %@ %@ is Library/spgames/%@, %.1f s in all", product, version, image.lastPathComponent,
+                                   now() - t]);
+    dismiss(screen, ui);
+    say_update([NSString stringWithFormat:@"image: Library/spgames %@ %@ (just installed)", product, version]);
+    return image;
+}
+
 // ---- the check
 
 // Returns the image to load, once the launch may go on: right away unless a newer build is out, then after
 // Play Anyway or Update. `bundled` is the app's image and `bundledStamp` its build (nil without one: nothing
 // to compare); `library` is the image an update on the device made (Library/spgames/wow-<flavor>) and
-// `libraryStamp` its build, nil when there's none.
+// `libraryStamp` its build, nil when there's none. `bundled` is nil when the app has no image of the game
+// (it was installed on the device, sp_patch_install): the updated image is then the one compared and played.
 //
 // Which image: the updated one when its build is the patch service's current one, or when the service
 // couldn't be asked and it's a later version than the bundled one; otherwise the bundled one. A newer build
@@ -457,7 +617,9 @@ static NSString *update(NSString *flavor, NSString *product, NSString *region, N
 NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSString *, NSString *> *bundledStamp, NSString *library,
                          NSDictionary<NSString *, NSString *> *libraryStamp, void (^*pump)(double), NSString **buildInfo) {
     *buildInfo = nil;
-    NSDictionary<NSString *, NSString *> *stamp = bundledStamp;
+    // What's compared and what Play Anyway plays: the bundled image, or with none the one made here.
+    NSString *base = bundled ?: library;
+    NSDictionary<NSString *, NSString *> *stamp = bundled ? bundledStamp : libraryStamp;
     NSString *product = stamp[@"Product"], *region = stamp[@"Branch"].lowercaseString;
     NSString * (^use)(NSString *, NSString *) = ^NSString *(NSString *image, NSString *why) {
         BOOL updated = image == library;
@@ -468,11 +630,11 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
     // With the service out of reach: the later of the two.
     NSString * (^offline)(void) = ^NSString *(void) {
         return libraryStamp && sp_version_newer(libraryStamp[@"Version"], stamp[@"Version"])
-            ? use(library, @"couldn't check, and it's the later build") : use(bundled, @"couldn't check");
+            ? use(library, @"couldn't check, and it's the later build") : use(base, @"couldn't check");
     };
     if (!stamp) {
         say(@"couldn't check: the image has no stamp");
-        return bundled;
+        return base;
     }
     // The region goes into a host name.
     NSCharacterSet *notRegion = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz"].invertedSet;
@@ -501,7 +663,7 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
     }
     if (!drilled && [row[@"BuildConfig"] isEqual:stamp[@"Build Key"]]) {
         say([NSString stringWithFormat:@"up to date: %@ %@ (%@, %.1f s)", product, stamp[@"Version"], region, now() - t]);
-        return use(bundled, @"the current build");
+        return use(base, @"the current build");
     }
     NSString *version = row[@"VersionsName"].length ? row[@"VersionsName"] : @"(no version)";
     say([NSString stringWithFormat:@"newer build out: %@ %@, the image is %@ (%@, %.1f s)", product, version,
@@ -509,11 +671,11 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
     NSString *game = sp_flavor_name(flavor), *noun = sp_device_noun();
     NSString *news = sp_patch_news(game, row[@"VersionsName"]), *heading = [news stringByAppendingString:@"."];
     SPPatchController *screen = present(pump);
-    if (!screen) return use(bundled, @"a newer build is out");
+    if (!screen) return use(base, @"a newer build is out");
     // Under every state's words: the build this device has, against the news in the heading.
     NSString *has = [NSString stringWithFormat:@"This %@ has %@ %@.", noun, game, stamp[@"Version"]];
     NSString *why = nil;
-    verdict v = check_new_build(flavor, bundled, product, region, row, screen, heading, has, *pump, &why);
+    verdict v = check_new_build(flavor, base, product, region, row, screen, heading, has, *pump, &why);
     BOOL here = v == binds && sp_identity_usable();
     if (v == needs_update) {
         say([NSString stringWithFormat:@"message: needs a Slashplayed update: %@ %@ doesn't bind, the image is %@", product,
@@ -526,10 +688,21 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
         say([NSString stringWithFormat:@"message: update here: %@ %@ binds, the image is %@, and this device can sign", product,
                                        version, stamp[@"Version"]]);
         [screen setHeading:heading
-                      body:[NSString stringWithFormat:@"This %@ can update itself in a few seconds, signed with the key "
-                                                      @"your Mac sent it. Or press Play in Slashplayed Companion on your Mac.", noun]
+                      // A game installed here (no bundled image): the Mac doesn't come into it.
+                      body:bundled ? [NSString stringWithFormat:@"This %@ can update itself in a few seconds, signed with the key "
+                                                                @"your Mac sent it. Or press Play in Slashplayed Companion on your Mac.", noun]
+                                   : [NSString stringWithFormat:@"This %@ can update itself in a few seconds, signed with its key.", noun]
                       note:has
                    buttons:@[@"Update", @"Play Anyway"]];
+    } else if (!bundled) {
+        // A game installed here: it updates here too, or says why it can't yet.
+        NSString *line = nil;
+        NSString *body = v == binds ? no_identity(&line) : @"Whether Slashplayed can run it couldn't be checked. Try again on Wi-Fi.";
+        say([NSString stringWithFormat:@"message: can't update here: %@ %@ %@, the image is %@", product, version,
+                                       v == binds ? [@"binds, but " stringByAppendingString:line]
+                                                  : [NSString stringWithFormat:@"(couldn't tell whether it binds: %@)", why],
+                                       stamp[@"Version"]]);
+        [screen setHeading:heading body:body note:has buttons:@[@"Play Anyway"]];
     } else {
         say([NSString stringWithFormat:@"message: update on your Mac: %@ %@ %@, the image is %@", product, version,
                                        v == binds ? @"binds" : [NSString stringWithFormat:@"(couldn't tell whether it binds: %@)", why],
@@ -558,7 +731,7 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
         }
         say_update([NSString stringWithFormat:@"failed after %.1f s: %@", now() - t, why]);
         [screen setHeading:[NSString stringWithFormat:@"%@ couldn't be updated on this %@.", game, noun]
-                      body:@"Update on your Mac instead: press Play in Slashplayed Companion."
+                      body:bundled ? @"Update on your Mac instead: press Play in Slashplayed Companion." : @"Try again later."
                       // The reason, for a report, under the plain words, then the build it has.
                       note:[NSString stringWithFormat:@"%@%@.\n%@", [why substringToIndex:1].uppercaseString,
                                                       [why substringFromIndex:1], has]
@@ -567,7 +740,7 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
     wait_for_choice(screen, *pump);
     say(@"Play Anyway");
     dismiss(screen, *pump);
-    return use(bundled, @"Play Anyway");
+    return use(base, @"Play Anyway");
 }
 
 // When dlopen refuses an updated image (the launcher has deleted it): a few seconds' note on the screen, and

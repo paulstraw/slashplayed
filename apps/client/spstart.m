@@ -166,8 +166,10 @@ static UIContentSizeCategory text_size(NSString *name) {
 }
 
 // Which of `flavors` (in the screen's order) to start, or nil when there's no screen to ask on (the
-// launcher then starts the last one run). Sets *pump to UIKit's, which it starts on visionOS.
-NSString *sp_pick_flavor(NSArray<NSString *> *flavors, void (^*pump)(double)) {
+// launcher then starts the last one run). The `installable` ones (an app built without client images, whose
+// device hasn't made one of them yet: sp_games) read "Install <game>", and the launcher installs the one
+// tapped before it starts (sp_patch_install). Sets *pump to UIKit's, which it starts on visionOS.
+NSString *sp_pick_flavor(NSArray<NSString *> *flavors, NSSet<NSString *> *installable, void (^*pump)(double)) {
     void (^ui)(double) = sp_launch_uikit();
     UIViewController *root = ui ? sp_scene_root() : nil;
     if (!root) {
@@ -177,7 +179,7 @@ NSString *sp_pick_flavor(NSArray<NSString *> *flavors, void (^*pump)(double)) {
     *pump = ui;
     NSDictionary<NSString *, NSString *> *env = NSProcessInfo.processInfo.environment;
     __block NSString *picked = nil;  // set by a tap; read by the wait
-    UIViewController *screen = sp_start_screen(flavors, ^(NSString *flavor) {
+    UIViewController *screen = sp_start_screen(flavors, installable.allObjects, ^(NSString *flavor) {
         if (!picked) picked = flavor;
     });
     NSString *textSize = env[@"SP_START_TEXT_SIZE"];
@@ -202,7 +204,7 @@ NSString *sp_pick_flavor(NSArray<NSString *> *flavors, void (^*pump)(double)) {
         sp_start_settings(screen, drill);
     }
     while (!picked) ui(0.1);
-    say([@"picked " stringByAppendingString:picked]);
+    say([NSString stringWithFormat:@"picked %@%@", picked, [installable containsObject:picked] ? @" (to install)" : @""]);
     // A game starts: the email hides (the sheet, if a tap got past it, goes with the screen below anyway).
     sp_settings_hide_email();
     // Until it's gone (and the sheet, if a tap got past it): the sign-in, LocalDevVPN, and pairing screens
