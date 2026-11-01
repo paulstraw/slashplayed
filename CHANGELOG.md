@@ -6,7 +6,7 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
-## [1.0.1] - 2026-10-31
+## [1.0.1] - 2026-11-01
 
 The first public release. Early and experimental: expect rough edges, and expect a game patch to
 break it now and then until Slashplayed catches up. Slashplayed is unofficial and not affiliated with
@@ -19,7 +19,8 @@ Blizzard Entertainment, and it includes no Blizzard files; use it at your own ri
   and Season of Discovery are played by switching game mode in game. MoP Classic has
   been played on the Vision Pro and an iPhone 16 Pro, and is untested on the iPad. Retail has been
   played on an M2 iPad, where it runs hot and gets a memory warning, and on an iPhone 16 Pro. Of the
-  iPhones, only the 16 Pro has been tested.
+  iPhones, only the 16 Pro has been tested. On an iPhone, the game keeps clear of the Dynamic Island,
+  with a black strip on that side, in either landscape orientation.
 - Slashplayed Companion, a Mac app that builds the Slashplayed app, signs it with your own Apple ID,
   and installs it on your device. It needs Xcode and an Apple ID, nothing else: no game install or
   Battle.net on the Mac.
@@ -76,6 +77,9 @@ Blizzard Entertainment, and it includes no Blizzard files; use it at your own ri
   play again.
 - LocalDevVPN has to be on every time the game starts. If it's off, Slashplayed opens it.
 - On an iPhone, a mouse needs AssistiveTouch on to show a cursor.
+- Voice chat doesn't work yet: the game says "VoiceError: 14" in chat when you enter the world
+  ([#12](https://github.com/paulstraw/slashplayed/issues/12)). Slashplayed doesn't ask for the
+  microphone.
 - The game shows no on-screen keyboard: typing in chat, or an authenticator's code at sign-in, needs
   a hardware keyboard.
 - A game patch can need a Slashplayed update before that game plays again.
