@@ -928,7 +928,9 @@ static double sp_chord_window(void) {
 // The touch that moves the mouse. On an iPhone, whichever moved: its pointer touch can stay on after
 // its button is up. Elsewhere the first one down: a second pinch starts wherever the eyes are and a
 // second finger wherever it lands, and moving the mouse there would jump the cursor, or the camera.
-// Fingers on an iPhone are as elsewhere (sp_by_first).
+// Fingers on an iPhone are as elsewhere (sp_by_first). The release is at the mover too: fingers lifting
+// together end in one call, and releasing at any other finger would move the mouse by the distance
+// between them first, which mid-mouselook is a jump of the camera.
 - (UITouch *)sp_mover:(NSSet<UITouch *> *)touches {
     return [self sp_by_first] ? _touches.firstObject : touches.anyObject;
 }
@@ -977,7 +979,7 @@ static double sp_chord_window(void) {
     // A finger lifting in the window resolves the chord first, so a quick tap is a click.
     if ([touches intersectsSet:[NSSet setWithArray:_chord]]) [self sp_chord_resolve];
 #endif
-    CGPoint p = _touches.count > touches.count ? sp_pointer : [self sp_location:touches.anyObject];
+    CGPoint p = _touches.count > touches.count ? sp_pointer : [self sp_location:[self sp_mover:touches]];
     [self sp_remove:touches];
     [self sp_buttons:[self sp_mask:event touches:touches] at:p];
 }
@@ -985,7 +987,7 @@ static double sp_chord_window(void) {
 // When the last touch is cancelled, buttons it had down stay down while GCMouse says they're held (it
 // reports their ups): locking the pointer may cancel the touch mid-mouselook.
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-    CGPoint p = [self sp_location:touches.anyObject];
+    CGPoint p = [self sp_location:[self sp_mover:touches]];
     [self sp_remove:touches];
     if (_touches.count) {
         [self sp_buttons:[self sp_mask:event touches:touches] at:sp_pointer];
