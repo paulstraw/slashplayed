@@ -724,3 +724,4 @@ IDs, team IDs and names, Apple IDs, device and Mac names, and your user folder i
 Never paste Battle.net preference contents into an issue yourself.
 
 See [Logs and diagnostics](architecture.md#logs-and-diagnostics) for where each log comes from.
+
