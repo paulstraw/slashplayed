@@ -862,7 +862,7 @@ iPadOS's daily disk-writes report (a report; no action taken).
   looks fine. So the backing scale defaults to 2, and the first time each game runs on an iPhone at 2x
   the launcher sets the game's own render scale to 50% in its `Config.wtf` (once, so a change in the
   game's settings sticks): a sharp UI, with the world's GPU cost near 1x's.
-- Supported from the iPhone 15 Pro (8 GB); only the 16 Pro is tested, and Retail isn't.
+- Supported from the iPhone 15 Pro (8 GB); only the 16 Pro is tested.
 
 ## Heat
 
