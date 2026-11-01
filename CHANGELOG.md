@@ -6,6 +6,8 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-01
+
 ### Added
 
 - Tap a cinematic in the game to skip it: the tap brings up the game's "skip this cinematic?"
