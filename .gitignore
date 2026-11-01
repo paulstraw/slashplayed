@@ -9,3 +9,4 @@ apps/companion/Generated/
 .DS_Store
 config/local.env
 build/
+.claude
