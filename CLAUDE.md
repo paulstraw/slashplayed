@@ -163,6 +163,12 @@ again (over an hour for Retail on the headset). Don't change it casually.
   is a few short paragraphs, not a changelog of every function touched: the diff has that.
   `scripts/hooks/commit-msg` checks the format; turn it on once per checkout with
   `git config core.hooksPath scripts/hooks`.
+- **Changelog.** A PR with a change people using Slashplayed would notice (a feature, a setting, a
+  fix, a new known issue, or one gone) adds its entry under `## [Unreleased]` in `CHANGELOG.md`, in
+  that PR, in the Keep a Changelog section it belongs to (`Added`, `Changed`, `Fixed`, `Removed`, then
+  `Known issues`). Write it for players, not developers: what they can do or what no longer goes wrong,
+  not which file changed. Refactors, tests, CI, and docs-only changes don't get one. Releases are cut
+  from `[Unreleased]`, so a missing entry is a missing release note.
 - Names use the `sp`/`SP_` prefix (`libspAppKit`, `SPEvent`, `SP_SCALE`, `Documents/spconsole.log`).
 
 ## After a game patch
