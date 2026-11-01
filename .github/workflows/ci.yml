@@ -17,9 +17,12 @@ on:
 permissions:
   contents: read
 
+# A newer push to a PR supersedes its older run, so that one is cancelled. A push to main never is: main's
+# runs are the only ones that save the idevice and zsign caches every PR reads (caches are ref-scoped), and
+# a cancelled run saves nothing, so a few merges in a row would leave every PR rebuilding both from source.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # The xcode-27 image (arm64, GA since 2026-10-15) carries Xcode 27.0, 27.1 (the default) and 27.2.
@@ -50,6 +53,21 @@ jobs:
   build-and-test:
     runs-on: xcode-27
     timeout-minutes: 60
+    # What the idevice and zsign caches hold (see Restore idevice), shared by each one's restore and save.
+    env:
+      IDEVICE_CACHE_PATHS: |
+        work/idevice/BUILD.txt
+        work/idevice/include
+        work/idevice/ios
+        work/idevice/xros
+        work/idevice/macos
+      ZSIGN_CACHE_PATHS: |
+        work/zsign/BUILD.txt
+        work/zsign/licenses
+        work/zsign/src/zsign/src
+        work/zsign/ios
+        work/zsign/xros
+        work/zsign/macos
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -76,19 +94,17 @@ jobs:
       # the other. Only what the builds below and the companion read is cached (the archives, headers,
       # native-libs.txt, and license texts; zsign's patched headers, which spzsign.cpp includes), not the
       # clones or cargo's target/, which are most of the size and nothing downstream opens.
+      # Restored here and saved right after the builds (Save idevice, Save zsign) rather than by
+      # actions/cache's end-of-job step, which a later failure or a cancel skips: the builds' minutes are
+      # kept whatever happens to the companion. The paths are listed once, in the job's env.
       # Safe with untrusted PRs: GitHub scopes a cache to the ref that saved it, so a PR's run can read
       # main's caches but main never reads a PR's, and a poisoned archive can't reach main or a release.
       # release.yml uses no cache and always builds both from source: what ships never comes from here.
       - name: Restore idevice
         id: idevice-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            work/idevice/BUILD.txt
-            work/idevice/include
-            work/idevice/ios
-            work/idevice/xros
-            work/idevice/macos
+          path: ${{ env.IDEVICE_CACHE_PATHS }}
           key: idevice-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODE_APP }}-${{ hashFiles('scripts/build-idevice.sh', 'scripts/crate-notices.py', 'scripts/crate-licenses/**') }}
 
       # rustup, pinned and checked like XcodeGen: scripts/build-idevice.sh installs the Rust toolchain it
@@ -118,6 +134,13 @@ jobs:
         if: steps.idevice-cache.outputs.cache-hit != 'true'
         run: scripts/build-idevice.sh ios
 
+      - name: Save idevice
+        if: steps.idevice-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.IDEVICE_CACHE_PATHS }}
+          key: ${{ steps.idevice-cache.outputs.cache-primary-key }}
+
       # The device app's start screen face, Goodmountain, and its license (apps/client/spstart.m): its
       # license forbids changing or re-hosting the file, so it's never committed, and scripts/fetch-font.sh
       # downloads both at a pinned commit and checks their SHA-256. The companion bundles them.
@@ -130,15 +153,9 @@ jobs:
       # idevice (see Restore idevice).
       - name: Restore zsign
         id: zsign-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            work/zsign/BUILD.txt
-            work/zsign/licenses
-            work/zsign/src/zsign/src
-            work/zsign/ios
-            work/zsign/xros
-            work/zsign/macos
+          path: ${{ env.ZSIGN_CACHE_PATHS }}
           key: zsign-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODE_APP }}-${{ hashFiles('scripts/build-zsign.sh', 'scripts/zsign.patch') }}
 
       - name: Build zsign (macOS)
@@ -152,6 +169,13 @@ jobs:
       - name: Build zsign (iPadOS and iOS)
         if: steps.zsign-cache.outputs.cache-hit != 'true'
         run: scripts/build-zsign.sh ios
+
+      - name: Save zsign
+        if: steps.zsign-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.ZSIGN_CACHE_PATHS }}
+          key: ${{ steps.zsign-cache.outputs.cache-primary-key }}
 
       # Separate steps so a failure names its platform. The companion build below rebuilds them into the
       # app (bundle-resources.sh); this is the same build, from the committed shims/generated/.
