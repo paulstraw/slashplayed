@@ -156,4 +156,51 @@ for path in "$ROOT" "$HOME/"; do
     exit 1
   fi
 done
+
+# The notices, checked as the app now has them rather than as the copies above meant them: a file missing,
+# extra, stale, or altered on the way in fails the build, every build (it takes well under a second).
+# bundled-notices.txt names each one and its source, and AcknowledgementsTests holds ClientAssembly's
+# lists (what the companion copies into the device app) to the same file, so the two can't drift. This
+# replaced a test that read the built app, which made CI compile a whole Debug app and test bundle
+# after the build just to compare these files. Every problem is listed before it fails, not just the first.
+NL='
+'
+PROBLEMS=
+problem() { PROBLEMS="$PROBLEMS  $1$NL"; }
+same() {  # <file in the app> <its source>: byte for byte (the font's license forbids any change to it)
+  if [ ! -f "$2" ]; then problem "no ${2#"$ROOT"/} to check ${1#"$RES"/} against"
+  elif ! cmp -s "$1" "$2"; then problem "${1#"$RES"/} isn't ${2#"$ROOT"/} byte for byte (or is missing)"; fi
+}
+names() {  # <dir> <the names it should hold, one per line>: exactly those, nothing more
+  _have=$(ls -A "$1" 2>/dev/null | LC_ALL=C sort)
+  _want=$(printf '%s\n' "$2" | sed '/^$/d' | LC_ALL=C sort)
+  [ "$_have" = "$_want" ] ||
+    problem "${1#"$RES"/} holds [$(echo $_have)], not bundled-notices.txt's [$(echo $_want)]"
+}
+LICENSES= FONTS= ACKS="README.txt${NL}Sparkle.txt"
+while read -r kind name src; do
+  case $kind in
+    ''|'#'*) continue ;;
+    license|font)
+      [ "$kind" = license ] && LICENSES="$LICENSES$NL$name" || FONTS="$FONTS$NL$name"
+      [ "$kind" = license ] && dir=licenses/ || dir=
+      for p in xros ios; do same "$RES/$p/$dir$name" "$ROOT/$(printf %s "$src" | sed "s/{platform}/$p/g")"; done ;;
+    acknowledgement) ACKS="$ACKS$NL$name"; same "$ACK/$name" "$ROOT/$src" ;;
+    *) problem "bundled-notices.txt: unknown kind \"$kind\" (license, font, or acknowledgement)" ;;
+  esac
+done < "$ROOT/apps/companion/bundled-notices.txt"
+[ -n "$LICENSES" ] && [ -n "$FONTS" ] || problem "bundled-notices.txt lists no license or no font"
+for p in xros ios; do
+  names "$RES/$p/licenses" "$LICENSES"
+  for f in $FONTS; do [ -f "$RES/$p/$f" ] || problem "no $p/$f"; done
+done
+names "$ACK" "$ACKS"
+[ -s "$ACK/README.txt" ] || problem "Acknowledgements/README.txt is empty"
+# Sparkle's own license file ends with its dependencies' under this heading: the whole notice, not a stub.
+grep -q "EXTERNAL LICENSES" "$ACK/Sparkle.txt" ||
+  problem "Acknowledgements/Sparkle.txt has no EXTERNAL LICENSES section: not Sparkle's whole notice"
+if [ -n "$PROBLEMS" ]; then
+  printf 'bundle-resources: the notices in %s are wrong:\n%s' "$APP" "$PROBLEMS" >&2
+  exit 1
+fi
 echo "bundled resources into $APP" >&2

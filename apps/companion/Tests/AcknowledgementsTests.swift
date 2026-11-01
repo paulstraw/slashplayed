@@ -8,7 +8,6 @@ import XCTest
 /// platforms (CLAUDE.md's build order; CI does it before the tests).
 final class AcknowledgementsTests: XCTestCase {
     static let idevice = ClientAssemblyTests.repo.appending(path: "work/idevice")
-    static let fonts = ClientAssemblyTests.repo.appending(path: "work/fonts")
     /// The Rust standard library and the crates only it links (rust-std.html beside the notices covers them).
     static let standardLibrary: Set<String> = ["std", "core", "alloc", "compiler_builtins", "__rustc", "addr2line", "gimli",
                                                "object", "rustc_demangle", "miniz_oxide", "adler2", "std_detect",
@@ -85,28 +84,20 @@ final class AcknowledgementsTests: XCTestCase {
         XCTAssertEqual(n.withText, ["md-5 0.10.6", "tokio 1.50.0"])
     }
 
-    /// The built companion (apps/companion/build.sh's, when there is one: CI builds it before the tests) ships
-    /// the notices: Sparkle's from its build phase, idevice's as the companion links it, and the device app's.
-    func testBuiltCompanionShipsTheNotices() throws {
-        let app = ClientAssemblyTests.repo.appending(path: "build/companion/Slashplayed Companion.app")
-        guard FileManager.default.fileExists(atPath: app.path) else { throw XCTSkip("no build/companion app: run apps/companion/build.sh") }
-        let res = app.appending(path: "Contents/Resources")
-        let ack = res.appending(path: "Acknowledgements")
-        let files = Set(try FileManager.default.contentsOfDirectory(atPath: ack.path))
-        XCTAssertEqual(files, ["README.txt", "Sparkle.txt", "idevice.txt", "rust-std.html", "zsign.txt", "openssl.txt",
-                               "idevice-ios.txt", "idevice-visionos.txt", "goodmountain.txt"])
-        XCTAssertTrue(try String(contentsOf: ack.appending(path: "Sparkle.txt"), encoding: .utf8).contains("EXTERNAL LICENSES"))
-        XCTAssertEqual(try Data(contentsOf: ack.appending(path: "idevice.txt")),
-                       try Data(contentsOf: Self.idevice.appending(path: "macos/licenses/idevice.txt")))
-        for p in ["ios", "xros"] {
-            let bundled = Set(try FileManager.default.contentsOfDirectory(atPath: res.appending(path: "\(p)/licenses").path))
-            XCTAssertEqual(bundled, Set(ClientAssembly.licenseFiles), "\(p)/licenses")
-            // The start screen's face, byte for byte as scripts/fetch-font.sh checked it (its license forbids
-            // any change), with that license beside it.
-            XCTAssertEqual(try Data(contentsOf: res.appending(path: "\(p)/\(ClientAssembly.fontFile)")),
-                           try Data(contentsOf: Self.fonts.appending(path: ClientAssembly.fontFile)), "\(p)")
-            XCTAssertEqual(try Data(contentsOf: res.appending(path: "\(p)/licenses/goodmountain.txt")),
-                           try Data(contentsOf: Self.fonts.appending(path: "LICENSE.md")), "\(p)")
+    /// ClientAssembly's lists (the licenses and the font it copies into the device app) are the ones
+    /// bundle-resources.sh bundles. That script checks the built app against apps/companion/bundled-notices.txt
+    /// (every notice, byte for byte its source); this holds ClientAssembly to the same file, with no built
+    /// app needed, so a name added to one side alone fails here.
+    func testClientAssemblyListsTheBundledNotices() throws {
+        let list = try String(contentsOf: ClientAssemblyTests.repo.appending(path: "apps/companion/bundled-notices.txt"), encoding: .utf8)
+        var byKind: [String: [String]] = [:]
+        for line in list.split(separator: "\n") where !line.hasPrefix("#") {
+            let fields = line.split(separator: " ")
+            guard fields.count == 3 else { XCTFail("bundled-notices.txt: not <kind> <name> <source>: \(line)"); continue }
+            byKind[String(fields[0]), default: []].append(String(fields[1]))
         }
+        XCTAssertEqual(byKind["license"]?.sorted(), ClientAssembly.licenseFiles.sorted(), "the device app's licenses/")
+        XCTAssertEqual(byKind["font"], [ClientAssembly.fontFile], "the start screen's face")
+        XCTAssertEqual(Set(byKind.keys), ["license", "font", "acknowledgement"], "bundled-notices.txt's kinds")
     }
 }

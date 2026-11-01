@@ -135,7 +135,7 @@ jobs:
 
   # The companion's build and its tests, as two jobs on two runners so the run takes about as long as
   # the slower of them rather than both in a row: test.sh builds into its own DerivedData (Debug, beside
-  # build.sh's Release) and reads none of build.sh's output, but for one test (below). Both stand on the
+  # build.sh's Release) and reads none of build.sh's output. Both stand on the
   # same pinned Xcode, XcodeGen, idevice, and zsign, from one local action so their caches stay shared.
   companion-build:
     needs: changes
@@ -154,7 +154,7 @@ jobs:
       # The device app's start screen face, Goodmountain, and its license (apps/client/spstart.m): its
       # license forbids changing or re-hosting the file, so it's never committed, and scripts/fetch-font.sh
       # downloads both at a pinned commit and checks their SHA-256. The companion bundles them; the tests
-      # read them only beside the built app (below), so only this job fetches them.
+      # don't read them, so only this job fetches them.
       - name: Fetch the start screen's font
         run: scripts/fetch-font.sh
 
@@ -162,15 +162,12 @@ jobs:
       # bundle-resources.sh runs shims/build.sh <platform> into the app, beside the launcher, the JIT
       # helper, and the icon, and names the platform whose build failed. (Steps of their own here built
       # the same shims a second time.)
+      # The notices the built app ships (Sparkle's, idevice's, zsign's, OpenSSL's, and the font's) are
+      # checked inside this step too: bundle-resources.sh compares its own output, file for file, against
+      # apps/companion/bundled-notices.txt and work/. (A test here once did that, compiling a Debug app
+      # and test bundle on this runner for it; companion-test holds ClientAssembly's lists to that file.)
       - name: Build the companion (unsigned)
         run: apps/companion/build.sh
-
-      # The one test that reads build.sh's output: the notices the built app ships (Sparkle's, idevice's,
-      # zsign's, OpenSSL's, and the font's) against work/ and ClientAssembly's list. It skips when there's
-      # no built app, which there never is in companion-test, so it runs here, after the build, at the
-      # price of compiling the test bundle on this runner too; companion-test skips it by name.
-      - name: Test the built companion's notices
-        run: apps/companion/test.sh -only-testing:SPCompanionTests/AcknowledgementsTests/testBuiltCompanionShipsTheNotices
 
   companion-test:
     needs: changes
@@ -190,4 +187,4 @@ jobs:
       - uses: ./.github/actions/companion-deps
 
       - name: Test the companion
-        run: apps/companion/test.sh -skip-testing:SPCompanionTests/AcknowledgementsTests/testBuiltCompanionShipsTheNotices
+        run: apps/companion/test.sh

@@ -1,0 +1,21 @@
+# The third-party notices (and the font they cover) the built companion ships, one per line:
+#   <kind> <name in the app> <its source, from the repo root; {platform} is xros or ios>
+# Kinds: license (each platform's <platform>/licenses/, the device app's), font (each platform's <platform>/,
+# the start screen's face), acknowledgement (Contents/Resources/Acknowledgements/, the About panel's).
+# One list read by both sides, so they can't drift: bundle-resources.sh checks its own output against it
+# (exactly these files, each byte for byte its source; Acknowledgements/ also has README.txt, which it
+# writes, and Sparkle.txt, which the build copies), and AcknowledgementsTests checks the license and font
+# names against ClientAssembly.licenseFiles and fontFile, what the companion copies into the device app.
+license zsign.txt work/zsign/licenses/zsign.txt
+license openssl.txt work/zsign/licenses/openssl.txt
+license idevice.txt work/idevice/{platform}/licenses/idevice.txt
+license rust-std.html work/idevice/{platform}/licenses/rust-std.html
+license goodmountain.txt work/fonts/LICENSE.md
+font Goodmountain-Regular.otf work/fonts/Goodmountain-Regular.otf
+acknowledgement idevice.txt work/idevice/macos/licenses/idevice.txt
+acknowledgement rust-std.html work/idevice/macos/licenses/rust-std.html
+acknowledgement zsign.txt work/zsign/licenses/zsign.txt
+acknowledgement openssl.txt work/zsign/licenses/openssl.txt
+acknowledgement idevice-ios.txt work/idevice/ios/licenses/idevice.txt
+acknowledgement idevice-visionos.txt work/idevice/xros/licenses/idevice.txt
+acknowledgement goodmountain.txt work/fonts/LICENSE.md
