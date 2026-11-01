@@ -159,9 +159,10 @@ jobs:
         run: scripts/fetch-font.sh
 
       # The shims for both platforms, from the committed shims/generated/, build inside this step:
-      # bundle-resources.sh runs shims/build.sh <platform> into the app, beside the launcher, the JIT
-      # helper, and the icon, and names the platform whose build failed. (Steps of their own here built
-      # the same shims a second time.)
+      # bundle-resources.sh --build runs shims/build.sh <platform>, beside the launcher, the JIT helper,
+      # and the icon, into staging (build/companion/resources) in the background while xcodebuild
+      # compiles the app, names the platform whose build failed, and --install then copies them into the
+      # app. (Steps of their own here built the same shims a second time.)
       # The notices the built app ships (Sparkle's, idevice's, zsign's, OpenSSL's, and the font's) are
       # checked inside this step too: bundle-resources.sh compares its own output, file for file, against
       # apps/companion/bundled-notices.txt and work/. (A test here once did that, compiling a Debug app
