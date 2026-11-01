@@ -640,8 +640,37 @@ static void sp_watch_mouse(GCMouse *m) {
         };
 }
 
+#if !TARGET_OS_VISION
+// ---- finger chords (iPhone and iPad)
+//
+// Fingers that land together press one button: one is left, two right, three middle. Together is within
+// SP_CHORD_MS of the first (50 by default): long enough for fingers that land "at once", which spread over
+// 30-60 ms, and short enough that a left click's wait for the window isn't felt. No button can go down
+// before the window closes (it can't be taken back), so a chord's fingers press nothing until it's
+// resolved: at the window's end, a third finger, or any of them lifting (a quick tap still clicks). The
+// press is the chord's lead finger's, where it landed, and the lead moves the mouse: the leftmost finger
+// on screen, or the rightmost with the start screen's Settings > Touch > Click With "Right Finger"
+// (NSUserDefaults "sp_chord_right_finger", apps/client/spsettings.swift). A finger landing once the chord is
+// resolved, or while another touch is down, is the left button, as any finger was before.
+
+// A real finger: not a pointer's touch, a pencil, or an iPhone's AssistiveTouch left click (sp_raw:).
+static BOOL sp_finger(UITouch *t) {
+    return t.type == UITouchTypeDirect && !(sp_assistive_mouse() && t.majorRadiusTolerance == 0);
+}
+
+static double sp_chord_window(void) {
+    static double w = -1;
+    if (w < 0) w = (getenv("SP_CHORD_MS") ? atof(getenv("SP_CHORD_MS")) : 50) / 1000;
+    return w;
+}
+#endif
+
 @implementation SPInputView {
     NSMutableArray<UITouch *> *_touches;  // the touches down, acting as the mouse
+    NSMutableArray<UITouch *> *_chord;    // fingers landed together, pressing nothing until resolved
+    NSMapTable<UITouch *, NSValue *> *_chord_at;      // where each of them landed
+    NSMapTable<UITouch *, NSNumber *> *_finger_button;  // the button (UIKit's bit) a resolved chord's finger holds
+    NSUInteger _chord_gen;                // bumped on resolve, so a stale window timer does nothing
     UIEventButtonMask _pointer_mask;      // the buttons the pointer touch last reported
     UIEventButtonMask _mask;              // the buttons reported down
     CGPoint _scroll_last;
@@ -654,6 +683,9 @@ static void sp_watch_mouse(GCMouse *m) {
     // separate from the pointer touch that holds the other buttons.
     self.multipleTouchEnabled = YES;
     _touches = [NSMutableArray array];
+    _chord = [NSMutableArray array];
+    _chord_at = [NSMapTable strongToStrongObjectsMapTable];
+    _finger_button = [NSMapTable strongToStrongObjectsMapTable];
     UIHoverGestureRecognizer *hover = [[UIHoverGestureRecognizer alloc] initWithTarget:self action:@selector(hover:)];
     [self addGestureRecognizer:hover];
     // Scroll wheel and two-finger trackpad scrolls, without touches.
@@ -695,6 +727,17 @@ static void sp_watch_mouse(GCMouse *m) {
 - (BOOL)canBecomeFirstResponder {
     return YES;
 }
+
+#if !TARGET_OS_VISION
+// No three-finger editing gestures (swipe to undo or redo, pinch to copy or paste): a three-finger press
+// is the middle button (finger chords). The system's own three-finger gestures are another matter: with
+// Accessibility Zoom on, iOS holds every three-finger touch about half a second before the app gets it
+// (whether it's Zoom's double-tap or drag), then often cancels it, so a middle-button drag lags far
+// behind the fingers. Nothing here can opt out of that; Settings > Touch says so.
+- (UIEditingInteractionConfiguration)editingInteractionConfiguration {
+    return UIEditingInteractionConfigurationNone;
+}
+#endif
 
 #if !TARGET_OS_VISION
 // The black strip beside the game (an iPhone's Dynamic Island side) is outside the client's window, as
@@ -806,7 +849,9 @@ static void sp_watch_mouse(GCMouse *m) {
     UIEventButtonMask mask = 0;
     for (UITouch *t in _touches) {
         if (t.type != UITouchTypeIndirectPointer) {
-            mask |= UIEventButtonMaskPrimary;
+            if ([_chord containsObject:t]) continue;
+            NSNumber *b = [_finger_button objectForKey:t];
+            mask |= b ? b.unsignedIntegerValue : UIEventButtonMaskPrimary;
             continue;
         }
         if ([touches containsObject:t]) _pointer_mask = event.buttonMask ?: UIEventButtonMaskPrimary;
@@ -827,15 +872,74 @@ static void sp_watch_mouse(GCMouse *m) {
             sp_cursor_update();
         }
         [_touches addObject:t];
+#if !TARGET_OS_VISION
+        // A chord starts with a finger that's the only touch, and takes fingers until it's resolved.
+        if (sp_finger(t) && (_chord.count || _touches.count == 1)) {
+            [_chord addObject:t];
+            [_chord_at setObject:[NSValue valueWithCGPoint:[t locationInView:self]] forKey:t];
+            if (_chord.count == 1) {
+                NSUInteger gen = _chord_gen;
+                __weak SPInputView *weak = self;
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(sp_chord_window() * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{
+                    SPInputView *me = weak;
+                    if (me && me->_chord_gen == gen) [me sp_chord_resolve];
+                });
+            }
+        }
+#endif
     }
+#if !TARGET_OS_VISION
+    if (_chord.count >= 3) [self sp_chord_resolve];
+#endif
     [self sp_buttons:[self sp_mask:event touches:touches] at:[self sp_location:[self sp_mover:touches]]];
 }
+
+#if !TARGET_OS_VISION
+// The chord's fingers press their button: down where the lead landed, then a drag to where it is now, so
+// a press that moved in the window still starts where it began.
+- (void)sp_chord_resolve {
+    if (!_chord.count) return;
+    _chord_gen++;
+    NSUInteger n = _chord.count;
+    UIEventButtonMask button = n == 1 ? UIEventButtonMaskPrimary : n == 2 ? UIEventButtonMaskSecondary : 1 << 2;
+    BOOL right = [NSUserDefaults.standardUserDefaults boolForKey:@"sp_chord_right_finger"];
+    UITouch *lead = _chord.firstObject;
+    for (UITouch *t in _chord) {
+        CGFloat x = [_chord_at objectForKey:t].CGPointValue.x, lx = [_chord_at objectForKey:lead].CGPointValue.x;
+        if (right ? x > lx : x < lx) lead = t;
+        [_finger_button setObject:@(button) forKey:t];
+    }
+    CGPoint at = sp_from_uikit([_chord_at objectForKey:lead].CGPointValue);
+    [_chord removeAllObjects];
+    [_chord_at removeAllObjects];
+    [_touches removeObject:lead];
+    [_touches insertObject:lead atIndex:0];  // the mover (sp_mover:)
+    static int logged;
+    if (logged++ < 20)
+        sp_stub_log([NSString stringWithFormat:@"input: %lu-finger chord, button %lu, %s finger",
+                     (unsigned long)n, (unsigned long)button, n == 1 ? "only" : right ? "right" : "left"].UTF8String);
+    [self sp_buttons:[self sp_mask:nil touches:nil] at:at];
+    CGPoint now = [self sp_location:lead];
+    if (now.x != sp_pointer.x || now.y != sp_pointer.y) sp_mouse_moved_to(now, sp_motion_type(), NO);
+}
+#endif
 
 // The touch that moves the mouse. On an iPhone, whichever moved: its pointer touch can stay on after
 // its button is up. Elsewhere the first one down: a second pinch starts wherever the eyes are and a
 // second finger wherever it lands, and moving the mouse there would jump the cursor, or the camera.
+// Fingers on an iPhone are as elsewhere (sp_by_first).
 - (UITouch *)sp_mover:(NSSet<UITouch *> *)touches {
-    return sp_assistive_mouse() ? touches.anyObject : _touches.firstObject;
+    return [self sp_by_first] ? _touches.firstObject : touches.anyObject;
+}
+
+// Whether the first touch down moves the mouse: always but on an iPhone, and there when it's a finger.
+- (BOOL)sp_by_first {
+#if TARGET_OS_VISION
+    return YES;
+#else
+    return !sp_assistive_mouse() || (_touches.count && sp_finger(_touches.firstObject));
+#endif
 }
 
 // Only a pointer touch's movement is in GCMouse's raw movement too; on an iPhone, an AssistiveTouch
@@ -849,12 +953,19 @@ static void sp_watch_mouse(GCMouse *m) {
 - (void)sp_remove:(NSSet<UITouch *> *)touches {
     UITouch *first = _touches.firstObject;
     [_touches removeObjectsInArray:touches.allObjects];
-    if (!sp_assistive_mouse() && _touches.count && _touches.firstObject != first)
+    [_chord removeObjectsInArray:touches.allObjects];
+    for (UITouch *t in touches) {
+        [_chord_at removeObjectForKey:t];
+        [_finger_button removeObjectForKey:t];
+    }
+    if (!_chord.count) _chord_gen++;
+    if ([self sp_by_first] && _touches.count && _touches.firstObject != first)
         sp_pointer = [self sp_location:_touches.firstObject];
 }
 
 - (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     if (!_touches.count || ![touches intersectsSet:[NSSet setWithArray:_touches]]) return;
+    if (_chord.count) return;  // the press, and the moves after it, wait for the chord (sp_chord_resolve)
     UITouch *mover = [self sp_mover:touches];
     CGPoint p = [touches containsObject:mover] ? [self sp_location:mover] : sp_pointer;
     [self sp_buttons:[self sp_mask:event touches:touches] at:p];
@@ -862,6 +973,10 @@ static void sp_watch_mouse(GCMouse *m) {
 }
 
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+#if !TARGET_OS_VISION
+    // A finger lifting in the window resolves the chord first, so a quick tap is a click.
+    if ([touches intersectsSet:[NSSet setWithArray:_chord]]) [self sp_chord_resolve];
+#endif
     CGPoint p = _touches.count > touches.count ? sp_pointer : [self sp_location:touches.anyObject];
     [self sp_remove:touches];
     [self sp_buttons:[self sp_mask:event touches:touches] at:p];

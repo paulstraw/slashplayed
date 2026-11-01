@@ -787,6 +787,11 @@ and scroll events and `NSTextInputClient`), with no event taps. `spevent.m`:
   right click; hover becomes mouse moves; a scroll pan becomes precise `scrollWheel:`. Each change in
   a pointer touch's button mask is a press or release, and GameController's `GCMouse` reports buttons
   too, because UIKit's mask misses a button released while another is held (both-button autorun).
+- **Finger chords (iPhone and iPad).** Fingers that land within `SP_CHORD_MS` (50 ms) of each other
+  press one button: one left, two right, three middle, held while they're down, so a two-finger drag is
+  mouselook. No button goes down until the window closes (a press can't be taken back), so a left click
+  waits out the window. The press is at the leftmost finger, or the rightmost with Settings > Touch.
+  With Accessibility Zoom on, iOS holds three-finger touches about half a second before the app gets them.
 - **Mouselook.** The client hides the cursor, dissociates it from the mouse and reads drag deltas. The
   CoreGraphics shim's cursor calls go to the AppKit shim; while dissociated, deltas come from
   `GCMouse`'s raw movement and the position stays put. iPadOS honours pointer lock, so it's on by

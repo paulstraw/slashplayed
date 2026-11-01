@@ -31,6 +31,16 @@ private func setScale(_ scale: Int) {
     say("display scale: " + (scale == 1 || scale == 2 ? "\(scale)x" : "Automatic"))
 }
 
+// Touch > Click With's key, read by the AppKit shim (spevent.m's sp_chord_resolve, which has the same
+// literal): whether a two- or three-finger press clicks where the rightmost finger is, not the leftmost.
+private let chordRightFingerKey = "sp_chord_right_finger"
+
+private func setChordRightFinger(_ right: Bool) {
+    if right { UserDefaults.standard.set(true, forKey: chordRightFingerKey) }
+    else { UserDefaults.standard.removeObject(forKey: chordRightFingerKey) }
+    say("touch: click with " + (right ? "right" : "left") + " finger")
+}
+
 // "Mar 14, 2027", in the person's locale.
 private func mediumDate(_ date: Date?) -> String {
     guard let date else { return "Unknown" }
@@ -77,6 +87,7 @@ struct Snapshot {
     var saved = false
     var identity: SPIdentityReading?
     var scale = 0
+    var chordRightFinger = false
     var games: [Game] = []
     var version = "Unknown"
 }
@@ -113,6 +124,7 @@ final class Settings: ObservableObject {
         s.identity = sp_identity_reading()
         let scale = UserDefaults.standard.integer(forKey: scaleKey)
         s.scale = scale == 1 || scale == 2 ? scale : 0
+        s.chordRightFinger = UserDefaults.standard.bool(forKey: chordRightFingerKey)
         s.games = flavors.map { flavor in
             var updated: ObjCBool = false
             let version = sp_game_build(flavor, &updated)?["Version"]
@@ -257,6 +269,9 @@ struct SettingsView: View {
                     battleNet
                     gameUpdates
                     display
+                    #if !os(visionOS)
+                    touch
+                    #endif
                     ForEach(settings.now.games, id: \.flavor) { game($0) }
                     about
                 }
@@ -382,6 +397,28 @@ struct SettingsView: View {
             Text("This device only. Automatic is 1x on Vision Pro and iPad, and 2x on iPhone. On an iPhone at 1x, set the game’s render scale to 100% in its graphics settings.")
         }
     }
+
+    #if !os(visionOS)
+    // Finger chords (spevent.m): two fingers right-click, three middle-click, at one finger's spot.
+    private var touch: some View {
+        Section {
+            LabeledContent("Click With") {
+                Picker("Click With", selection: Binding(get: { settings.now.chordRightFinger },
+                                                        set: { setChordRightFinger($0); settings.reload() })) {
+                    Text("Left Finger").tag(false)
+                    Text("Right Finger").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+            }
+            .id("touch")
+        } header: {
+            Text("Touch")
+        } footer: {
+            Text("Press with two fingers together to right-click, or three to middle-click. The click is where the left or right finger is. With Accessibility Zoom on, three-finger presses lag.")
+        }
+    }
+    #endif
 
     private func game(_ g: Snapshot.Game) -> some View {
         Section(g.name) {
