@@ -29,19 +29,46 @@ for f in "$FONT/Goodmountain-Regular.otf" "$FONT/LICENSE.md"; do
 done
 
 for p in xros ios; do
-  sh "$ROOT/shims/build.sh" $p
-  rm -rf "${RES:?}/$p" && mkdir -p "$RES/$p"
-  cp "$ROOT/build/$p"/*.dylib "$ROOT/build/$p/exports.json" "$ROOT/shims/generated/rewrite-map.txt" "$RES/$p/"
-  SP_PLATFORM=$p sh "$ROOT/apps/client/build-launcher.sh" "$RES/$p/slashplayed"
-  mkdir -p "$RES/$p/licenses"
+  rm -rf "${RES:?}/$p" && mkdir -p "$RES/$p/licenses"
   cp "$ROOT/work/zsign/licenses/zsign.txt" "$ROOT/work/zsign/licenses/openssl.txt" "$RES/$p/licenses/"
   cp "$ROOT/work/idevice/$p/licenses/idevice.txt" "$ROOT/work/idevice/$p/licenses/rust-std.html" "$RES/$p/licenses/"
   cp "$FONT/LICENSE.md" "$RES/$p/licenses/goodmountain.txt"
   cp "$FONT/Goodmountain-Regular.otf" "$RES/$p/"
-  SP_PLATFORM=$p sh "$ROOT/apps/client/build-helper.sh" "$RES/$p/SPJitHelper"
-  SP_PLATFORM=$p sh "$ROOT/apps/client/build-icons.sh" "$RES/$p/icon"
-  [ "$(ls "$RES/$p"/*.dylib | wc -l)" -gt 0 ] || { echo "no shim dylibs for $p in build/$p" >&2; exit 1; }
 done
+
+# The builds, per platform: the shims, the launcher, the JIT helper, and the icon. None reads another's
+# output (each writes its own file or folder: build/<platform>/, mktemp scratch), and each is a chain of
+# single-threaded compiler runs, so one after another they left most cores idle: about 55s of a CI run
+# on the 3-core runner. They run as background jobs instead, each into its own log, and the logs print
+# whole, in this order, once all are done, so the output reads as it did serially and a failure's
+# messages aren't interleaved with the others'. A job's subshell keeps set -e (it isn't on the left of
+# an && or ||, where the shell would ignore it), so its first failing command ends it before the .ok.
+JOBS=$(mktemp -d -t sp-bundle)
+trap 'rm -rf "$JOBS"' EXIT
+NAMES=
+job() {
+  _name=$1; shift
+  NAMES="$NAMES $_name"
+  ( "$@"; touch "$JOBS/$_name.ok" ) >"$JOBS/$_name.log" 2>&1 &
+}
+shims() {
+  sh "$ROOT/shims/build.sh" "$1"
+  cp "$ROOT/build/$1"/*.dylib "$ROOT/build/$1/exports.json" "$ROOT/shims/generated/rewrite-map.txt" "$RES/$1/"
+  [ "$(ls "$RES/$1"/*.dylib | wc -l)" -gt 0 ] || { echo "no shim dylibs for $1 in build/$1" >&2; exit 1; }
+}
+for p in xros ios; do
+  job "shims-$p" shims $p
+  job "launcher-$p" env SP_PLATFORM=$p sh "$ROOT/apps/client/build-launcher.sh" "$RES/$p/slashplayed"
+  job "helper-$p" env SP_PLATFORM=$p sh "$ROOT/apps/client/build-helper.sh" "$RES/$p/SPJitHelper"
+  job "icon-$p" env SP_PLATFORM=$p sh "$ROOT/apps/client/build-icons.sh" "$RES/$p/icon"
+done
+wait
+FAILED=
+for name in $NAMES; do
+  cat "$JOBS/$name.log" >&2
+  [ -f "$JOBS/$name.ok" ] || FAILED="$FAILED $name"
+done
+[ -z "$FAILED" ] || { echo "bundle-resources: these builds failed (their output is above):$FAILED" >&2; exit 1; }
 
 rm -rf "$RES/client" && mkdir -p "$RES/client/helper"
 cp "$ROOT/apps/client/Info.plist" "$ROOT/apps/client/entitlements.plist" "$ROOT/apps/client/flavors.plist" "$RES/client/"

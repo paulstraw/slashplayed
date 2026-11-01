@@ -177,14 +177,10 @@ jobs:
           path: ${{ env.ZSIGN_CACHE_PATHS }}
           key: ${{ steps.zsign-cache.outputs.cache-primary-key }}
 
-      # Separate steps so a failure names its platform. The companion build below rebuilds them into the
-      # app (bundle-resources.sh); this is the same build, from the committed shims/generated/.
-      - name: Build shims (visionOS)
-        run: shims/build.sh xros
-
-      - name: Build shims (iPadOS and iOS)
-        run: shims/build.sh ios
-
+      # The shims for both platforms, from the committed shims/generated/, build inside this step:
+      # bundle-resources.sh runs shims/build.sh <platform> into the app, beside the launcher, the JIT
+      # helper, and the icon, and names the platform whose build failed. (Steps of their own here built
+      # the same shims a second time.)
       - name: Build the companion (unsigned)
         run: apps/companion/build.sh
 
