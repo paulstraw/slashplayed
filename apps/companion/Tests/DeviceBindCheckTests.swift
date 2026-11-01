@@ -2,9 +2,9 @@ import XCTest
 
 /// The launcher's bind check (apps/client/spbind.m, which reads a client's imports from its Mach-O, as the
 /// device has no dyld_info) against the companion's (BindCheck, which runs dyld_info): the same imports
-/// and the same verdict. On loadertest fixtures (ClientAssemblyTests.buildFixture) linked both ways the
-/// linker writes fixups: bind opcodes (the clients') and chained fixups (today's default). No Blizzard file
-/// is read, except by the opt-in comparison at the end.
+/// and the same verdict. On loadertest fixtures (Loadertest.link) linked both ways the linker writes
+/// fixups: bind opcodes (the clients') and chained fixups (today's default). No Blizzard file is read,
+/// except by the opt-in comparison at the end.
 final class DeviceBindCheckTests: XCTestCase {
     static let scratch = FileManager.default.temporaryDirectory.appending(path: "sp-device-bind-tests-\(getpid())")
     /// The same source linked with bind opcodes (macOS 11, -no_fixup_chains) and with chained fixups.
@@ -26,14 +26,14 @@ final class DeviceBindCheckTests: XCTestCase {
     override class func setUp() {
         super.setUp()
         try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
-        try! buildThin(opcodes, extra: weak, flags: ["-mmacosx-version-min=11.0", "-Wl,-no_fixup_chains"])
-        try! buildThin(chained, extra: weak, flags: ["-mmacosx-version-min=13.0", "-Wl,-fixup_chains"])
+        try! buildThin(opcodes, extra: weak, minOS: "11.0", linkFlags: ["-Wl,-no_fixup_chains"])
+        try! buildThin(chained, extra: weak, minOS: "13.0", linkFlags: ["-Wl,-fixup_chains"])
         try! buildThin(patched, extra: weak + """
 
             #include <stdbool.h>
             extern bool NSApplicationLoad(void);
             bool sp_patch_import(void) { return NSApplicationLoad(); }
-            """, flags: ["-mmacosx-version-min=11.0", "-Wl,-no_fixup_chains"])
+            """, minOS: "11.0", linkFlags: ["-Wl,-no_fixup_chains"])
         try! ClientAssemblyTests.writeManifest(for: universal(opcodes), to: manifest)
         try! ClientAssemblyTests.writeManifest(for: universal(chained), to: chainedManifest)
     }
@@ -46,22 +46,16 @@ final class DeviceBindCheckTests: XCTestCase {
     /// The universal file a thin fixture came from (writeManifest takes one).
     static func universal(_ thin: URL) -> URL { thin.appendingPathExtension("universal") }
 
-    /// A thin arm64 loadertest fixture, linked with `flags` (as a universal file, then thinned, as a client is).
-    static func buildThin(_ output: URL, extra: String, flags: [String]) throws {
-        let extraFile = scratch.appending(path: "\(output.lastPathComponent)-extra.c")
-        try """
+    /// A thin arm64 loadertest fixture for `minOS`, linked with `linkFlags` (as a universal file, then thinned,
+    /// as a client is), from the main.m object the other fixtures for `minOS` link.
+    static func buildThin(_ output: URL, extra: String, minOS: String, linkFlags: [String]) throws {
+        try Loadertest.link(universal(output), extra: """
             #include <stddef.h>
             const void *const sp_refs[] = {0};
             const char *const sp_ref_names[] = {0};
             const size_t sp_ref_count = 0;
             \(extra)
-            """.write(to: extraFile, atomically: true, encoding: .utf8)
-        let frameworks = try ClientAssemblyTests.rewriteMap.compactMap {
-            $0.from.firstMatch(of: #/Frameworks/(\w+)\.framework/#).map { String($0.1) }
-        }
-        try ClientAssemblyTests.run(["clang", "-arch", "arm64", "-arch", "x86_64", "-fobjc-arc", "-O1", "-w"] + flags
-            + [ClientAssemblyTests.repo.appending(path: "research/loadertest/main.m").path, extraFile.path,
-               "-lc++abi", "-lbsm", "-lc++", "-o", universal(output).path] + frameworks.flatMap { ["-framework", $0] })
+            """, minOS: minOS, linkFlags: linkFlags)
         try ClientAssemblyTests.run(["lipo", "-thin", "arm64", universal(output).path, "-output", output.path])
     }
 

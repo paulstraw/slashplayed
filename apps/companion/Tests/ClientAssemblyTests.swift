@@ -1,47 +1,23 @@
 import Security
 import XCTest
 
-/// ClientAssembly's steps on a fixture built here from research/loadertest (the toy with the client's
-/// import shape: an AppKit program linking the same frameworks), universal like the Mac clients and
-/// never committed as a binary. No Blizzard file is read, except by the opt-in comparison at the end.
+/// ClientAssembly's steps on the client-shaped loadertest fixture (Loadertest.client). No Blizzard file is
+/// read, except by the opt-in comparison at the end.
 final class ClientAssemblyTests: XCTestCase {
     static let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "../../..").standardizedFileURL
     static let scratch = FileManager.default.temporaryDirectory.appending(path: "sp-client-assembly-tests-\(getpid())")
-    static var fixture: URL { scratch.appending(path: "sploader-macos") }
+    static var fixture: URL { try! Loadertest.client }
     static var rewriteMap: [(from: String, to: String)] {
         get throws {
             try ClientAssembly.rewriteMap(String(contentsOf: repo.appending(path: "shims/generated/rewrite-map.txt"), encoding: .utf8))
         }
     }
 
-    /// Builds the fixture once.
+    /// Builds the fixture (once per test process: BindCheckTests and DeviceAssemblyTests share it).
     override class func setUp() {
         super.setUp()
         try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
-        try! buildFixture(fixture)
-    }
-
-    /// Builds a loadertest fixture at `output`: loadertest's main.m with an empty import table in place of
-    /// the generated refs.c (which needs a client), a thread-local zero-fill section like the client's
-    /// __thread_bss, `extra` C source added, and every framework the rewrite map knows linked, room left
-    /// for longer install names.
-    static func buildFixture(_ output: URL, extra extraSource: String = "") throws {
-        let extra = output.deletingLastPathComponent().appending(path: "\(output.lastPathComponent)-extra.c")
-        try """
-            #include <stddef.h>
-            const void *const sp_refs[] = {0};
-            const char *const sp_ref_names[] = {0};
-            const size_t sp_ref_count = 0;
-            __thread char sp_tls_zerofill[4096];
-            char *sp_tls_use(void) { return sp_tls_zerofill; }
-            \(extraSource)
-            """.write(to: extra, atomically: true, encoding: .utf8)
-        let frameworks = try rewriteMap.compactMap { $0.from.firstMatch(of: #/Frameworks/(\w+)\.framework/#).map { String($0.1) } }
-        let args = ["clang", "-arch", "arm64", "-arch", "x86_64", "-mmacosx-version-min=11.0", "-fobjc-arc", "-O1",
-                    "-w", "-headerpad_max_install_names", repo.appending(path: "research/loadertest/main.m").path,
-                    extra.path, "-lc++abi", "-lbsm", "-lc++", "-o", output.path]
-            + frameworks.flatMap { ["-framework", $0] }
-        try TestShell.check(ClientAssembly.xcrun, args, mergingStderr: true)
+        _ = fixture
     }
 
     /// Stand-ins for the app's licenses/ (bundle-resources.sh copies scripts/build-zsign.sh's, build-idevice.sh's,

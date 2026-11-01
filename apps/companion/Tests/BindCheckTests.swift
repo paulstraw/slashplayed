@@ -1,25 +1,26 @@
 import XCTest
 
-/// The bind check on loadertest fixtures (ClientAssemblyTests.buildFixture): one shaped like a client, and
-/// the same with one extra import (AppKit's NSApplicationLoad, which loadertest doesn't use) standing in
-/// for a game patch that adds an import the shims don't provide. The manifest is made from the first
-/// fixture's own imports. No Blizzard file is read, except by the opt-in check at the end.
+/// The bind check on loadertest fixtures: one shaped like a client (Loadertest.client), and the same with
+/// one extra import (AppKit's NSApplicationLoad, which loadertest doesn't use) standing in for a game patch
+/// that adds an import the shims don't provide. The manifest is made from the first fixture's own imports.
+/// No Blizzard file is read, except by the opt-in check at the end.
 final class BindCheckTests: XCTestCase {
     static let scratch = FileManager.default.temporaryDirectory.appending(path: "sp-bind-check-tests-\(getpid())")
-    static var fixture: URL { scratch.appending(path: "sploader-macos") }
-    static var patched: URL { scratch.appending(path: "sploader-macos-patched") }
+    static var fixture: URL { try! Loadertest.client }
+    static var patched: URL {
+        try! Loadertest.fixture(named: "sploader-macos-patched", extra: """
+            #include <stdbool.h>
+            extern bool NSApplicationLoad(void);
+            bool sp_patch_import(void) { return NSApplicationLoad(); }
+            """)
+    }
     static var manifest: URL { scratch.appending(path: "exports.json") }
     static let extraImport = BindCheck.Unresolved(library: "AppKit", symbol: "_NSApplicationLoad")
 
     override class func setUp() {
         super.setUp()
         try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
-        try! ClientAssemblyTests.buildFixture(fixture)
-        try! ClientAssemblyTests.buildFixture(patched, extra: """
-            #include <stdbool.h>
-            extern bool NSApplicationLoad(void);
-            bool sp_patch_import(void) { return NSApplicationLoad(); }
-            """)
+        _ = patched
         try! ClientAssemblyTests.writeManifest(for: fixture, to: manifest)
     }
 

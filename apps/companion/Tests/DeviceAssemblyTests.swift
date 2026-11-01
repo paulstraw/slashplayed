@@ -3,7 +3,7 @@ import XCTest
 
 /// The launcher's assembly (apps/client/spassemble.m, which makes the client image on the device from a
 /// newer build's slice) against the companion's (ClientAssembly.prepareClient, which runs install_name_tool
-/// and vtool): the same bytes. On loadertest fixtures (ClientAssemblyTests.buildFixture) signed as a shipped
+/// and vtool): the same bytes. On the client-shaped loadertest fixture (Loadertest.client) signed as a shipped
 /// client is (codesign, not only the linker) and unsigned. No Blizzard file is read, except by the opt-in
 /// comparisons at the end.
 final class DeviceAssemblyTests: XCTestCase {
@@ -22,8 +22,10 @@ final class DeviceAssemblyTests: XCTestCase {
     override class func setUp() {
         super.setUp()
         try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
-        let universal = scratch.appending(path: "fixture")
-        try! ClientAssemblyTests.buildFixture(universal)
+        // The fixture ClientAssemblyTests and BindCheckTests read. ld takes its UUID and its signature's
+        // identifier from its file name, and neither matters here: both assemblies get the same slice, and
+        // the linker-signed one is refused for being ld's whatever it's called.
+        let universal = try! Loadertest.client
         try! ClientAssemblyTests.run(["lipo", "-thin", "arm64", universal.path, "-output", linkerSigned.path])
         try! ClientAssemblyTests.run(["lipo", "-thin", "arm64", universal.path, "-output", signed.path])
         try! codesign(["-f", "-s", "-", signed.path])
