@@ -37,6 +37,21 @@ env:
   # static.rust-lang.org publishes next to the binary (rustup-init.sha256).
   RUSTUP_VERSION: 1.29.2
   RUSTUP_SHA256: f7c7e11eb2e07f006e532a8aaac77b32f4527d305ac386c0c633ca6133d35ca9
+  # What the idevice and zsign caches hold (.github/actions/companion-deps, Restore idevice), shared by
+  # each one's restore and save in both companion jobs.
+  IDEVICE_CACHE_PATHS: |
+    work/idevice/BUILD.txt
+    work/idevice/include
+    work/idevice/ios
+    work/idevice/xros
+    work/idevice/macos
+  ZSIGN_CACHE_PATHS: |
+    work/zsign/BUILD.txt
+    work/zsign/licenses
+    work/zsign/src/zsign/src
+    work/zsign/ios
+    work/zsign/xros
+    work/zsign/macos
 
 jobs:
   # Greps only, so a scrub or hardcoding slip fails in seconds rather than after the builds.
@@ -50,132 +65,26 @@ jobs:
       - name: Scrub and no-hardcoding checks
         run: scripts/check-tree.sh
 
-  build-and-test:
+  # The companion's build and its tests, as two jobs on two runners so the run takes about as long as
+  # the slower of them rather than both in a row: test.sh builds into its own DerivedData (Debug, beside
+  # build.sh's Release) and reads none of build.sh's output, but for one test (below). Both stand on the
+  # same pinned Xcode, XcodeGen, idevice, and zsign, from one local action so their caches stay shared.
+  companion-build:
     runs-on: xcode-27
     timeout-minutes: 60
-    # What the idevice and zsign caches hold (see Restore idevice), shared by each one's restore and save.
-    env:
-      IDEVICE_CACHE_PATHS: |
-        work/idevice/BUILD.txt
-        work/idevice/include
-        work/idevice/ios
-        work/idevice/xros
-        work/idevice/macos
-      ZSIGN_CACHE_PATHS: |
-        work/zsign/BUILD.txt
-        work/zsign/licenses
-        work/zsign/src/zsign/src
-        work/zsign/ios
-        work/zsign/xros
-        work/zsign/macos
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Select Xcode
-        run: |
-          sudo xcode-select -s "$XCODE_APP"
-          xcodebuild -version
-          xcodebuild -showsdks | grep -E 'xros|iphoneos'
-
-      - name: Install XcodeGen
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" \
-            "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
-          echo "$XCODEGEN_SHA256  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
-          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
-
-      # idevice and zsign from source are about five of this job's minutes, and their outputs change only
-      # when what builds them does, so each is cached on exactly that: the runner, the Xcode (clang, lipo,
-      # strip, the SDKs), and every file its script reads. The pins (upstream commits, Rust 1.99.0, OpenSSL)
-      # live in the scripts, so re-pinning changes the key. Two caches, so a change to one doesn't rebuild
-      # the other. Only what the builds below and the companion read is cached (the archives, headers,
-      # native-libs.txt, and license texts; zsign's patched headers, which spzsign.cpp includes), not the
-      # clones or cargo's target/, which are most of the size and nothing downstream opens.
-      # Restored here and saved right after the builds (Save idevice, Save zsign) rather than by
-      # actions/cache's end-of-job step, which a later failure or a cancel skips: the builds' minutes are
-      # kept whatever happens to the companion. The paths are listed once, in the job's env.
-      # Safe with untrusted PRs: GitHub scopes a cache to the ref that saved it, so a PR's run can read
-      # main's caches but main never reads a PR's, and a poisoned archive can't reach main or a release.
-      # release.yml uses no cache and always builds both from source: what ships never comes from here.
-      - name: Restore idevice
-        id: idevice-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ env.IDEVICE_CACHE_PATHS }}
-          key: idevice-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODE_APP }}-${{ hashFiles('scripts/build-idevice.sh', 'scripts/crate-notices.py', 'scripts/crate-licenses/**') }}
-
-      # rustup, pinned and checked like XcodeGen: scripts/build-idevice.sh installs the Rust toolchain it
-      # pins (1.99.0) and the targets through it. Nothing else needs Rust, so a cache hit skips it.
-      - name: Install rustup
-        if: steps.idevice-cache.outputs.cache-hit != 'true'
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/rustup-init" \
-            "https://static.rust-lang.org/rustup/archive/$RUSTUP_VERSION/aarch64-apple-darwin/rustup-init"
-          echo "$RUSTUP_SHA256  $RUNNER_TEMP/rustup-init" | shasum -a 256 -c -
-          chmod +x "$RUNNER_TEMP/rustup-init"
-          "$RUNNER_TEMP/rustup-init" -y --profile minimal --default-toolchain none --no-modify-path
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-
-      # The companion links idevice (Sources/Pairing.swift), and the device app's JIT helper, which the
-      # companion bundles (apps/client/build-helper.sh), links it for each device platform: built from
-      # source at the pinned commit, a step per platform so a failure names it.
-      - name: Build idevice (macOS)
-        if: steps.idevice-cache.outputs.cache-hit != 'true'
-        run: scripts/build-idevice.sh macos
-
-      - name: Build idevice (visionOS)
-        if: steps.idevice-cache.outputs.cache-hit != 'true'
-        run: scripts/build-idevice.sh xros
-
-      - name: Build idevice (iPadOS and iOS)
-        if: steps.idevice-cache.outputs.cache-hit != 'true'
-        run: scripts/build-idevice.sh ios
-
-      - name: Save idevice
-        if: steps.idevice-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ env.IDEVICE_CACHE_PATHS }}
-          key: ${{ steps.idevice-cache.outputs.cache-primary-key }}
+      - uses: ./.github/actions/companion-deps
 
       # The device app's start screen face, Goodmountain, and its license (apps/client/spstart.m): its
       # license forbids changing or re-hosting the file, so it's never committed, and scripts/fetch-font.sh
-      # downloads both at a pinned commit and checks their SHA-256. The companion bundles them.
+      # downloads both at a pinned commit and checks their SHA-256. The companion bundles them; the tests
+      # read them only beside the built app (below), so only this job fetches them.
       - name: Fetch the start screen's font
         run: scripts/fetch-font.sh
-
-      # The launcher's on-device signer (apps/client/spsign.m) links zsign and OpenSSL, and the companion's
-      # tests run it on the Mac: built from source by scripts/build-zsign.sh, each at a pinned commit that
-      # the script checks after cloning (a moved tag fails the build), a step per platform. Cached like
-      # idevice (see Restore idevice).
-      - name: Restore zsign
-        id: zsign-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ env.ZSIGN_CACHE_PATHS }}
-          key: zsign-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODE_APP }}-${{ hashFiles('scripts/build-zsign.sh', 'scripts/zsign.patch') }}
-
-      - name: Build zsign (macOS)
-        if: steps.zsign-cache.outputs.cache-hit != 'true'
-        run: scripts/build-zsign.sh macos
-
-      - name: Build zsign (visionOS)
-        if: steps.zsign-cache.outputs.cache-hit != 'true'
-        run: scripts/build-zsign.sh xros
-
-      - name: Build zsign (iPadOS and iOS)
-        if: steps.zsign-cache.outputs.cache-hit != 'true'
-        run: scripts/build-zsign.sh ios
-
-      - name: Save zsign
-        if: steps.zsign-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ env.ZSIGN_CACHE_PATHS }}
-          key: ${{ steps.zsign-cache.outputs.cache-primary-key }}
 
       # The shims for both platforms, from the committed shims/generated/, build inside this step:
       # bundle-resources.sh runs shims/build.sh <platform> into the app, beside the launcher, the JIT
@@ -184,5 +93,26 @@ jobs:
       - name: Build the companion (unsigned)
         run: apps/companion/build.sh
 
+      # The one test that reads build.sh's output: the notices the built app ships (Sparkle's, idevice's,
+      # zsign's, OpenSSL's, and the font's) against work/ and ClientAssembly's list. It skips when there's
+      # no built app, which there never is in companion-test, so it runs here, after the build, at the
+      # price of compiling the test bundle on this runner too; companion-test skips it by name.
+      - name: Test the built companion's notices
+        run: apps/companion/test.sh -only-testing:SPCompanionTests/AcknowledgementsTests/testBuiltCompanionShipsTheNotices
+
+  companion-test:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # idevice for every platform (test.sh's idevice-config.sh links the macOS one; AcknowledgementsTests
+      # checks all three archives' notices) and zsign for macOS (DeviceSigningTests runs spsign.m on the
+      # Mac). No font and no shims: the fixtures are built from research/loadertest and the committed
+      # shims/generated/rewrite-map.txt, and the tests that read build/<platform>/exports.json are opt-in.
+      - uses: ./.github/actions/companion-deps
+
       - name: Test the companion
-        run: apps/companion/test.sh
+        run: apps/companion/test.sh -skip-testing:SPCompanionTests/AcknowledgementsTests/testBuiltCompanionShipsTheNotices
