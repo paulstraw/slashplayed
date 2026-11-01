@@ -8,8 +8,9 @@ works is `docs/architecture.md`. Read that before changing the pipeline, the shi
 Development continues in a clone of the public repo, `paulstraw/slashplayed`, on branches off
 `main`. Its history starts at one "Initial public release" commit; the private archive it was
 exported from is history only and takes no new work. Changes go to the public repo as pull requests,
-where CI runs. Agents still never merge PRs, tag, create releases, or touch settings, environments,
-secrets, or Pages (see Releasing): those are the owner's.
+where CI runs. Agents don't merge PRs, tag, create or edit releases, or touch settings, environments,
+secrets, or Pages on their own (see Releasing): those are the owner's, and an agent does one only when
+the owner asks for it.
 
 ## Layout
 
@@ -204,5 +205,6 @@ again (over an hour for Retail on the headset). Don't change it casually.
   A signed local build (release candidates: `SP_RELEASE_VERSION=X.Y.Z-rc1`) uses `NOTARY_PROFILE` and
   the Sparkle key in the login keychain. `scripts/release/update-test.sh` tests a Sparkle update
   end to end on 127.0.0.1.
-- Agents never tag, create releases or touch environments, secrets or Pages settings: those are the
-  owner's.
+- Agents don't tag, create or edit releases, or touch environments, secrets, or Pages settings on
+  their own: those are the owner's. When the owner asks for one (say, fixing a published release's
+  notes), do it.
