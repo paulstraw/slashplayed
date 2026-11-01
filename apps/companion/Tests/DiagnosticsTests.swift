@@ -62,12 +62,7 @@ final class DiagnosticsTests: XCTestCase {
 
         // Unzipped, no byte of the token or the path is anywhere, as is or escaped or base64.
         let out = dir.appending(path: "unzipped")
-        let ditto = Process()
-        ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        ditto.arguments = ["-x", "-k", zip.path, out.path]
-        try ditto.run()
-        ditto.waitUntilExit()
-        XCTAssertEqual(ditto.terminationStatus, 0)
+        XCTAssertEqual(try TestShell.run("/usr/bin/ditto", ["-x", "-k", zip.path, out.path]).status, 0)
         let root = out.appending(path: "Slashplayed-Diagnostics-test")
         let files = Diagnostics.regularFiles(in: root, recursive: true).map(\.path)
         XCTAssertEqual(files, ["companion/companion.txt", "companion/console.txt",
@@ -123,12 +118,7 @@ final class DiagnosticsTests: XCTestCase {
             secrets: [], deviceIDs: ids, excluded: [], output: zip))
 
         let out = dir.appending(path: "unzipped")
-        let ditto = Process()
-        ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        ditto.arguments = ["-x", "-k", zip.path, out.path]
-        try ditto.run()
-        ditto.waitUntilExit()
-        XCTAssertEqual(ditto.terminationStatus, 0)
+        XCTAssertEqual(try TestShell.run("/usr/bin/ditto", ["-x", "-k", zip.path, out.path]).status, 0)
         let root = out.appending(path: "Slashplayed-Diagnostics-ids")
         let files = Diagnostics.regularFiles(in: root, recursive: true).map(\.path)
         XCTAssertEqual(files, ["companion/build.txt", "companion/companion.txt", "device/summary.txt",
@@ -188,12 +178,7 @@ final class DiagnosticsTests: XCTestCase {
             summary: "Steps:\n  done: \(phone) connected", secrets: [], personal: details, excluded: [], output: zip))
 
         let out = dir.appending(path: "unzipped")
-        let ditto = Process()
-        ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        ditto.arguments = ["-x", "-k", zip.path, out.path]
-        try ditto.run()
-        ditto.waitUntilExit()
-        XCTAssertEqual(ditto.terminationStatus, 0)
+        XCTAssertEqual(try TestShell.run("/usr/bin/ditto", ["-x", "-k", zip.path, out.path]).status, 0)
         let root = out.appending(path: "Slashplayed-Diagnostics-personal")
         let files = Diagnostics.regularFiles(in: root, recursive: true).map(\.path)
         // "Jo’s" and "Jo's" alone are too short to be names: only whole device and Mac names go.

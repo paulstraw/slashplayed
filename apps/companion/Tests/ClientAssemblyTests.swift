@@ -41,9 +41,7 @@ final class ClientAssemblyTests: XCTestCase {
                     "-w", "-headerpad_max_install_names", repo.appending(path: "research/loadertest/main.m").path,
                     extra.path, "-lc++abi", "-lbsm", "-lc++", "-o", output.path]
             + frameworks.flatMap { ["-framework", $0] }
-        let p = try Process.run(URL(fileURLWithPath: ClientAssembly.xcrun), arguments: args)
-        p.waitUntilExit()
-        guard p.terminationStatus == 0 else { throw Failure("building the loadertest fixture failed") }
+        try TestShell.check(ClientAssembly.xcrun, args, mergingStderr: true)
     }
 
     /// Stand-ins for the app's licenses/ (bundle-resources.sh copies scripts/build-zsign.sh's, build-idevice.sh's,
@@ -90,15 +88,9 @@ final class ClientAssemblyTests: XCTestCase {
 
     @discardableResult
     static func run(_ args: [String]) throws -> String {
-        let pipe = Pipe(), p = Process()
-        p.executableURL = URL(fileURLWithPath: ClientAssembly.xcrun)
-        p.arguments = args
-        p.standardOutput = pipe
-        try p.run()
-        let out = pipe.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        guard p.terminationStatus == 0 else { throw Failure("xcrun \(args.joined(separator: " ")) failed") }
-        return String(decoding: out, as: UTF8.self)
+        let result = try TestShell.run(ClientAssembly.xcrun, args)
+        guard result.status == 0 else { throw Failure("xcrun \(args.joined(separator: " ")) failed") }
+        return result.text
     }
 
     override class func tearDown() {
@@ -116,9 +108,7 @@ final class ClientAssemblyTests: XCTestCase {
         let data = try Data(contentsOf: Self.fixture)
         XCTAssertTrue(MachO.isFat(data))
         let thin = try dir("thin").appending(path: "a")
-        let lipo = try Process.run(URL(fileURLWithPath: ClientAssembly.xcrun),
-                                   arguments: ["lipo", "-thin", "arm64", Self.fixture.path, "-output", thin.path])
-        lipo.waitUntilExit()
+        try Self.run(["lipo", "-thin", "arm64", Self.fixture.path, "-output", thin.path])
         let names = try MachO.loadedDylibs(Data(contentsOf: thin))
         XCTAssertTrue(names.contains("/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit"))
         XCTAssertTrue(names.contains("/usr/lib/libSystem.B.dylib"))
@@ -149,9 +139,7 @@ final class ClientAssemblyTests: XCTestCase {
 
     func testRetypeChangesOnlyTheHeaderAndZeroFillOffsets() throws {
         let thin = try dir("retype").appending(path: "a")
-        let lipo = try Process.run(URL(fileURLWithPath: ClientAssembly.xcrun),
-                                   arguments: ["lipo", "-thin", "arm64", Self.fixture.path, "-output", thin.path])
-        lipo.waitUntilExit()
+        try Self.run(["lipo", "-thin", "arm64", Self.fixture.path, "-output", thin.path])
         // Give __thread_bss a file offset, as the client's linker did.
         var before = try Data(contentsOf: thin)
         let section = try XCTUnwrap(zeroFillSections(before).first { $0.name == "__thread_bss,__DATA" })
@@ -240,16 +228,10 @@ final class ClientAssemblyTests: XCTestCase {
         let start = try XCTUnwrap(script.range(of: #"awk -F'|' -v p="$P" '"#)).upperBound
         let end = try XCTUnwrap(script.range(of: #"' "$SP_INSTALL/.build.info""#, range: start..<script.endIndex)).lowerBound
         let awk = script[start..<end]
-        let p = Process(), pipe = Pipe()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/awk")
-        p.arguments = ["-F|", "-v", "p=wow_classic_era", String(awk),
-                       root.appending(path: ".build.info").path]
-        p.standardOutput = pipe
-        try p.run()
-        let out = pipe.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        XCTAssertEqual(p.terminationStatus, 0)
-        XCTAssertEqual(String(decoding: out, as: UTF8.self), Self.stamp.text)
+        let result = try TestShell.run("/usr/bin/awk", ["-F|", "-v", "p=wow_classic_era", String(awk),
+                                                         root.appending(path: ".build.info").path])
+        XCTAssertEqual(result.status, 0)
+        XCTAssertEqual(result.text, Self.stamp.text)
     }
 
     func testRootCAsExport() async throws {

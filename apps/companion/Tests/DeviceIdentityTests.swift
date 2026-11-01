@@ -20,18 +20,7 @@ final class DeviceIdentityTests: XCTestCase {
 
     @discardableResult
     static func run(_ tool: String, _ args: [String], in directory: URL = scratch) throws -> String {
-        let p = Process(), out = Pipe()
-        p.executableURL = URL(fileURLWithPath: tool)
-        p.arguments = args
-        p.currentDirectoryURL = directory
-        p.standardOutput = out
-        p.standardError = out
-        try p.run()
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        let text = String(decoding: data, as: UTF8.self)
-        guard p.terminationStatus == 0 else { throw Failure("\(tool) \(args.first ?? "") failed: \(text)") }
-        return text
+        try TestShell.check(tool, args, in: directory, mergingStderr: true)
     }
 
     /// A self-signed certificate and its key, imported into a fresh keychain file (unlocked, not on the
@@ -291,14 +280,9 @@ final class DeviceIdentityTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory.appending(path: "sp-standing-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/openssl")
-        p.arguments = ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", dir.appending(path: "k.pem").path,
-                       "-out", dir.appending(path: "c.der").path, "-outform", "DER", "-days", "1", "-subj", "/CN=Slashplayed Test"]
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
-        try p.run()
-        p.waitUntilExit()
+        try TestShell.check("/usr/bin/openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", dir.appending(path: "k.pem").path,
+                                                 "-out", dir.appending(path: "c.der").path, "-outform", "DER", "-days", "1",
+                                                 "-subj", "/CN=Slashplayed Test"], mergingStderr: true)
         let cert = try XCTUnwrap(SecCertificateCreateWithData(nil, try Data(contentsOf: dir.appending(path: "c.der")) as CFData))
         let end = try XCTUnwrap(SecCertificateCopyNotValidAfterDate(cert) as Date?)
         let standing = await DeviceIdentity.standing(of: cert, now: end.addingTimeInterval(60))

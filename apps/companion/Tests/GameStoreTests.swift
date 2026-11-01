@@ -175,14 +175,8 @@ final class GameStoreTests: XCTestCase {
 
     @discardableResult
     private func run(_ exe: String, _ args: [String]) throws -> String {
-        let p = Process(), pipe = Pipe()
-        p.executableURL = URL(fileURLWithPath: exe)
-        p.arguments = args
-        p.standardOutput = pipe
-        try p.run()
-        let out = pipe.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        XCTAssertEqual(p.terminationStatus, 0, "\(exe) \(args.joined(separator: " "))")
-        return String(decoding: out, as: UTF8.self)
+        let result = try TestShell.run(exe, args)
+        XCTAssertEqual(result.status, 0, "\(exe) \(args.joined(separator: " "))")
+        return result.text
     }
 }

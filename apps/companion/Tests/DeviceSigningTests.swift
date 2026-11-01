@@ -31,18 +31,7 @@ final class DeviceSigningTests: XCTestCase {
 
     @discardableResult
     static func run(_ tool: String, _ args: [String]) throws -> String {
-        let p = Process(), out = Pipe()
-        p.executableURL = URL(fileURLWithPath: tool)
-        p.arguments = args
-        p.currentDirectoryURL = scratch
-        p.standardOutput = out
-        p.standardError = out
-        try p.run()
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        let text = String(decoding: data, as: UTF8.self)
-        guard p.terminationStatus == 0 else { throw Failure("\(tool) \(args.first ?? "") failed: \(text)") }
-        return text
+        try TestShell.check(tool, args, in: scratch, mergingStderr: true)
     }
 
     /// The CA, the certificate it issues (the subject's CN and OU are what Apple's carry: the name and the

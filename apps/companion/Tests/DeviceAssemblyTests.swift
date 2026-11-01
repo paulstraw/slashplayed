@@ -38,9 +38,7 @@ final class DeviceAssemblyTests: XCTestCase {
     }
 
     static func codesign(_ args: [String]) throws {
-        let p = try Process.run(URL(fileURLWithPath: "/usr/bin/codesign"), arguments: args)
-        p.waitUntilExit()
-        guard p.terminationStatus == 0 else { throw Failure("codesign \(args.joined(separator: " ")) failed") }
+        try TestShell.check("/usr/bin/codesign", args, mergingStderr: true)
     }
 
     /// Gives the thread-local zero-fill section a file offset.
