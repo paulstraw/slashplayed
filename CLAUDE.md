@@ -56,8 +56,9 @@ the push, the export), `SlashplayedCertificate.swift` (a paid team's own certifi
 - `addon/SPHover`: the in-game addon (headset only); `addon/test/test.sh` tests it on the Mac (needs lua).
 - `scripts/`: `build-idevice.sh` (idevice from source at a pinned commit, Rust pinned: `macos` for the
   companion, `ios`/`xros` for the on-device JIT helper; into `work/idevice/`, with `<platform>/licenses/`),
-  `fetch-font.sh` (Goodmountain, the start screen's face, and its license, at a pinned commit and checked
-  SHA-256, into `work/fonts/`: its license forbids changing the file, so it's never committed),
+  `fetch-font.sh` (Goodmountain, the start screen's and the site's face, OTF and woff2, and its license, at a
+  pinned commit and checked SHA-256, into `work/fonts/`: its license forbids changing the file, so it's never
+  committed), `site-preview.sh` (`site/` staged as Pages deploys it, font included, served on 127.0.0.1),
   `build-zsign.sh` (zsign with `zsign.patch` and OpenSSL from source at pinned commits: `ios`/`xros` for the launcher's signer,
   `macos` for the companion's tests; into `work/zsign/`, with the licenses the app ships), `crate-notices.py`
   (build-idevice.sh's license texts of every linked crate, failing on one with none; `crate-licenses/` holds
@@ -191,7 +192,9 @@ again (over an hour for Retail on the headset). Don't change it casually.
   identity into a throwaway keychain, runs `scripts/release/release.sh` (build, sign, notarize, staple,
   DMG, no-Blizzard-bytes check, `appcast-item.xml`, `SHA256SUMS`), creates the GitHub Release (DMG and
   `SHA256SUMS`), merges the item into the live appcast (`scripts/release/appcast-merge.sh`; the seed
-  `site/appcast.xml` on a 404) and deploys `site/` to Pages. Secrets in that environment:
+  `site/appcast.xml` on a 404) and deploys `site/` to Pages, with Goodmountain's woff2 and its license
+  (`goodmountain-license.txt`) fetched by `scripts/fetch-font.sh` and copied next to the page, since they're
+  never committed; `scripts/site-preview.sh` stages and serves it the same way. Secrets in that environment:
   `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`, `ASC_API_KEY_P8_BASE64`, `ASC_API_KEY_ID`,
   `ASC_API_ISSUER_ID`, `SPARKLE_ED_PRIVATE_KEY`. A re-run after the Release exists fails on purpose;
   delete the Release first.

@@ -112,7 +112,8 @@ jobs:
 
       # The device app's start screen face, Goodmountain, and its license (apps/client/spstart.m): its
       # license forbids changing or re-hosting the file, so it's never committed, and scripts/fetch-font.sh
-      # downloads both at a pinned commit and checks their SHA-256. The companion bundles them.
+      # downloads them at a pinned commit and checks their SHA-256. The companion bundles the OTF; the Pages
+      # deploy below serves the webfont.
       - name: Fetch the start screen's font
         run: scripts/fetch-font.sh
 
@@ -241,6 +242,11 @@ jobs:
           esac
           rm -rf "$RUNNER_TEMP/pages"
           cp -R site "$RUNNER_TEMP/pages"
+          # The site's display face is never committed (its license forbids re-hosting it in the repo):
+          # it's deployed unchanged next to the page, with its license, which the footer links to.
+          scripts/fetch-font.sh
+          cp work/fonts/Goodmountain-Regular.woff2 "$RUNNER_TEMP/pages/"
+          cp work/fonts/LICENSE.md "$RUNNER_TEMP/pages/goodmountain-license.txt"
           scripts/release/appcast-merge.sh "$base" build/release/appcast-item.xml > "$RUNNER_TEMP/pages/appcast.xml"
           grep -c '<item>' "$RUNNER_TEMP/pages/appcast.xml" | xargs echo "Appcast items:"
 
