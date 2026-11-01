@@ -1,0 +1,51 @@
+# The isideload spike (README.md): a small CLI that does what Xcode does for Slashplayed's provisioning
+# (Apple ID sign-in, teams, device, App IDs, capabilities, certificate, profiles) with the isideload crate,
+# to learn whether a Windows/Linux host tool can be built on it. Built by build.sh with the repo's pinned
+# Rust (1.99.0) and --locked: Cargo.lock is committed.
+[package]
+name = "spisideload"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+# Its own workspace: nothing above it is a Cargo project, and cargo shouldn't go looking.
+[workspace]
+
+[dependencies]
+# Pinned to a commit, not a version range: the crate is young and untrusted. Only the features it can't
+# build without (install: lib.rs names idevice's error type whatever is enabled; tokio-mt: anisette's
+# provisioning websocket). keyring-storage is off: the spike keeps its login in its own Keychain item
+# (src/store.rs), never the crate's.
+isideload = { git = "https://github.com/nab138/isideload", rev = "326e56229d0727cb6e7b34c8cf03e37e2cd3e17d", default-features = false, features = ["install", "tokio-mt"] }
+# The UDID over USB, through usbmuxd. Patched below to the repo's pinned idevice.
+idevice = { version = "0.1.68", default-features = false, features = ["usbmuxd", "ring"] }
+# isideload's own signer, for the signer comparison (sign-quick); the version isideload resolves to.
+apple-codesign-quick = "0.1.0"
+tokio = { version = "1.49", features = ["rt-multi-thread", "macros"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+plist = "1.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rsa = "0.9.10"
+rcgen = { version = "0.14.7", default-features = false, features = ["ring", "pem"] }
+x509-cert = "0.2.5"
+sha2 = "0.11.0"
+hex = "0.4.3"
+rand = "0.8.5"
+base64 = "0.22.1"
+http = "1.4"
+# isideload's error type (its API returns rootcause Reports); the version it resolves to.
+rootcause = "0.12.1"
+rpassword = "7.4"
+zeroize = "1.8"
+security-framework = "3"
+
+# The repo's idevice (scripts/build-idevice.sh pins the same commit, 0.1.68): isideload asks for ^0.1.61
+# from crates.io, and this makes that, and ours, the one vetted source.
+[patch.crates-io]
+idevice = { git = "https://github.com/jkcoxson/idevice", rev = "d32c8189c51c2789496b0768039419c3705498c3" }
+
+[profile.release]
+debug = false
+strip = true
