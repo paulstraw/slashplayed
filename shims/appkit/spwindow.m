@@ -4,7 +4,7 @@
 //
 // One window, the size of the game rect in points, at the bottom left of one screen, so window and
 // screen coordinates are the same. The game rect (sp_game_rect) is the UIKit window, except on an
-// iPhone in landscape, where the Dynamic Island's side is cut off by its safe-area inset: the
+// iPhone in landscape, where the Dynamic Island's side is cut off to just past the island: the
 // client's layer sits in the rest and the strip beside it stays black (the root view's background),
 // so edge-anchored UI (quest log, spellbook, map) isn't under the island. AppKit coordinates (origin
 // the game rect's bottom left) and UIKit's (the window's top left) differ in y and, on an iPhone, by
@@ -42,28 +42,77 @@
 
 static void sp_hover_attach(CALayer *layer);  // sphover.m
 
-// The game's part of the scene window, in UIKit points (origin the window's top left). In landscape
-// iOS reports an iPhone's left and right insets the same (62 pt on a 16 Pro), island or not, so the
-// island's side comes from geometry instead: the screen's fixed coordinate space is portrait-up, the
-// island at the middle of its top edge, and that point converted into the window lands on the
-// island's side whichever way the phone is turned (both landscapes are allowed: ClientAssembly.swift's
-// Info.plist, and the script build's). Only that side is cut: the top and bottom insets are the home
-// indicator's, which hides itself (SPRootViewController), and the other side's inset is only there for
-// symmetry. An iPad (insets 0, no island) and the headset keep the whole window.
+#if !TARGET_OS_VISION
+// The Dynamic Island's rect, in the screen's fixed (portrait-up) coordinate space, or CGRectNull. UIKit
+// has no public API for it; the screen's private _exclusionArea is a UISDisplaySingleRectShape whose
+// rect property is it (iPhone 16 Pro: {138.3, 14, 125, 36.7}, the island's outline seen from the top
+// of the portrait screen). Private is fine for a sideloaded app; it's looked up through KVC in @try
+// and type-checked, so a renamed key or a shape that isn't one rect falls back to the safe-area
+// inset instead of crashing the game. A notch's rect would be cut to the same way.
+static CGRect sp_island_rect(UIScreen *screen) {
+    id rect = nil;
+    @try {
+        id shape = [screen valueForKey:@"_exclusionArea"];
+        if (shape) rect = [shape valueForKey:@"rect"];
+    } @catch (NSException *e) {
+        SP_LOG_ONCE("screen has no _exclusionArea rect: the island's cut is the safe-area inset");
+        return CGRectNull;
+    }
+    if (![rect isKindOfClass:NSValue.class] || strcmp([rect objCType], @encode(CGRect))) return CGRectNull;
+    return [rect CGRectValue];
+}
+#endif
+
+// What sp_game_rect last cut by and why, for sp_window_track_scene's log line: the island's rect in the
+// window (CGRectNull when the safe area was used) and the cut's source.
+static CGRect sp_game_island;
+static const char *sp_game_cut_source = "";
+
+// The game's part of the scene window, in UIKit points (origin the window's top left). Only the
+// island's side is cut: the top and bottom insets are the home indicator's, which hides itself
+// (SPRootViewController), and the other side's inset is only there for symmetry. In landscape iOS
+// reports an iPhone's left and right insets the same (62 pt on a 16 Pro), island or not, so the
+// island's side comes from geometry: the screen's fixed coordinate space is portrait-up, the island at
+// the middle of its top edge, and that point converted into the window lands on the island's side
+// whichever way the phone is turned (both landscapes are allowed: ClientAssembly.swift's Info.plist,
+// and the script build's). The cut goes to the island's outer edge (sp_island_rect, 50.7 pt in on a
+// 16 Pro) plus a margin, not the whole 62 pt inset, which is mostly margin; the inset is the fallback
+// when the island's rect is missing or doesn't fit (not wholly inside that side's inset band). An iPad
+// (insets 0, no island) and the headset keep the whole window.
 static CGRect sp_game_rect(void) {
     if (!sp_window) return CGRectMake(0, 0, 1280, 720);
     CGRect b = sp_window.bounds;
 #if !TARGET_OS_VISION
     if (UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPhone) return b;
     UIEdgeInsets in = sp_window.safeAreaInsets;
-    CGFloat cut = MAX(in.left, in.right);
+    CGFloat inset = MAX(in.left, in.right);
     UIScreen *screen = sp_window.windowScene.screen;
-    if (cut <= 0 || cut * 2 >= b.size.width || !screen) return b;
+    if (inset <= 0 || inset * 2 >= b.size.width || !screen) return b;
     id<UICoordinateSpace> fixed = screen.fixedCoordinateSpace;
-    CGPoint island = [fixed convertPoint:CGPointMake(CGRectGetMidX(fixed.bounds), 0) toCoordinateSpace:sp_window];
+    CGPoint top = [fixed convertPoint:CGPointMake(CGRectGetMidX(fixed.bounds), 0) toCoordinateSpace:sp_window];
     // Near the middle across: the island is at the top or bottom (portrait, mid-rotation), no side.
-    if (fabs(island.x - CGRectGetMidX(b)) < b.size.width / 4) return b;
-    if (island.x < CGRectGetMidX(b)) b.origin.x += cut;
+    if (fabs(top.x - CGRectGetMidX(b)) < b.size.width / 4) return b;
+    BOOL left = top.x < CGRectGetMidX(b);
+    CGFloat cut = inset;
+    sp_game_island = CGRectNull;
+    sp_game_cut_source = "safe area";
+    CGRect island = sp_island_rect(screen);
+    if (!CGRectIsNull(island) && !CGRectIsEmpty(island)) {
+        CGRect r = [fixed convertRect:island toCoordinateSpace:sp_window];
+        // Its outer edge, from the window's edge on its side; the rect must lie in that side's inset band.
+        CGFloat edge = left ? CGRectGetMaxX(r) : b.size.width - CGRectGetMinX(r);
+        BOOL fits = left ? CGRectGetMinX(r) >= 0 : CGRectGetMaxX(r) <= b.size.width;
+        if (fits && edge > 0 && edge <= inset) {
+            // 4 pt past the island, rounded up to whole points: enough that the game's edge (a frame's
+            // border, a button's) reads as clear of the island rather than touching it, while giving back
+            // most of the inset's spare margin (55 pt cut, not 62, on a 16 Pro). Whole points keep the
+            // drawable a whole number of pixels at any backing scale.
+            cut = MIN(inset, ceil(edge + 4));
+            sp_game_island = r;
+            sp_game_cut_source = "Dynamic Island";
+        }
+    }
+    if (left) b.origin.x += cut;
     b.size.width -= cut;
 #endif
     return b;
@@ -427,9 +476,14 @@ static void sp_window_track_scene(void) {
     static int layer_fixes;  // logged up to 20 times, in case the client keeps at it
     if (resized || moved) {
         CGSize scene = sp_window.bounds.size;
+        // The island's rect is in the window's coordinates (UIKit points), as the game rect is.
+        NSString *island = CGRectIsNull(sp_game_island) ? @""
+            : [NSString stringWithFormat:@" at %.1f,%.1f %.1fx%.1f", sp_game_island.origin.x, sp_game_island.origin.y,
+               sp_game_island.size.width, sp_game_island.size.height];
         NSString *cut = CGRectEqualToRect(game, sp_window.bounds) ? (sp_told_rect.size.width ? @", the game all of it" : @"")
-            : [NSString stringWithFormat:@", the game %gx%g at %g,%g (Dynamic Island %s)", size.width, size.height,
-               game.origin.x, game.origin.y, game.origin.x > 0 ? "left" : "right"];
+            : [NSString stringWithFormat:@", the game %gx%g at %g,%g (Dynamic Island %s; cut %g pt by the %s%@)",
+               size.width, size.height, game.origin.x, game.origin.y, game.origin.x > 0 ? "left" : "right",
+               scene.width - size.width, sp_game_cut_source, island];
         sp_stub_log([NSString stringWithFormat:@"scene %s %gx%g pt%@",
                      !sp_told_rect.size.width ? "is" : resized ? "resized to" : "is still", scene.width,
                      scene.height, cut].UTF8String);
