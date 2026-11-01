@@ -3,197 +3,431 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="dark">
   <title>Slashplayed — the Mac World of Warcraft clients on iPad, iPhone, and Vision Pro</title>
   <link rel="icon" type="image/png" href="icon-1024.png">
   <link rel="apple-touch-icon" href="icon-1024.png">
-  <meta name="description" content="Slashplayed is a free, open-source compatibility layer that runs the Mac World of Warcraft clients on M2-or-later iPads, iPhone 15 Pro and later, and Apple Vision Pro.">
+  <meta name="description" content="Slashplayed is a free, open-source compatibility layer that runs the Mac World of Warcraft clients, unmodified, on M2-or-later iPads, iPhone 15 Pro and later, and Apple Vision Pro.">
   <style>
-    :root {
-      --bg: #f5f6f8;
-      --fg: #1c1e24;
-      --muted: #5b6070;
-      --card: #ffffff;
-      --border: #dfe2e8;
-      --accent: #2f6fe4;
-      --accent-fg: #ffffff;
-      --note-bg: #fff7e0;
-      --note-border: #e8cf7a;
+    /* Goodmountain, the start screen's face. Its license forbids committing or changing the file, so
+       the Pages deploy fetches it (scripts/fetch-font.sh) and serves it next to this page, unchanged,
+       with its license as goodmountain-license.txt. Without it, Georgia stands in. */
+    @font-face {
+      font-family: "Goodmountain";
+      src: url("Goodmountain-Regular.woff2") format("woff2");
+      font-display: swap;
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #14171f;
-        --fg: #eceef3;
-        --muted: #9aa1b2;
-        --card: #1d212c;
-        --border: #2c3240;
-        --accent: #4d8bff;
-        --accent-fg: #ffffff;
-        --note-bg: #2a2516;
-        --note-border: #5e5128;
-      }
+    /* Dark only, like the app's start screen. */
+    :root {
+      color-scheme: dark;
+      --display: "Goodmountain", Georgia, serif;
+      --body: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+      --bg: #101916;
+      --bg-2: #141f1b;
+      --bg-3: #18251f;
+      --cream: #f3ead8;
+      --text: #e9e3d4;
+      --text-2: #b3ad9e;
+      --gold: #ac9d79;
+      --gold-hi: #c8ba96;
+      --gold-line: #8c8064;
+      --gold-faint: rgba(172, 157, 121, .16);
+      --ring: rgba(233, 227, 212, .09);
+      --btn: #ac9d79;
+      --btn-hi: #c2b48f;
+      --btn-ink: #101916;
+      --focus: #f3ead8;
+    }
+    /* The start screen's chamfered corners: an octagon cut --c in from each corner. Set on each clipped
+       box itself, since a custom property resolves the var()s inside it where it's declared. */
+    .btn-bg, .btn-bg::before, .btn-bg::after, .notice::before, .notice::after, .tile::before, .tile::after {
+      --chamfer: polygon(var(--c) 0, calc(100% - var(--c)) 0, 100% var(--c), 100% calc(100% - var(--c)),
+        calc(100% - var(--c)) 100%, var(--c) 100%, 0 calc(100% - var(--c)), 0 var(--c));
     }
     * { box-sizing: border-box; }
     html { -webkit-text-size-adjust: 100%; }
     body {
       margin: 0;
+      min-height: 100vh;
+      overflow-x: hidden;
       background: var(--bg);
-      color: var(--fg);
-      font: 17px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      color: var(--text);
+      font-family: var(--body);
+      font-size: 1.0625rem;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
     }
-    a { color: var(--accent); }
-    main {
-      max-width: 44rem;
-      margin: 0 auto;
-      padding: 4rem 1.5rem 3rem;
+    a { color: var(--gold); text-underline-offset: .2em; text-decoration-thickness: 1px; }
+    a:hover { color: var(--gold-hi); }
+    a:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: 2px; }
+    .vh {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
-    header { text-align: center; }
-    .icon {
-      width: 9rem;
-      height: 9rem;
-      /* The source PNG is full-bleed; round it like a macOS app icon. */
-      border-radius: 22.5%;
-      box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.25);
+    .wrap { width: 100%; max-width: 72rem; margin: 0 auto; padding: 0 16px; }
+    .read { max-width: 40rem; margin: 32px auto 0; }
+    @media (min-width: 640px) { .wrap { padding: 0 32px; } }
+
+    /* Top bar */
+    .bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 20px; padding-bottom: 20px; }
+    .bar-mark { font-family: var(--display); font-size: 1.625rem; line-height: 1; color: var(--cream); text-decoration: none; }
+    .bar-mark:hover { color: var(--cream); }
+    .bar-links { display: flex; gap: 20px; font-size: .9375rem; }
+    .bar-links a { text-decoration: none; }
+    .bar-links a:hover { text-decoration: underline; }
+
+    /* Hero: the start screen's medallion and rings */
+    .hero { position: relative; overflow: hidden; padding: 40px 0 80px; text-align: center; }
+    .hero-inner { position: relative; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+    .medal-wrap { position: relative; width: clamp(150px, 20vw, 210px); aspect-ratio: 1; margin-bottom: 8px; }
+    .medal-wrap::before, .medal-wrap::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      border: 1px solid var(--ring);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
     }
-    h1 {
-      margin: 1.5rem 0 0.5rem;
-      font-size: 2.75rem;
-      letter-spacing: -0.02em;
+    .medal-wrap::before { width: 175%; height: 175%; }
+    .medal-wrap::after { width: 270%; height: 270%; }
+    .medal { position: relative; display: block; width: 100%; height: auto; }
+    .medal .sq, .medal .s { fill: var(--gold); }
+    .medal .disc { fill: #243b34; stroke: var(--gold); stroke-width: 47; }
+    .eyebrow, .soon-h {
+      font-family: Georgia, "Times New Roman", serif;
+      font-weight: 700;
+      font-size: .8125rem;
+      letter-spacing: .32em;
+      text-transform: uppercase;
+      color: var(--gold);
     }
-    h2 {
-      margin: 2.5rem 0 0.75rem;
-      font-size: 1.35rem;
-    }
-    .tagline {
-      margin: 0 auto 2rem;
-      max-width: 34rem;
-      font-size: 1.2rem;
-      color: var(--muted);
-    }
-    .download {
-      display: inline-block;
-      padding: 0.8rem 1.8rem;
-      border-radius: 0.6rem;
-      background: var(--accent);
-      color: var(--accent-fg);
-      font-weight: 600;
-      font-size: 1.1rem;
+    .eyebrow { margin: 0; }
+    .wordmark { margin: -8px 0 0; font-family: var(--display); font-weight: 400; font-size: clamp(3.25rem, 9vw, 6.5rem); line-height: 1; color: var(--cream); }
+    .tagline { margin: 0; max-width: 36rem; font-size: clamp(1.125rem, 2.2vw, 1.3125rem); line-height: 1.5; }
+    .cta { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; margin-top: 16px; }
+    .cta-sub { margin: 0; font-size: .9375rem; color: var(--text-2); }
+    .cta-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; margin: 4px 0 0; font-size: .9375rem; }
+
+    /* The Download button: the start screen's chamfered gold game button. Its frame is three stacked
+       octagons (gold, an ink line, gold again) so the inner line follows the cut corners. */
+    .btn {
+      --c: 14px;
+      position: relative;
+      isolation: isolate;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      min-height: 64px;
+      max-width: 100%;
+      padding: 6px 44px 4px;
+      font-family: var(--display);
+      font-size: clamp(1.25rem, 3.4vw, 1.5rem);
+      line-height: 1.1;
+      text-align: center;
+      color: var(--btn-ink);
       text-decoration: none;
     }
-    .download:hover, .download:focus-visible { filter: brightness(1.1); }
-    .sub {
-      margin: 0.75rem 0 0;
-      font-size: 0.95rem;
-      color: var(--muted);
+    .btn-bg { position: absolute; inset: 0; z-index: -1; background: var(--btn); clip-path: var(--chamfer); }
+    .btn-bg::before, .btn-bg::after { content: ""; position: absolute; clip-path: var(--chamfer); }
+    .btn-bg::before { inset: 6px; --c: 11.5px; background: var(--btn-ink); }
+    .btn-bg::after { inset: 7.5px; --c: 10.9px; background: var(--btn); }
+    .btn .side { position: absolute; top: 50%; width: 11px; height: 11px; margin-top: -5.5px; background: var(--btn-ink); transform: rotate(45deg); }
+    .btn .side.l { left: 1px; }
+    .btn .side.r { right: 1px; }
+    .flk { flex: none; width: 30px; height: 8px; }
+    .flk circle, .flk rect { fill: currentColor; }
+    .flk line { stroke: currentColor; stroke-width: 1.6; }
+    .flk.rev { transform: scaleX(-1); }
+    .btn:hover { color: var(--btn-ink); filter: drop-shadow(0 0 16px rgba(200, 186, 150, .32)); }
+    .btn:hover .btn-bg, .btn:hover .btn-bg::after { background: var(--btn-hi); }
+    .btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 6px; border-radius: 3px; }
+    @media (prefers-reduced-motion: no-preference) {
+      .btn { transition: filter .18s ease; }
+      .btn-bg, .btn-bg::after { transition: background .18s ease; }
     }
-    .disclaimer {
-      margin: 2.5rem 0 0;
-      padding: 1rem 1.25rem;
-      border: 1px solid var(--note-border);
-      border-radius: 0.75rem;
-      background: var(--note-bg);
-      font-size: 0.95rem;
+    @media (max-width: 420px) {
+      .btn { padding: 6px 28px 4px; }
+      .flk { display: none; }
     }
-    .disclaimer p { margin: 0; }
-    .disclaimer p + p { margin-top: 0.6rem; }
-    .screenshot {
-      /* The companion's main window at 2x; shown at its 1x size, or narrower on a phone. */
-      display: block;
-      width: 30rem;
-      max-width: 100%;
-      height: auto;
-      margin: 2.5rem auto 0;
-      border: 1px solid var(--border);
-      border-radius: 0.75rem;
-      box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.15);
+
+    /* Sections */
+    .sec { padding: 72px 0; }
+    .sec-alt { background: var(--bg-2); }
+    .h2 { margin: 0 0 8px; font-family: var(--display); font-weight: 400; font-size: clamp(2.25rem, 4.8vw, 3rem); line-height: 1.1; color: var(--cream); text-align: center; }
+    .orn { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0 auto 16px; }
+    .orn i { display: block; width: 44px; height: 1px; background: var(--gold-line); }
+    .orn b { display: block; width: 7px; height: 7px; background: var(--gold); transform: rotate(45deg); }
+    .lede { margin: 0 auto 40px; max-width: 36rem; text-align: center; color: var(--text-2); }
+
+    /* The disclaimer, right after the hero */
+    .notice-sec { padding-bottom: 24px; }
+    .notice { --c: 18px; position: relative; isolation: isolate; max-width: 46rem; margin: 0 auto; padding: 32px clamp(20px, 5vw, 48px); }
+    .notice::before, .notice::after { content: ""; position: absolute; z-index: -1; clip-path: var(--chamfer); }
+    .notice::before { inset: 0; background: var(--gold-line); }
+    .notice::after { inset: 1px; --c: 17.6px; background: var(--bg-3); }
+    .notice-h { margin: 0 0 12px; font-family: var(--display); font-weight: 400; font-size: 2rem; line-height: 1.15; color: var(--cream); }
+    .notice p { margin: 0 0 12px; }
+    .notice p:last-child { margin-bottom: 0; }
+    .notice strong { font-weight: 650; }
+
+    /* How it works */
+    .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 40px 32px; }
+    .step { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+    .step-num { position: relative; display: grid; place-items: center; width: 56px; height: 56px; font-family: Georgia, serif; font-weight: 700; font-size: 1.25rem; line-height: 1; color: var(--gold); }
+    .step-num::before { content: ""; position: absolute; inset: 9px; border: 1.5px solid var(--gold); transform: rotate(45deg); }
+    .step h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 1.75rem; line-height: 1.15; color: var(--cream); }
+    .step p { margin: 0; max-width: 22rem; color: var(--text-2); }
+
+    /* The two apps */
+    .proof { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 48px 40px; align-items: start; }
+    .fig { margin: 0; display: flex; flex-direction: column; gap: 14px; }
+    .fig figcaption { font-size: .9375rem; color: var(--text-2); text-align: center; }
+    .fig figcaption b { display: block; font-family: var(--display); font-weight: 400; font-size: 1.5rem; color: var(--cream); }
+    /* The companion's main window at 2x, shown at its 1x size or narrower. */
+    .shot { display: block; width: 100%; max-width: 480px; height: auto; margin: 0 auto; border: 1px solid var(--gold-faint); border-radius: 12px; box-shadow: 0 20px 50px rgba(0, 0, 0, .35); }
+    /* An iPhone in landscape around the real start screen: the screen's corners are round at about a
+       seventh of its height, and the bezel's follow them out by its width. */
+    .device {
+      --bezel: clamp(6px, 1.2vw, 11px);
+      --corner: clamp(14px, 5.5vw, 32px);
+      width: 100%;
+      max-width: 560px;
+      margin: 0 auto;
+      padding: var(--bezel);
+      border-radius: calc(var(--corner) + var(--bezel));
+      background: #3a3b40;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, .35);
     }
-    ul { padding-left: 1.25rem; }
-    li + li { margin-top: 0.35rem; }
-    table {
-      border-collapse: collapse;
-      margin: 0.5rem 0;
-      font-size: 0.95rem;
-    }
-    th, td {
-      padding: 0.3rem 1rem 0.3rem 0;
-      border-bottom: 1px solid var(--border);
-      text-align: left;
-    }
-    footer {
-      padding: 0 1.5rem 3rem;
+    .device img { display: block; width: 100%; height: auto; aspect-ratio: 1065 / 490; border-radius: var(--corner); }
+
+    /* The games */
+    .games { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 24px; }
+    .tile {
+      --c: 12px;
+      position: relative;
+      isolation: isolate;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 76px;
+      padding: 12px 24px 10px;
+      font-family: var(--display);
+      font-size: 1.625rem;
+      line-height: 1.1;
+      color: var(--cream);
       text-align: center;
-      font-size: 0.95rem;
-      color: var(--muted);
     }
-    footer a { color: var(--muted); }
-    footer a:hover { color: var(--fg); }
-    footer nav { margin-bottom: 0.5rem; }
-    footer nav a { margin: 0 0.6rem; display: inline-block; }
-    @media (max-width: 30rem) {
-      main { padding-top: 2.5rem; }
-      .icon { width: 7rem; height: 7rem; }
-      h1 { font-size: 2.2rem; }
-      .tagline { font-size: 1.05rem; }
-      .download { display: block; text-align: center; }
-    }
+    .tile::before, .tile::after { content: ""; position: absolute; z-index: -1; clip-path: var(--chamfer); }
+    .tile::before { inset: 0; background: var(--gold-line); }
+    .tile::after { inset: 1.5px; --c: 11.4px; background: var(--bg); }
+    .tile .side { position: absolute; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; background: var(--gold); transform: rotate(45deg); }
+    .tile .side.l { left: -4px; }
+    .tile .side.r { right: -4px; }
+    .tile-note { margin: 12px 4px 0; font-size: .9375rem; line-height: 1.5; color: var(--text-2); text-align: center; }
+    .soon { max-width: 40rem; margin: 56px auto 0; }
+    .soon-h { display: flex; align-items: center; gap: 16px; margin: 0 0 20px; white-space: nowrap; }
+    .soon-rule { flex: 1; height: 1px; background: var(--gold-faint); }
+    .soon-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 20px; }
+    .tile-soon { min-height: 68px; font-size: 1.5rem; color: var(--text-2); }
+    .tile-soon::before { background: var(--gold-faint); }
+    .tile-soon .side { background: var(--gold-line); }
+
+    /* Requirements */
+    .reqs { list-style: none; margin: 0 0 40px; padding: 0; display: flex; flex-direction: column; gap: 16px; }
+    .reqs li { position: relative; padding-left: 26px; }
+    .reqs li::before { content: ""; position: absolute; left: 3px; top: .62em; width: 7px; height: 7px; background: var(--gold); transform: rotate(45deg); }
+    .reqs strong { font-weight: 650; }
+    .reqs .sub { display: block; color: var(--text-2); }
+    .space { width: 100%; border-collapse: collapse; font-size: 1rem; }
+    .space caption { caption-side: top; margin-bottom: 10px; font-family: var(--display); font-size: 1.625rem; color: var(--cream); text-align: left; }
+    .space th, .space td { padding: 12px 0; border-bottom: 1px solid var(--gold-faint); text-align: left; vertical-align: top; }
+    .space thead th { font-size: .8125rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); border-bottom-color: var(--gold-line); }
+    .space td:last-child, .space th:last-child { padding-left: 16px; text-align: right; white-space: nowrap; }
+    .space .note { display: block; font-size: .875rem; color: var(--text-2); }
+    .space-after { margin: 12px 0 0; font-size: .9375rem; color: var(--text-2); }
+
+    /* Learn more */
+    .learn { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 12px 24px; }
+    .learn a { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 12px 4px; border-bottom: 1px solid var(--gold-line); font-size: 1.0625rem; text-decoration: none; }
+    .learn a:hover { text-decoration: underline; }
+    .learn svg { flex: none; width: 18px; height: 18px; }
+    .learn svg path { fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+
+    .foot { padding: 40px 0 48px; border-top: 1px solid var(--gold-faint); font-size: .875rem; color: var(--text-2); text-align: center; }
+    .foot p { margin: 0 0 6px; }
   </style>
 </head>
 <body>
-  <main>
-    <header>
-      <img class="icon" src="icon-1024.png" alt="Slashplayed app icon" width="1024" height="1024">
-      <h1>Slashplayed</h1>
-      <p class="tagline">Play the Mac World of Warcraft clients (Classic Era, TBC Anniversary, MoP Classic, and Retail) on M2-or-later iPads, iPhone 15 Pro and later, and Apple Vision Pro.</p>
-      <a class="download" href="https://github.com/paulstraw/slashplayed/releases/latest">Download Slashplayed Companion</a>
-      <p class="sub">Free and open source (MIT). Early and experimental.</p>
-    </header>
-
-    <div class="disclaimer">
-      <p><strong>Unofficial.</strong> Slashplayed is not affiliated with, endorsed by, or supported by Blizzard Entertainment. It includes <strong>no Blizzard files</strong>: the game comes from Blizzard's own servers, and you need your own Battle.net account and subscription. <strong>Use it at your own risk: your account could be actioned.</strong></p>
-      <p><strong>Early and experimental.</strong> Expect rough edges, and expect a game patch to break it now and then until Slashplayed catches up.</p>
-    </div>
-
-    <img class="screenshot" src="screenshot.png" alt="The Slashplayed Companion window running Classic Era on an iPhone: the client built, installed, and started, its code pages prepared, and the game running on the device, its data streamed from Blizzard" width="960" height="950">
-
-    <h2>What it is</h2>
-    <p>Slashplayed is a compatibility layer that runs the unmodified Mac game clients on iPadOS, iOS, and visionOS. <strong>Slashplayed Companion</strong>, a Mac app, builds the <strong>Slashplayed</strong> app from the Mac game client it downloads from Blizzard, signs it with your own Apple developer account, and installs it on your iPad, iPhone, or Vision Pro. You sign in to Battle.net on the device, and the game fetches its data from Blizzard as you play. After that, the Mac isn't needed to play.</p>
-    <p>The games: Classic Era (with Hardcore and Season of Discovery, by switching game mode in game), TBC Anniversary, MoP Classic, and Retail. MoP Classic has been played on the Vision Pro and an iPhone 16 Pro, and is untested on the iPad.</p>
-
-    <h2>Requirements</h2>
-    <ul>
-      <li>An Apple Silicon Mac with macOS 15 or later and Xcode.</li>
-      <li>An Apple ID signed in to Xcode. A free one works (the app is signed again every 7 days); a paid Apple Developer Program membership signs for a year.</li>
-      <li>An iPad with an M2 chip or later on iPadOS 26, an iPhone 15 Pro or later on iOS 26, or an Apple Vision Pro on visionOS 27, paired with the Mac in Xcode, with Developer Mode on. Of the iPhones, only the 16 Pro has been tested.</li>
-      <li>A hardware keyboard for typing in the game (it shows no on-screen keyboard), and on an iPhone, AssistiveTouch on to use a mouse.</li>
-      <li>A Battle.net account with an active World of Warcraft subscription. You sign in on the device. The game doesn't need to be installed on the Mac.</li>
-      <li><a href="https://apps.apple.com/app/id6755608044">LocalDevVPN</a> (free, from the App Store) on the device, turned on when the game starts. The Mac isn't needed then.</li>
-      <li>Room on the device for the games you put there (a game that fetches its own data grows toward these sizes as you play):
-        <table>
-          <tr><th>Games</th><th>Space</th></tr>
-          <tr><td>Classic Era</td><td>~25 GB</td></tr>
-          <tr><td>Classic Era + Anniversary</td><td>~37 GB</td></tr>
-          <tr><td>MoP Classic</td><td>~150 GB (about 23 GB of its own; a copy from the Mac takes the whole store the games share)</td></tr>
-          <tr><td>Retail</td><td>~150 GB</td></tr>
-        </table>
-        Retail on the iPad or iPhone needs a 512 GB or larger iPad or iPhone, and 8 GB of memory. It has been played on an M2 iPad, where it runs hot and gets a memory warning, and on an iPhone 16 Pro.
-      </li>
-    </ul>
-
-    <h2>Learn more</h2>
-    <ul>
-      <li><a href="https://github.com/paulstraw/slashplayed#readme">Read me</a>: install, first run, playing and known issues.</li>
-      <li><a href="https://github.com/paulstraw/slashplayed/blob/main/docs/troubleshooting.md">Troubleshooting</a></li>
-      <li><a href="https://github.com/paulstraw/slashplayed/blob/main/docs/architecture.md">How it works</a></li>
-      <li><a href="https://github.com/paulstraw/slashplayed/issues/new/choose">Report an issue</a></li>
-    </ul>
-  </main>
-  <footer>
-    <nav>
+  <header class="wrap bar">
+    <a class="bar-mark" href="#top">Slashplayed</a>
+    <nav class="bar-links" aria-label="Project links">
       <a href="https://github.com/paulstraw/slashplayed">GitHub</a>
-      <a href="https://github.com/paulstraw/slashplayed/tree/main/docs">Docs</a>
-      <a href="https://github.com/paulstraw/slashplayed/issues">Issues</a>
+      <a href="https://github.com/paulstraw/slashplayed#readme">Docs</a>
     </nav>
-    <p>© 2026 Straw Dynamics. MIT License. Not affiliated with Blizzard Entertainment.</p>
+  </header>
+
+  <main id="top">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap hero-inner">
+        <div class="medal-wrap">
+          <!-- The app icon's own vectors, as the start screen draws its logo (apps/client/splogo.h). -->
+          <svg class="medal" viewBox="112 112 800 800" role="img" aria-label="Slashplayed logo: a gold S on a green medallion">
+            <rect class="sq" x="175" y="175" width="674" height="674"/>
+            <circle class="disc" cx="512" cy="512" r="376.5"/>
+            <path class="s" d="M683.448 551.627L673.285 632.935V718.054L518.291 817.148L402.046 747.909L343.606 772.048L374.732 597.998L400.776 632.935C409.669 645.004 420.468 652.627 435.078 661.52L515.75 711.067L576.096 672.954V608.796L362.663 476.671V423.948L349.323 307.067L515.115 209.879L626.279 277.847H682.813L637.077 415.69L630.09 404.256C621.197 389.646 607.857 374.401 593.247 365.507L513.845 317.231L457.946 350.262V412.514L683.448 551.627Z"/>
+          </svg>
+        </div>
+        <p class="eyebrow">Free · Open source · Unofficial</p>
+        <h1 class="wordmark" id="hero-title">Slashplayed</h1>
+        <p class="tagline">Play the Mac World of Warcraft clients, unmodified, on M2-or-later iPads, iPhone 15 Pro and later, and Apple Vision Pro.</p>
+        <div class="cta">
+          <a class="btn" href="https://github.com/paulstraw/slashplayed/releases/latest">
+            <span class="btn-bg" aria-hidden="true"></span>
+            <svg class="flk" viewBox="0 0 30 8" aria-hidden="true"><circle cx="2" cy="4" r="1.6"/><line x1="2" y1="4" x2="20" y2="4"/><rect x="21.5" y="1" width="4.2" height="4.2" transform="rotate(45 23.6 3.1)"/></svg>
+            <span>Download Slashplayed Companion</span>
+            <svg class="flk rev" viewBox="0 0 30 8" aria-hidden="true"><circle cx="2" cy="4" r="1.6"/><line x1="2" y1="4" x2="20" y2="4"/><rect x="21.5" y="1" width="4.2" height="4.2" transform="rotate(45 23.6 3.1)"/></svg>
+            <i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i>
+          </a>
+          <p class="cta-sub">Free and open source (MIT). Early and experimental. For macOS 15 or later on Apple Silicon.</p>
+          <p class="cta-links">
+            <a href="https://github.com/paulstraw/slashplayed">Source on GitHub</a>
+            <a href="https://github.com/paulstraw/slashplayed#readme">Documentation</a>
+            <a href="https://github.com/paulstraw/slashplayed/issues">Issues</a>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap notice-sec" aria-labelledby="notice-title">
+      <div class="notice">
+        <h2 class="notice-h" id="notice-title">Unofficial, and at your own risk</h2>
+        <p><strong>Slashplayed is not affiliated with, endorsed by, or supported by Blizzard Entertainment.</strong></p>
+        <p>It includes no Blizzard files: the game comes from Blizzard’s own servers. You need your own Battle.net account and an active subscription.</p>
+        <p>Use it at your own risk. Your account could be actioned. Slashplayed is early and experimental: expect rough edges, and a game patch can break it until Slashplayed catches up.</p>
+      </div>
+    </section>
+
+    <section class="sec" aria-labelledby="how-title">
+      <div class="wrap">
+        <div class="orn" aria-hidden="true"><i></i><b></b><i></i></div>
+        <h2 class="h2" id="how-title">How it works</h2>
+        <p class="lede">Slashplayed is a compatibility layer that runs the unmodified Mac game clients on iPadOS, iOS, and visionOS. Slashplayed Companion, a Mac app, does the setup.</p>
+        <ol class="steps">
+          <li class="step"><span class="step-num" aria-hidden="true">1</span><h3>Build on your Mac</h3><p>The Companion downloads the Mac game client from Blizzard, builds the Slashplayed app from it, and signs it with your own Apple ID.</p></li>
+          <li class="step"><span class="step-num" aria-hidden="true">2</span><h3>Install on your device</h3><p>It installs the app on your iPad, iPhone, or Apple Vision Pro.</p></li>
+          <li class="step"><span class="step-num" aria-hidden="true">3</span><h3>Sign in and play</h3><p>Sign in to Battle.net on the device. The game fetches its data from Blizzard as you play. After that, your Mac isn’t needed.</p></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="sec sec-alt" aria-labelledby="proof-title">
+      <div class="wrap">
+        <div class="orn" aria-hidden="true"><i></i><b></b><i></i></div>
+        <h2 class="h2" id="proof-title">What you’ll use</h2>
+        <p class="lede">Two apps, both ours: the Companion on your Mac, and Slashplayed on your device.</p>
+        <div class="proof">
+          <figure class="fig">
+            <img class="shot" src="screenshot.png" alt="The Slashplayed Companion window running Classic Era on an iPhone: the client built, installed, and started, its code pages prepared, and the game running on the device, its data streamed from Blizzard" width="960" height="950">
+            <figcaption><b>Slashplayed Companion</b>On your Mac: picks the game, builds, signs, and installs.</figcaption>
+          </figure>
+          <figure class="fig">
+            <div class="device">
+              <img src="start-screen.png" alt="The Slashplayed start screen on an iPhone: the S medallion over the word Slashplayed, and buttons for Classic Era, TBC Anniversary, MoP Classic, and Retail" width="1065" height="490">
+            </div>
+            <figcaption><b>Slashplayed</b>On your iPad, iPhone, or Vision Pro: choose a game.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" aria-labelledby="games-title">
+      <div class="wrap">
+        <div class="orn" aria-hidden="true"><i></i><b></b><i></i></div>
+        <h2 class="h2" id="games-title">The games</h2>
+        <p class="lede">The Mac clients, as Blizzard ships them.</p>
+        <ul class="games">
+          <li>
+            <div class="tile">Classic Era<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div>
+            <p class="tile-note">Includes Hardcore and Season of Discovery: switch the game mode in game.</p>
+          </li>
+          <li><div class="tile">TBC Anniversary<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div></li>
+          <li>
+            <div class="tile">Mists of Pandaria Classic<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div>
+            <p class="tile-note">Played on the Vision Pro and an iPhone 16 Pro; untested on the iPad.</p>
+          </li>
+          <li>
+            <div class="tile">Retail<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div>
+            <p class="tile-note">Played on an M2 iPad, where it runs hot and gets a memory warning, and on an iPhone 16 Pro.</p>
+          </li>
+        </ul>
+        <div class="soon">
+          <h3 class="soon-h"><span class="soon-rule" aria-hidden="true"></span>Coming soon<span class="soon-rule" aria-hidden="true"></span></h3>
+          <ul class="soon-list">
+            <!-- Blizzard's permanent level-60 version, launching November 4, 2026. -->
+            <li><div class="tile tile-soon" title="World of Warcraft: Forever"><span aria-hidden="true">WoW: Forever</span><span class="vh">World of Warcraft: Forever</span><i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div></li>
+            <li><div class="tile tile-soon">Gamepad support<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec sec-alt" aria-labelledby="req-title">
+      <div class="wrap">
+        <div class="orn" aria-hidden="true"><i></i><b></b><i></i></div>
+        <h2 class="h2" id="req-title">Requirements</h2>
+        <div class="read">
+          <ul class="reqs">
+            <li><strong>A Mac with Apple Silicon,</strong> macOS 15 or later, and Xcode.</li>
+            <li><strong>An Apple ID in Xcode.</strong><span class="sub">A free Apple ID works: the app is signed again every 7 days. A paid Apple Developer Program membership signs it for a year.</span></li>
+            <li><strong>A supported device, paired with your Mac in Xcode, with Developer Mode on:</strong><span class="sub">an iPad with M2 or later (iPadOS 26), an iPhone 15 Pro or later (iOS 26), or Apple Vision Pro (visionOS 27). Of the iPhones, only the 16 Pro has been tested.</span></li>
+            <li><strong>A hardware keyboard</strong> for typing in the game.<span class="sub">The game shows no on-screen keyboard. On an iPhone, turn on AssistiveTouch to use a mouse.</span></li>
+            <li><strong>A Battle.net account</strong> with an active World of Warcraft subscription.<span class="sub">You sign in on the device. The game doesn’t need to be installed on the Mac.</span></li>
+            <li><strong><a href="https://apps.apple.com/app/id6755608044">LocalDevVPN</a>,</strong> free on the App Store.<span class="sub">It must be on when the game starts. The Mac isn’t needed then.</span></li>
+            <li><strong>Free space on the device</strong>, as below.</li>
+          </ul>
+          <table class="space">
+            <caption>Space needed on the device</caption>
+            <thead><tr><th scope="col">Game</th><th scope="col">About</th></tr></thead>
+            <tbody>
+              <tr><td>Classic Era</td><td>25 GB</td></tr>
+              <tr><td>Classic Era + TBC Anniversary</td><td>37 GB</td></tr>
+              <tr><td>Mists of Pandaria Classic<span class="note">About 23 GB of its own: a copy from the Mac takes the whole store the games share.</span></td><td>150 GB</td></tr>
+              <tr><td>Retail<span class="note">Needs a 512 GB+ iPad or iPhone with 8 GB of memory.</span></td><td>150 GB</td></tr>
+            </tbody>
+          </table>
+          <p class="space-after">A game that fetches its own data grows toward these sizes as you play.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" aria-labelledby="learn-title">
+      <div class="wrap">
+        <div class="orn" aria-hidden="true"><i></i><b></b><i></i></div>
+        <h2 class="h2" id="learn-title">Learn more</h2>
+        <div class="read">
+          <ul class="learn">
+            <li><a href="https://github.com/paulstraw/slashplayed#readme">Read me<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></li>
+            <li><a href="https://github.com/paulstraw/slashplayed/blob/main/docs/troubleshooting.md">Troubleshooting<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></li>
+            <li><a href="https://github.com/paulstraw/slashplayed/blob/main/docs/architecture.md">How it works<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></li>
+            <li><a href="https://github.com/paulstraw/slashplayed/issues/new/choose">Report an issue<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap">
+      <p>© 2026 Straw Dynamics. MIT License. Not affiliated with Blizzard Entertainment.</p>
+      <p>Display type: Goodmountain by Hermann S. Designs (<a href="goodmountain-license.txt">license</a>).</p>
+    </div>
   </footer>
 </body>
 </html>
