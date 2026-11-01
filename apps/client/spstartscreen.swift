@@ -133,7 +133,7 @@ private struct Header: View {
                 .foregroundStyle(gold)
                 .fixedSize()
                 // The screen's heading, spelled out (as written, it'd be read letter by letter).
-                .accessibilityLabel("SlashPlayed")
+                .accessibilityLabel("Slashplayed")
                 .accessibilityAddTraits(.isHeader)
         }
         .fixedSize()

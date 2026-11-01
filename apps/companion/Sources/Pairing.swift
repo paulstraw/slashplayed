@@ -22,7 +22,7 @@ enum Pairing {
     /// Where the client finds it, in its data container.
     static let devicePath = "Library/sppairing.plist"
     /// The name the device lists the pairing under.
-    static let hostName = "SlashPlayed"
+    static let hostName = "Slashplayed"
 
     /// Makes a record for `udid` (on USB) and copies it into the app's data container on `device`.
     /// Returns its size.
@@ -88,7 +88,7 @@ enum Pairing {
     }
 
     /// The device's free space, as lockdown has it now (com.apple.disk_usage's AmountDataAvailable), for an
-    /// iPad or iPhone usbmuxd can reach: unlike Device.freeSpace's file, it's there before SlashPlayed first
+    /// iPad or iPhone usbmuxd can reach: unlike Device.freeSpace's file, it's there before Slashplayed first
     /// starts. Over USB or the network: a read asks the device nothing (the iPhone over Wi-Fi, 2026-10-25).
     /// The session uses this Mac's lockdown pair record, which usbmuxd hands to idevice and which stays in
     /// its memory, as for make. Nil if usbmuxd doesn't list the device or lockdown doesn't say. Blocks, as make.
@@ -154,13 +154,13 @@ enum Pairing {
 
 extension Device {
     /// The space free on the device, by the measure its Settings app shows (FreeSpace.now): an iPad or iPhone
-    /// usbmuxd lists says now, through lockdown (Pairing.freeSpace), so it's known before SlashPlayed first
+    /// usbmuxd lists says now, through lockdown (Pairing.freeSpace), so it's known before Slashplayed first
     /// starts there (the rc6 run's iPad showed none), and the launcher's last figures add the space iOS can
     /// clear, which lockdown leaves out. Otherwise (the headset, or a device usbmuxd doesn't list) it's the
     /// launcher's figure from when the client last started. Nil if neither is known.
     func freeSpaceNow() async -> FreeSpace? { await freeSpaceAndApp().free }
 
-    /// freeSpaceNow, and whether its read of the app's data container found SlashPlayed missing there
+    /// freeSpaceNow, and whether its read of the app's data container found Slashplayed missing there
     /// (Device.AppMissing; lockdown's figure is still given), for the main window's idle heading.
     func freeSpaceAndApp() async -> (free: FreeSpace?, appMissing: Bool) {
         var lockdown: Int64?

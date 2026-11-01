@@ -62,7 +62,7 @@ enum ClientBuild {
         (try? Data(contentsOf: Paths.clientApp(device).appending(path: "embedded.mobileprovision"))).flatMap(Signing.profileInfo)
     }
 
-    /// The profile the companion installed on the device beside the app's own, so the SlashPlayed
+    /// The profile the companion installed on the device beside the app's own, so the Slashplayed
     /// certificate (B) is listed before the app's next build (Pipeline.profileListsCertificate).
     static func certificateProfile(_ device: Device) -> URL {
         Paths.clientDir(device).appending(path: "certificate-profile.mobileprovision")
@@ -249,7 +249,7 @@ enum ClientBuild {
 
     /// Builds the device's games (ClientAssembly) from their builds in `latest` (check's; a game not in it
     /// is asked for again) and signs the app, without installing. The log goes to
-    /// ~/Library/Logs/SlashPlayed/build.txt too. `beforeSigning` runs once the images are assembled, before
+    /// ~/Library/Logs/Slashplayed/build.txt too. `beforeSigning` runs once the images are assembled, before
     /// Xcode provisions for the device, which has to be unlocked then (Pipeline.waitForUnlock).
     static func build(_ device: Device, latest: [Flavor: BlizzardCDN.Version],
                       beforeSigning: () async throws -> Void = {},

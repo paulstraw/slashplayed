@@ -21,11 +21,11 @@ final class ClientStopTests: XCTestCase {
 
     func testAnotherAlertIsQuoted() {
         XCTAssertEqual(ClientStop.message(code: 1, alert: "Something else."),
-                       "The game said “Something else.” and quit (exit code 1). The log has its last messages (~/Library/Logs/SlashPlayed/console.txt).")
+                       "The game said “Something else.” and quit (exit code 1). The log has its last messages (~/Library/Logs/Slashplayed/console.txt).")
     }
 
     func testNoAlertGivesTheExitCode() {
         XCTAssertEqual(ClientStop.message(code: 1, alert: nil),
-                       "It quit with exit code 1. The log has its last messages (~/Library/Logs/SlashPlayed/console.txt).")
+                       "It quit with exit code 1. The log has its last messages (~/Library/Logs/Slashplayed/console.txt).")
     }
 }

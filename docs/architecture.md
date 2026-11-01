@@ -1,11 +1,11 @@
-# How SlashPlayed works
+# How Slashplayed works
 
-SlashPlayed runs the unmodified Mac World of Warcraft clients (Classic Era, TBC Anniversary, MoP Classic, and Retail) on M2-or-later iPads (iPadOS), iPhone 15 Pro and later (iOS), and Apple Vision Pro (visionOS). It's a
+Slashplayed runs the unmodified Mac World of Warcraft clients (Classic Era, TBC Anniversary, MoP Classic, and Retail) on M2-or-later iPads (iPadOS), iPhone 15 Pro and later (iOS), and Apple Vision Pro (visionOS). It's a
 compatibility layer: the client's own arm64 code runs natively on the device, and a set of shim
 libraries stands in for the macOS frameworks it expects (AppKit, CoreGraphics, Carbon, CoreAudio,
 Security, …), translating to UIKit, RemoteIO and friends. No game code is changed beyond Mach-O
 header and load-command edits made on the user's Mac (or on the device, when it updates a game
-itself), and no game files ship with SlashPlayed.
+itself), and no game files ship with Slashplayed.
 
 This page is the map. The experiments behind each technique are in [research.md](research.md).
 
@@ -17,14 +17,14 @@ they've chosen for the device, whether or not the game is installed on the Mac:
 1. **Fetch the client.** The companion asks Blizzard's patch service for the game's current build and
    downloads just the arm64 slice of that build's Mac client from Blizzard's CDN (`BlizzardCDN.swift`:
    one ranged request for the chunks that cover it, about 50 MB, each checked against its key, and
-   cached in `~/Library/Application Support/SlashPlayed/cdn/`). The dev script `apps/client/build.sh`
+   cached in `~/Library/Application Support/Slashplayed/cdn/`). The dev script `apps/client/build.sh`
    takes the same slice from the Mac's install instead, with `lipo -thin arm64`. That's the only place
    the two differ: their *input*. For the same build the slice is the same bytes, and so is every image
    made from it (`ClientAssemblyTests.testMatchesBuildShOnInstalledClients`, opt-in, compares them).
    Steps 2 to 4 have a third producer, the launcher's `apps/client/spassemble.m`, which makes the image
    on the device (see [Updating on the device](#updating-on-the-device)).
 2. **Rewrite load commands.** Every macOS library the client links (about 30) is pointed at either
-   the device's real library (when visionOS/iPadOS has it with the same exports) or a SlashPlayed shim
+   the device's real library (when visionOS/iPadOS has it with the same exports) or a Slashplayed shim
    (`@rpath/libsp<Name>.dylib`), using `shims/generated/rewrite-map.txt` and `install_name_tool`. An
    `@executable_path/Frameworks` rpath is added. Nothing in the client's code or data changes.
 3. **Set the platform.** `vtool -set-build-version` marks the image as visionOS or iOS, so the
@@ -34,12 +34,12 @@ they've chosen for the device, whether or not the game is installed on the Mac:
    [One app, every game](#one-app-every-game)).
 5. **Check binds.** Every import of the rewritten client is looked up in the bundled
    `exports.json` (what each shim and system library exports). An import nothing provides means a
-   game patch added something SlashPlayed doesn't cover yet; the companion stops with a clear
+   game patch added something Slashplayed doesn't cover yet; the companion stops with a clear
    message instead of installing something that would crash at launch (`BindCheck.swift`).
 6. **Assemble and sign.** The launcher, the on-device JIT helper (`PlugIns/SPJitHelper.appex`), the
    shims, every chosen game's client image with its build stamp (`spbuild-<flavor>`), the system
    root certificates (`sproots.plist`), the third-party licenses (`licenses/`), and the filled-in
-   Info.plist and entitlements go into `SlashPlayed.app`. The companion makes or refreshes
+   Info.plist and entitlements go into `Slashplayed.app`. The companion makes or refreshes
    explicit-App-ID development profiles with the user's own team, one for the app and one for the
    helper (by building a tiny stub project with `xcodebuild -allowProvisioningUpdates`), signs
    everything, the helper before the app, and installs it with `devicectl`, unless the device still holds
@@ -156,7 +156,7 @@ except the headset's record:
   the companion makes one over USB, through lockdown's `remotepairingdeviced` service, with no prompt
   (`Pairing.swift`). It's a credential: never read or logged, 0600 on the Mac and deleted after the
   copy. The launcher hands it to the helper in memory.
-- **The headset's RemotePairing record**, made on the headset, by SlashPlayed, on its first launch. With
+- **The headset's RemotePairing record**, made on the headset, by Slashplayed, on its first launch. With
   Settings > General > Remote Devices open, visionOS advertises `_remotepairing-manual-pairing._tcp`
   and does pair-setup with a six-digit code it shows, the way Xcode pairs a Vision Pro over Wi-Fi. The
   launcher shows a pairing screen (`sppair.m`; UIKit starts before the client for it, as on iOS, since
@@ -177,7 +177,7 @@ except the headset's record:
 
 visionOS won't `exec` or `posix_spawn` another executable from an app bundle, and dyld won't `dlopen`
 an `MH_EXECUTE`. But it will `dlopen` an `MH_BUNDLE`, and the client's constructors, Objective-C
-classes and thread-local variables all work from one. So `SlashPlayed.app` holds every chosen game
+classes and thread-local variables all work from one. So `Slashplayed.app` holds every chosen game
 as `wow-<flavor>` (retyped `MH_BUNDLE`), and its main executable is a small launcher
 (`apps/client/launcher.m`) that:
 
@@ -229,7 +229,7 @@ shape, one row per region; the region is the stamp's `Branch`) and compares that
 `BuildConfig` with the stamp's `Build Key`. The same means nothing shows. A different one means
 Blizzard has a newer build out than the image, so a screen says so (or offers to update it on the
 device: see [Updating on the device](#updating-on-the-device)), and first finds out whether this
-SlashPlayed can run it at all. The device fetches the new build's client from Blizzard's CDN the way the companion does (`apps/client/spcdn.m`, the port of
+Slashplayed can run it at all. The device fetches the new build's client from Blizzard's CDN the way the companion does (`apps/client/spcdn.m`, the port of
 `BlizzardCDN.swift`: build config, install manifest, one encoding page, then one ranged request for the
 chunks covering the arm64 slice, everything checked against the key that names it; about 45 MB, 3 s on
 an iPhone on Wi-Fi), the sibling `/cdns` table giving the servers. On cellular, a hotspot, or Low Data
@@ -239,7 +239,7 @@ has no `dyld_info`, so `apps/client/spbind.m` reads the imports from the Mach-O 
 of fixup info (bind opcodes, which the clients have, or chained fixups), leaving weak imports out as
 `BindCheck` does. The companion's tests hold it to `BindCheck`'s answer on fixtures of both kinds and,
 opt-in, on every build the untethered research kept. It binds: "<Game> <version> is out. Update on your
-Mac to play it." It doesn't: "This patch needs a SlashPlayed update." It couldn't tell (the download
+Mac to play it." It doesn't: "This patch needs a Slashplayed update." It couldn't tell (the download
 failed, Not Now, an app without `exports.json`): the first. Each has **Play Anyway**, which goes on with
 the image it has; the companion follows the screen as a wait on the person (`patch: showing the
 newer-build screen`, `patch: Play Anyway`). The slice stays in `Library/spslice/<flavor>.arm64` with its
@@ -248,7 +248,7 @@ doesn't fetch it again, and an on-device update can build its image from it. A c
 (offline, a timeout, no row) goes on without a word: the service fetch has a 3 s budget, and a refused
 connection fails at once. The log has a line for each step, versions only (`patch: up to date: …`,
 `patch: newer build out: …`, `patch: slice: …`, `patch: imports: N of M resolve …` and any `UNRESOLVED`
-ones, `patch: message: update on your Mac: …` or `patch: message: needs a SlashPlayed update: …`,
+ones, `patch: message: update on your Mac: …` or `patch: message: needs a Slashplayed update: …`,
 `patch: couldn't check …: going on`). `SP_PATCH_SERVICE` (passed by `run.sh`) replaces the base URL
 for tests: a URL, or a path in the app's home directory read as files (`Library/sppatchtest` with
 `Library/sppatchtest/<product>/versions` copied in by `devicectl`; a `cdns` file beside it is optional,
@@ -361,7 +361,7 @@ What the device holds for it, all in the app's container:
 
 | What | Where | Written by | Gone when |
 |---|---|---|---|
-| The signing identity | the app's keychain, service "SlashPlayed signing identity" (this device only, never synced) | the launcher, from the pushed `Library/spidentity.p12` and `.pass` (deleted at once) | Forget Signing Identity on the device, or the companion's forget marker (the setting turned off, Stop Using the SlashPlayed Certificate) |
+| The signing identity | the app's keychain, service "Slashplayed signing identity" (this device only, never synced) | the launcher, from the pushed `Library/spidentity.p12` and `.pass` (deleted at once) | Forget Signing Identity on the device, or the companion's forget marker (the setting turned off, Stop Using the Slashplayed Certificate) |
 | What it holds | `Library/spidentity.txt` (`present <day>`, `expired`, `none`, `forgotten`) | the launcher, every start | rewritten every start |
 | B's profile | installed device-wide, and a copy in `Library/spprofile.mobileprovision` | the companion | it expires (an expired one lists nothing) |
 | A newer build's slice | `Library/spslice/<flavor>.arm64`, `spbuild-<flavor>` | the patch check | the bundled image catches up |
@@ -424,7 +424,7 @@ companion will, and the test hook `SP_SIGN_TEST=<path in the app's home>` signs 
 The companion sends that identity (`DeviceIdentity.swift`), only to a device whose **Update Games on This
 Device** is on (`updateGames.<hardware UDID>`, off by default; turning it on shows what's sent and how to
 take it back first). Where the key comes from depends on the team: a free team uses the identity the
-companion already signs the app with (**A**), and a paid team uses a SlashPlayed certificate of its own
+companion already signs the app with (**A**), and a paid team uses a Slashplayed certificate of its own
 (**B**: until it's set up, a paid team sends nothing). The `signingSource` default (`A` or `B`) overrides
 the team's choice for testing. For A, the identity is the built app's signer
 (`Signing.signer`), exported from the login keychain with `SecItemExport` as a `.p12` (the identity
@@ -440,7 +440,7 @@ certificate's last valid day (`DeviceIdentity.decide`): it pushes when the devic
 unreadable one, or one whose day isn't its own certificate's, or when the identity to send isn't the one
 sent last, and not while a push still waits for the launcher. The log says which change that was: the
 source switched (the device gets B instead of A, or A instead of B), Xcode replaced A's certificate, or
-there's a new SlashPlayed certificate. Turning the setting off sends `Library/spidentity.forget`, which the launcher takes as
+there's a new Slashplayed certificate. Turning the setting off sends `Library/spidentity.forget`, which the launcher takes as
 Settings' Forget. When the device says `forgotten` (Settings' Forget) after a push, the companion turns
 the setting off instead of pushing it back, and forgets its record, so turning it on again sends the
 identity again. Play and Update Client run this after the install; the `-push-identity` launch flag runs
@@ -450,20 +450,20 @@ throwaway identity from a keychain file of their own (never on the search list, 
 password opens it, the device's signer (zsign, on the Mac) signs a fixture with it, a missing identity
 fails, and a refusal (macOS not allowed to ask) is reported as one.
 
-B's certificate (`SlashPlayedCertificate.swift`) is the person's to make, with the companion's help, in
-Settings > Updates on Devices > SlashPlayed Certificate (or `-certificate-request` for the first step). The companion makes an
-RSA-2048 key in a keychain file of its own (`Application Support/SlashPlayed/certificate/`, 0600, a new
+B's certificate (`SlashplayedCertificate.swift`) is the person's to make, with the companion's help, in
+Settings > Updates on Devices > Slashplayed Certificate (or `-certificate-request` for the first step). The companion makes an
+RSA-2048 key in a keychain file of its own (`Application Support/Slashplayed/certificate/`, 0600, a new
 name each time, since a keychain deleted and made again at one path stays the deleted one to the
 process). That file is never on the user's search list, and Xcode and codesign look for identities only
 there, so neither ever signs with it. Its random password is a generic password in the login keychain
-("SlashPlayed certificate keychain"). The keychain is unlocked only around each use, with macOS's prompts
+("Slashplayed certificate keychain"). The keychain is unlocked only around each use, with macOS's prompts
 off (a locked one would otherwise ask for its password), then locked again; it also locks itself after
 5 minutes and on sleep. The key's access list is the default one, the copy of the app that made it, so
 the export for a push asks nothing. Another copy, signed differently (a dev build and a release), is
 refused every use with the prompts off, and the keychain's password can't change the list (that needs a
 prompt), so a test signature finds it (`.otherCopy`) and Settings says to stop using the certificate and
-make a new one. The request is PKCS#10 written by hand (`CertificateRequest`: subject CN=SlashPlayed, which
-Apple ignores, SHA-256 with RSA), saved to `~/Downloads/SlashPlayed.certSigningRequest`. The same key
+make a new one. The request is PKCS#10 written by hand (`CertificateRequest`: subject CN=Slashplayed, which
+Apple ignores, SHA-256 with RSA), saved to `~/Downloads/Slashplayed.certSigningRequest`. The same key
 gives the same request, so asking again is harmless. The `.cer` the person downloads (DER or PEM) must
 hold the key's public key, have the team ID as its subject's OU, and be valid now. It's then kept beside
 the key. Before a push, some profile installed on the device must list the certificate (5.3: profiles are
@@ -472,7 +472,7 @@ companion installed (`client-<platform>/certificate-profile.mobileprovision`, st
 device profile list`). Otherwise the companion forgets Xcode's cached profile, builds the stub again so
 Xcode fetches the team's current one (which lists every development certificate of the team), checks
 it, and installs it with `devicectl device profile install`. If even that doesn't list it, nothing is
-sent. **Stop Using the SlashPlayed Certificate** deletes the keychain file and its password, and turns
+sent. **Stop Using the Slashplayed Certificate** deletes the keychain file and its password, and turns
 the setting off for every device the certificate was sent to (`identityPushed.<UDID>` equal to its
 SHA-1), so each device's next action sends it the forget marker. The tests make the store in `$TMPDIR`,
 check the request with `openssl req -verify`, and issue certificates from a CA of their own with
@@ -523,7 +523,7 @@ updated on the iPhone"), from `updatedOnDevice.<UDID>`, as the last action found
 
 An update's image keeps the signature it was made with while the identity behind it can change: Xcode
 replaces a free team's certificate (A) and the next install's profile lists only the new one, a
-regenerated profile no longer lists the SlashPlayed certificate (B), or the companion switches a device
+regenerated profile no longer lists the Slashplayed certificate (B), or the companion switches a device
 from one source to the other. A reinstall (the companion's Play or Update Client, so a free team's weekly
 re-sign) keeps the app's container and its keychain, so the image and the identity are both still there;
 what can be missing is a profile that lists the image's signer, and `dlopen` refuses such an image as it
@@ -554,7 +554,7 @@ address the certificate names, with `/usr/bin/openssl ocsp`, and takes its answe
 verifies against the chain SecTrust builds (the WWDR intermediate and Apple's root). Only public
 certificates are written, to a scratch folder deleted after. An expired or revoked identity isn't sent,
 and the main window says so with the next step: for A, a new Apple Development certificate in Xcode,
-then Play; for B, Stop Using the SlashPlayed Certificate and make a new one (Settings shows a revoked or
+then Play; for B, Stop Using the Slashplayed Certificate and make a new one (Settings shows a revoked or
 expired B there too). When the answer can't be had (offline), it's logged and nothing changes. When Xcode
 has replaced A's certificate since the last push, the push says so; if its export is refused, the main
 window says that the device's updates may not load until it's sent. For B, every action (not only a push)
@@ -845,7 +845,7 @@ clang target differs. The differences:
 Retail on the iPad needs ~150 GB free and 8 GB of memory. On an M2 iPad (8 GB, streaming from a fresh
 start) it reached character select 58 s after launch and played at ~56 fps, with the footprint
 peaking at 4.4 GB: a memory warning at 4.2 GB (4 GB left), thermal state `serious`, and a jetsam event
-that killed another process, not SlashPlayed. Its streaming wrote 4.3 GB in 13 minutes, which set off
+that killed another process, not Slashplayed. Its streaming wrote 4.3 GB in 13 minutes, which set off
 iPadOS's daily disk-writes report (a report; no action taken).
 
 **iPhone.** The same app and build as the iPad (device families 1 and 2), with these differences:
@@ -886,7 +886,7 @@ On the device the libSystem shim copies stderr to `Documents/spconsole.log` (old
 to `spconsole*.log`, five kept, with a clock time per line); devicectl's `--console` capture isn't reliable,
 and a launch from the home screen has none. The launcher loads that shim first thing, so the log covers
 the whole launch, the JIT helper and the pairing screen included, not only the client. The companion keeps its
-own logs in `~/Library/Logs/SlashPlayed/`, pulls the device's logs and crash and jetsam reports, and
+own logs in `~/Library/Logs/Slashplayed/`, pulls the device's logs and crash and jetsam reports, and
 Export Diagnostics zips them with launch credential values, device identifiers (UDIDs, serial numbers,
 ECIDs, and the crash reports' device keys), and personal details (your name and signing certificates'
 names, Xcode's teams and Apple IDs, the devices' and the Mac's names, and the user folder in paths)

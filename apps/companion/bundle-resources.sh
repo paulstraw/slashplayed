@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copies everything the companion needs at run time into a built "SlashPlayed Companion.app", so the app
+# Copies everything the companion needs at run time into a built "Slashplayed Companion.app", so the app
 # never reads the repo (build.sh runs it; so will the release script):
 #   apps/companion/bundle-resources.sh <app>
 # Contents/Resources/ gets, per device platform (xros, ios), <platform>/: the unsigned shim dylibs, their
@@ -18,7 +18,7 @@
 # here, since the user's Mac has no xcodegen). (The identity
 # file mac-identity.c writes comes from its Swift port, MacIdentity.) Needs xcodegen; nothing here is Blizzard's (no client is read).
 set -euo pipefail
-[ $# -eq 1 ] && [ -d "$1/Contents" ] || { echo "usage: $0 <path to SlashPlayed Companion.app>" >&2; exit 1; }
+[ $# -eq 1 ] && [ -d "$1/Contents" ] || { echo "usage: $0 <path to Slashplayed Companion.app>" >&2; exit 1; }
 APP=$(cd "$1" && pwd)
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 RES=$APP/Contents/Resources
@@ -69,7 +69,7 @@ cp "$ROOT/work/idevice/ios/licenses/idevice.txt" "$ACK/idevice-ios.txt"
 cp "$ROOT/work/idevice/xros/licenses/idevice.txt" "$ACK/idevice-visionos.txt"
 cp "$FONT/LICENSE.md" "$ACK/goodmountain.txt"
 cat > "$ACK/README.txt" <<'EOF'
-SlashPlayed Companion is MIT-licensed (Copyright (c) 2026 Straw Dynamics) and includes these
+Slashplayed Companion is MIT-licensed (Copyright (c) 2026 Straw Dynamics) and includes these
 third-party components, each under its own license:
 
   Sparkle             the companion's own updates                     Sparkle.txt
@@ -77,7 +77,7 @@ third-party components, each under its own license:
                       crates it's built with and the Rust standard    rust-std.html
                       library
 
-The SlashPlayed app it builds for your device also includes:
+The Slashplayed app it builds for your device also includes:
 
   zsign and OpenSSL   signing a game update on the device             zsign.txt, openssl.txt
   idevice             the JIT helper, with its Rust crates and the    idevice-ios.txt,

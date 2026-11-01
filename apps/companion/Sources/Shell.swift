@@ -154,7 +154,7 @@ final class Locked<Value>: @unchecked Sendable {
     }
 }
 
-/// A log file under ~/Library/Logs/SlashPlayed/, each line prefixed with seconds since `t0` (like run.sh's).
+/// A log file under ~/Library/Logs/Slashplayed/, each line prefixed with seconds since `t0` (like run.sh's).
 final class LogFile: @unchecked Sendable {
     private let handle: FileHandle?
     private let t0: Date

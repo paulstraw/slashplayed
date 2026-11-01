@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 /// Option B's signing identity (DeviceIdentity: a paid team's): an Apple Development certificate of
-/// SlashPlayed's own, so the key a device signs game updates with isn't the one this Mac signs everything
+/// Slashplayed's own, so the key a device signs game updates with isn't the one this Mac signs everything
 /// else with, and it can be dropped (and revoked) on its own.
 ///
 /// The companion makes the key (RSA-2048) and a certificate signing request; the person uploads the request
@@ -19,13 +19,13 @@ import Security
 /// A device can use the identity only once some provisioning profile installed there lists the certificate
 /// (5.3); Pipeline sees to that before each push (`lists`). Logs give the certificate's name and last valid
 /// day at most, never its SHA-1, the key, or the password.
-enum SlashPlayedCertificate {
+enum SlashplayedCertificate {
     /// The key's label in the keychain, and the request's subject. Apple ignores the subject and names the
     /// certificate after the account.
-    static let label = "SlashPlayed"
+    static let label = "Slashplayed"
     /// Where the request is saved for the person to upload.
     static var requestFile: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appending(path: "Downloads/SlashPlayed.certSigningRequest")
+        FileManager.default.homeDirectoryForCurrentUser.appending(path: "Downloads/Slashplayed.certSigningRequest")
     }
     /// Where on developer.apple.com a new certificate is made.
     static let portalURL = URL(string: "https://developer.apple.com/account/resources/certificates/add")!
@@ -61,7 +61,7 @@ enum SlashPlayedCertificate {
     }
 
     /// What to do about `.otherCopy`, for Settings and the errors here.
-    static let otherCopyFix = "Stop using the SlashPlayed certificate, then make a new one. Another copy of SlashPlayed Companion made its key (one signed differently, such as a build of your own), and macOS lets only that copy use it."
+    static let otherCopyFix = "Stop using the Slashplayed certificate, then make a new one. Another copy of Slashplayed Companion made its key (one signed differently, such as a build of your own), and macOS lets only that copy use it."
 
     // MARK: The companion's store
 
@@ -74,7 +74,7 @@ enum SlashPlayedCertificate {
     }
 
     /// The generic password's service in the login keychain; its account is the keychain file's name.
-    static let passwordService = "SlashPlayed certificate keychain"
+    static let passwordService = "Slashplayed certificate keychain"
 
     /// The companion's store, nil if none was made (or its password is gone, which leaves it unusable:
     /// Settings' Start Over removes it).
@@ -105,7 +105,7 @@ enum SlashPlayedCertificate {
             let password = try DeviceIdentity.newPassword()
             let st = SecItemAdd([kSecClass: kSecClassGenericPassword, kSecAttrService: passwordService, kSecAttrAccount: name,
                                  kSecAttrLabel: passwordService, kSecValueData: Data(password.utf8)] as CFDictionary, nil)
-            guard st == errSecSuccess else { throw Failure("The keychain didn't keep the SlashPlayed certificate keychain's password (\(st)).") }
+            guard st == errSecSuccess else { throw Failure("The keychain didn't keep the Slashplayed certificate keychain's password (\(st)).") }
             store = Store(path: folder.appending(path: name), password: password)
         }
         let pem = try request(store)
@@ -116,7 +116,7 @@ enum SlashPlayedCertificate {
     /// Stop Using It's log line (Pipeline.stopUsingCertificate): "<device> deletes its copy" for one device,
     /// "<a> and <b> delete their copies" for more (one read "Paul's Apple Vision Pro delete their copies").
     static func deletedLine(sentTo: [String]) -> String {
-        let deleted = "deleted the SlashPlayed certificate and its key from this Mac"
+        let deleted = "deleted the Slashplayed certificate and its key from this Mac"
         guard !sentTo.isEmpty else { return deleted }
         let deletes = sentTo.count == 1 ? "deletes its copy at its" : "delete their copies at their"
         return "\(deleted); \(SetupStatus.list(sentTo)) \(deletes) next Play or Update Client"
@@ -147,12 +147,12 @@ enum SlashPlayedCertificate {
         if FileManager.default.fileExists(atPath: store.path.path) {
             guard SecKeychainOpen(store.path.path, &keychain) == errSecSuccess, let keychain,
                   SecKeychainUnlock(keychain, UInt32(store.password.utf8.count), store.password, true) == errSecSuccess else {
-                throw Failure("The SlashPlayed certificate's keychain (\(store.path.lastPathComponent)) couldn't be opened. Start over in Settings > Updates on Devices.")
+                throw Failure("The Slashplayed certificate's keychain (\(store.path.lastPathComponent)) couldn't be opened. Start over in Settings > Updates on Devices.")
             }
         } else {
-            guard create else { throw Failure("The SlashPlayed certificate's keychain isn't there any more.") }
+            guard create else { throw Failure("The Slashplayed certificate's keychain isn't there any more.") }
             let st = SecKeychainCreate(store.path.path, UInt32(store.password.utf8.count), store.password, false, nil, &keychain)
-            guard st == errSecSuccess, let keychain else { throw Failure("The SlashPlayed certificate's keychain couldn't be made (\(st)).") }
+            guard st == errSecSuccess, let keychain else { throw Failure("The Slashplayed certificate's keychain couldn't be made (\(st)).") }
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: store.path.path)
             // Locks itself after 5 minutes unused and on sleep, should a lock below ever be missed.
             var settings = SecKeychainSettings(version: UInt32(SEC_KEYCHAIN_SETTINGS_VERS1), lockOnSleep: true,
@@ -222,12 +222,12 @@ enum SlashPlayedCertificate {
         }
         return try withKeychain(store) { keychain in
             guard let key = privateKey(in: keychain) else {
-                throw Failure("There's no SlashPlayed key to match a certificate to. Make a certificate request first.")
+                throw Failure("There's no Slashplayed key to match a certificate to. Make a certificate request first.")
             }
             try check(cert, key: key, team: team, now: now)
             let st = SecItemAdd([kSecValueRef: cert, kSecUseKeychain: keychain] as CFDictionary, nil)
             guard st == errSecSuccess || st == errSecDuplicateItem else {
-                throw Failure("The certificate couldn't be kept in SlashPlayed's keychain (\(st)).")
+                throw Failure("The certificate couldn't be kept in Slashplayed's keychain (\(st)).")
             }
             return describe(cert)
         }
@@ -241,7 +241,7 @@ enum SlashPlayedCertificate {
     /// The certificate in the companion's store.
     static func add(_ file: Data, team: String) throws -> Certificate {
         guard let store = current() else {
-            throw Failure("There's no SlashPlayed key to match a certificate to. Make a certificate request first.")
+            throw Failure("There's no Slashplayed key to match a certificate to. Make a certificate request first.")
         }
         return try add(file, team: team, to: store)
     }
@@ -252,17 +252,17 @@ enum SlashPlayedCertificate {
         guard let certKey = SecCertificateCopyKey(cert), let pub = SecKeyCopyPublicKey(key),
               let a = SecKeyCopyExternalRepresentation(certKey, nil) as Data?,
               let b = SecKeyCopyExternalRepresentation(pub, nil) as Data?, a == b else {
-            throw Failure("That certificate wasn't made from SlashPlayed's request. On developer.apple.com, make the certificate with the request SlashPlayed saved (\(requestFile.lastPathComponent)), then choose the certificate you download.")
+            throw Failure("That certificate wasn't made from Slashplayed's request. On developer.apple.com, make the certificate with the request Slashplayed saved (\(requestFile.lastPathComponent)), then choose the certificate you download.")
         }
         let units = organizationalUnits(cert)
         guard units.contains(team) else {
-            throw Failure("That certificate is for team \(units.first ?? "unknown"), not \(team), the team SlashPlayed signs with. Sign in to developer.apple.com with team \(team) and make the certificate there.")
+            throw Failure("That certificate is for team \(units.first ?? "unknown"), not \(team), the team Slashplayed signs with. Sign in to developer.apple.com with team \(team) and make the certificate there.")
         }
         if let start = SecCertificateCopyNotValidBeforeDate(cert) as Date?, start > now {
             throw Failure("That certificate isn't valid yet.")
         }
         if let end = SecCertificateCopyNotValidAfterDate(cert) as Date?, end <= now {
-            throw Failure("That certificate has expired. Make a new one on developer.apple.com with SlashPlayed's request.")
+            throw Failure("That certificate has expired. Make a new one on developer.apple.com with Slashplayed's request.")
         }
     }
 
@@ -299,7 +299,7 @@ enum SlashPlayedCertificate {
             kSecPrivateKeyAttrs: [kSecAttrIsPermanent: true, kSecAttrLabel: label, kSecAttrIsExtractable: true] as CFDictionary,
         ]
         guard let key = SecKeyCreateRandomKey(attributes as CFDictionary, &error) else {
-            throw Failure("The SlashPlayed key couldn't be made: \(error.map { $0.takeRetainedValue().localizedDescription } ?? "no reason given").")
+            throw Failure("The Slashplayed key couldn't be made: \(error.map { $0.takeRetainedValue().localizedDescription } ?? "no reason given").")
         }
         return key
     }
@@ -347,7 +347,7 @@ enum SlashPlayedCertificate {
 enum CertificateRequest {
     static func der(key: SecKey, commonName: String) throws -> Data {
         guard let pub = SecKeyCopyPublicKey(key), let pkcs1 = SecKeyCopyExternalRepresentation(pub, nil) as Data? else {
-            throw Failure("The SlashPlayed key's public half couldn't be read.")
+            throw Failure("The Slashplayed key's public half couldn't be read.")
         }
         let rsaEncryption = DER.oid([0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01])        // 1.2.840.113549.1.1.1
         let sha256WithRSA = DER.oid([0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0B])        // 1.2.840.113549.1.1.11

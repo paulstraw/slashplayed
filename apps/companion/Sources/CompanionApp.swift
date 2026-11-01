@@ -15,7 +15,7 @@ struct CompanionApp: App {
     @State private var rerunningSetup = CommandLine.arguments.contains("-setup-step")
 
     var body: some Scene {
-        Window("SlashPlayed Companion", id: "main") {
+        Window("Slashplayed Companion", id: "main") {
             // Onboarding until the user gets through it once; Help > Setup Assistant brings it back.
             if onboarded && !rerunningSetup {
                 ContentView(pipeline: pipeline)
@@ -29,7 +29,7 @@ struct CompanionApp: App {
         .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .appInfo) {
-                Button("About SlashPlayed Companion") { About.show() }
+                Button("About Slashplayed Companion") { About.show() }
                 Button("Check for Updates…") { updater.checkForUpdates() }
                     .disabled(!updater.canCheckForUpdates)
             }
@@ -39,8 +39,8 @@ struct CompanionApp: App {
                 Button("Export Diagnostics…") { pipeline.exportDiagnostics() }
                     .disabled(pipeline.isBusy)
                 Divider()
-                Link("SlashPlayed Website", destination: About.website)
-                Link("SlashPlayed on GitHub", destination: About.github)
+                Link("Slashplayed Website", destination: About.website)
+                Link("Slashplayed on GitHub", destination: About.github)
                 // The template chooser, not one form: bug report, new game patch, feature request.
                 Link("Report an Issue…", destination: About.reportIssue)
                 Button("Acknowledgements") { About.open(About.acknowledgements) }
@@ -144,11 +144,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("-pair") { Pipeline.shared.pairDevice() }
         // -push-identity: send the device its signing identity (or ask it to forget it), as Play would.
         if CommandLine.arguments.contains("-push-identity") { Pipeline.shared.pushIdentity() }
-        // -certificate-request: make the SlashPlayed certificate's key and request (a paid team's, B).
+        // -certificate-request: make the Slashplayed certificate's key and request (a paid team's, B).
         if CommandLine.arguments.contains("-certificate-request") { try? Pipeline.shared.makeCertificateRequest() }
-        // -pull-logs: fetch the device's logs into ~/Library/Logs/SlashPlayed/triage/.
+        // -pull-logs: fetch the device's logs into ~/Library/Logs/Slashplayed/triage/.
         if CommandLine.arguments.contains("-pull-logs") { Pipeline.shared.pullDeviceLogs() }
-        // -export-diagnostics: write the diagnostics zip into ~/Library/Logs/SlashPlayed/diagnostics/.
+        // -export-diagnostics: write the diagnostics zip into ~/Library/Logs/Slashplayed/diagnostics/.
         if CommandLine.arguments.contains("-export-diagnostics") { Pipeline.shared.exportDiagnostics() }
         // -check-for-updates: what the menu item does (Sparkle shows the result).
         if CommandLine.arguments.contains("-check-for-updates") { Updater.shared.checkForUpdates() }
@@ -287,7 +287,7 @@ struct PlayMenu: View {
             if pipeline.games.contains(where: Flavor.installed.contains) {
                 Divider()
                 Button("Play with My Mac's Battle.net") { pipeline.playWithBattleNet() }
-                    .help("Press Play in Battle.net next: SlashPlayed moves its launch credentials to the \(pipeline.device.noun), for when the \(pipeline.device.noun)'s own sign-in doesn't work")
+                    .help("Press Play in Battle.net next: Slashplayed moves its launch credentials to the \(pipeline.device.noun), for when the \(pipeline.device.noun)'s own sign-in doesn't work")
             }
         }
         .controlSize(.large)
@@ -309,7 +309,7 @@ struct ProfileWarning: View {
         HStack(alignment: .firstTextBaseline) {
             Image(systemName: "clock.badge.exclamationmark").foregroundStyle(.orange)
             Text(expires < Date()
-                 ? "The app's profile on the \(noun) ran out \(expires.formatted(.relative(presentation: .named))). The \(noun) won't open SlashPlayed until it's rebuilt."
+                 ? "The app's profile on the \(noun) ran out \(expires.formatted(.relative(presentation: .named))). The \(noun) won't open Slashplayed until it's rebuilt."
                  : "The app's profile on the \(noun) runs out \(expires.formatted(.relative(presentation: .named))) (a free team's lasts 7 days). Rebuild now, or press Play, which renews it.")
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
@@ -340,14 +340,14 @@ struct GamesFooter: View {
                 Spacer()
                 if let free = pipeline.freeSpace {
                     Text("\(free.text) on the \(device.noun)")
-                        .help(free.atLeast ? "Settings on the \(device.noun) shows more: space it can clear. SlashPlayed's first start there tells the Mac how much."
-                              : "As the \(device.noun)'s Settings counts it: now, for an iPad or iPhone the Mac can reach; else when SlashPlayed last started")
+                        .help(free.atLeast ? "Settings on the \(device.noun) shows more: space it can clear. Slashplayed's first start there tells the Mac how much."
+                              : "As the \(device.noun)'s Settings counts it: now, for an iPad or iPhone the Mac can reach; else when Slashplayed last started")
                 }
             }
-            // Games the device updated itself past the build SlashPlayed installed (Pipeline.checkDeviceUpdates).
+            // Games the device updated itself past the build Slashplayed installed (Pipeline.checkDeviceUpdates).
             ForEach(pipeline.updatedOnDevice.sorted { $0.key.rawValue < $1.key.rawValue }, id: \.key) { flavor, version in
                 Text("\(flavor.name) \(version), updated on the \(device.noun)")
-                    .help("The \(device.noun) made and signed this version itself (Update Games on This Device). SlashPlayed's next build of it replaces it.")
+                    .help("The \(device.noun) made and signed this version itself (Update Games on This Device). Slashplayed's next build of it replaces it.")
             }
             // The device's signing identity has expired or been revoked (Pipeline.sendIdentityIfNeeded).
             if let notice = pipeline.identityNotice {
@@ -378,7 +378,7 @@ struct Headline: View {
     let busy: Bool
     /// The device's ("headset", "iPad"), for the idle text.
     let noun: String
-    /// SlashPlayed isn't on the device (Pipeline.deviceAppMissing): the idle text says to press Play.
+    /// Slashplayed isn't on the device (Pipeline.deviceAppMissing): the idle text says to press Play.
     var appMissing = false
 
     var body: some View {

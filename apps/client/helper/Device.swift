@@ -107,7 +107,7 @@ final class Tunnel {
             let t = now()
             let error = withUnsafePointer(to: &address) {
                 $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                    tunnel_create_rppairing($0, length, "SlashPlayed", record, refusePin, nil, &adapter, &handshake)
+                    tunnel_create_rppairing($0, length, "Slashplayed", record, refusePin, nil, &adapter, &handshake)
                 }
             }
             do {

@@ -7,8 +7,8 @@ import XCTest
 /// client", and then, with the app deleted, the same, then devicectl's container error.
 final class ClientInstallTests: XCTestCase {
     private let games: [Flavor] = [.classicEra, .anniversary]
-    private let here = "file:///private/var/containers/Bundle/Application/AAAA/SlashPlayed.app/"
-    private let there = "file:///private/var/containers/Bundle/Application/BBBB/SlashPlayed.app/"
+    private let here = "file:///private/var/containers/Bundle/Application/AAAA/Slashplayed.app/"
+    private let there = "file:///private/var/containers/Bundle/Application/BBBB/Slashplayed.app/"
 
     private func record(build: String = "b1", flavors: [Flavor]? = nil, url: String? = nil) -> ClientBuild.Installed {
         ClientBuild.Installed(build: build, flavors: (flavors ?? games).map(\.rawValue), url: url ?? here)
@@ -71,7 +71,7 @@ final class ClientInstallTests: XCTestCase {
     }
 
     /// devicectl's listing of every app: a listing without the device's built-in apps is cut short and says
-    /// nothing (rc7: the headset's SlashPlayed and LocalDevVPN "missing" for one session, listed the next),
+    /// nothing (rc7: the headset's Slashplayed and LocalDevVPN "missing" for one session, listed the next),
     /// so setup doesn't say "Not installed" and Play doesn't install again for it.
     func testAListingCutShortSaysNothing() {
         let settings: [String: Any] = ["bundleIdentifier": "com.apple.Preferences", "defaultApp": true, "removable": false]
@@ -154,11 +154,11 @@ final class ClientInstallTests: XCTestCase {
         XCTAssertFalse(Device.AppMissing.matches(failed("ERROR: The operation couldn’t be completed. (CoreDevice.ActionError error 3.)")))
         XCTAssertFalse(Device.AppMissing.matches(Failure("Developer Mode is off")))
         let message = Device.AppMissing(noun: "iPhone").localizedDescription
-        XCTAssertTrue(message.hasPrefix("SlashPlayed isn't installed on the iPhone."), message)
+        XCTAssertTrue(message.hasPrefix("Slashplayed isn't installed on the iPhone."), message)
         XCTAssertFalse(message.contains("devicectl"), message)
     }
 
-    /// With SlashPlayed deleted on the device, a listing of its data container fails with the text a Wi-Fi
+    /// With Slashplayed deleted on the device, a listing of its data container fails with the text a Wi-Fi
     /// drop gives a listing, so rc19's companion retried it as a drop for 30 s, on Wi-Fi and on USB. It's
     /// told apart by asking the device for its apps, only for an error that looks like a drop. The texts are
     /// devicectl's, from a probe of the iPhone with a bundle ID it doesn't have (2026-10-31).
@@ -192,11 +192,11 @@ final class ClientInstallTests: XCTestCase {
         XCTAssertEqual(asked, 3, "the device is asked only for an error that looks like a drop")
     }
 
-    /// The main window's idle heading: open SlashPlayed on the device, or, with it gone from there, Play.
+    /// The main window's idle heading: open Slashplayed on the device, or, with it gone from there, Play.
     func testIdleHeadingWithTheAppMissing() {
-        XCTAssertEqual(SetupStatus.idleHeading(noun: "iPhone", appMissing: false).title, "Open SlashPlayed on the iPhone to play")
-        XCTAssertEqual(SetupStatus.idleHeading(noun: "iPhone", appMissing: true).title, "Press Play to install SlashPlayed on the iPhone")
-        XCTAssertTrue(SetupStatus.idleHeading(noun: "iPhone", appMissing: true).detail.hasPrefix("SlashPlayed isn't on the iPhone"))
+        XCTAssertEqual(SetupStatus.idleHeading(noun: "iPhone", appMissing: false).title, "Open Slashplayed on the iPhone to play")
+        XCTAssertEqual(SetupStatus.idleHeading(noun: "iPhone", appMissing: true).title, "Press Play to install Slashplayed on the iPhone")
+        XCTAssertTrue(SetupStatus.idleHeading(noun: "iPhone", appMissing: true).detail.hasPrefix("Slashplayed isn't on the iPhone"))
     }
 
     /// devicectl's error for an install cut by a dropped connection: rc14's, to the unworn headset over

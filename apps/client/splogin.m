@@ -69,7 +69,7 @@ void sp_login_clear(NSArray<NSString *> *flavors) {
 
 // ---- the keychain: one generic password, the email as its account
 
-static NSString *const service = @"SlashPlayed Battle.net sign-in";
+static NSString *const service = @"Slashplayed Battle.net sign-in";
 
 // The saved email and password, or nil (and the OSStatus, errSecItemNotFound when there's none).
 static NSArray<NSString *> *load(OSStatus *status) {
@@ -170,7 +170,7 @@ NSMutableData *sp_login_prepare(BOOL token, void (^*pump)(double), NSString **pr
         // Locked (a launch from the Mac with the device asleep): the saved sign-in is there but unreadable,
         // and asking for it again would make the person retype it.
         say(@"the saved sign-in can't be read while the device is locked");
-        *problem = [NSString stringWithFormat:@"Unlock this %@, then open SlashPlayed again.", sp_device_noun()];
+        *problem = [NSString stringWithFormat:@"Unlock this %@, then open Slashplayed again.", sp_device_noun()];
         return nil;
     } else {
         if (status != errSecItemNotFound) say([NSString stringWithFormat:@"no saved sign-in: keychain %d", (int)status]);

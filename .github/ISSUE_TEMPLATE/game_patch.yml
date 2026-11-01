@@ -3,14 +3,14 @@
 # companion-version, imports. Keep them in step, and keep them inputs and textareas: GitHub only
 # pre-fills those reliably from the query string, not dropdowns.
 name: New game patch broke it
-description: The companion says your game version isn't supported by this version of SlashPlayed yet, or the device says "This patch needs a SlashPlayed update".
+description: The companion says your game version isn't supported by this version of Slashplayed yet, or the device says "This patch needs a Slashplayed update".
 title: "<Flavor> <build> isn't supported"
 labels: [game-patch]
 body:
   - type: markdown
     attributes:
       value: |
-        A game patch can add functions the SlashPlayed shims don't provide yet. First check **SlashPlayed Companion › Check for Updates…**: a newer release may already support it. If not, the companion's **Report It…** link fills this form in for you. If the device found the patch first ("This patch needs a SlashPlayed update"), fill it in from the device's log: **Help › Export Diagnostics…** on the Mac, then the `imports:` lines in `spconsole.log`.
+        A game patch can add functions the Slashplayed shims don't provide yet. First check **Slashplayed Companion › Check for Updates…**: a newer release may already support it. If not, the companion's **Report It…** link fills this form in for you. If the device found the patch first ("This patch needs a Slashplayed update"), fill it in from the device's log: **Help › Export Diagnostics…** on the Mac, then the `imports:` lines in `spconsole.log`.
 
         A maintainer with the game installed regenerates the shims for the new build, so there's nothing to attach from the game itself. **Never paste your Battle.net sign-in, Battle.net preference contents, or game files here.**
   - type: input

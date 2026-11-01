@@ -10,7 +10,7 @@ private struct VPNView: View {
 
     var body: some View {
         LauncherScreen(model: model, title: "Turn on LocalDevVPN",
-                       message: "SlashPlayed prepares the game through LocalDevVPN, and it's off. It doesn't turn itself back on when this \(noun) restarts.\n\nOnce it's on, the game starts by itself.") {
+                       message: "Slashplayed prepares the game through LocalDevVPN, and it's off. It doesn't turn itself back on when this \(noun) restarts.\n\nOnce it's on, the game starts by itself.") {
             Button("Turn On LocalDevVPN", action: turnOn)
                 .buttonStyle(GameButtonStyle(height: 56))
                 .frame(maxWidth: 380)

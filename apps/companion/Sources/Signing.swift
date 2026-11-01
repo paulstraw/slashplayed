@@ -366,7 +366,7 @@ enum Signing {
             throw noAccount
         }
         throw Problem(title: "Pick a team",
-                      message: "Xcode is signed in to several teams. Pick the one to sign SlashPlayed with in Settings > Signing.")
+                      message: "Xcode is signed in to several teams. Pick the one to sign Slashplayed with in Settings > Signing.")
     }
 
     // MARK: Checks
@@ -412,7 +412,7 @@ enum Signing {
     @discardableResult
     static func resolveTeam(fetchingWith stub: URL, onLine log: @escaping (String) -> Void) async throws -> Team {
         if let team = try? resolveTeam() { return team }
-        await fetchTeams(stub: stub, work: FileManager.default.temporaryDirectory.appending(path: "SlashPlayed-team-list"),
+        await fetchTeams(stub: stub, work: FileManager.default.temporaryDirectory.appending(path: "Slashplayed-team-list"),
                          onLine: log)
         return try resolveTeam()
     }
@@ -596,7 +596,7 @@ enum Signing {
         // unlock before provisioning (Pipeline.waitForUnlock), so this is a device locked in the meantime.
         if has("needs to be unlocked") {
             return Problem(title: "The device is locked",
-                           message: "Xcode has to reach the device to sign SlashPlayed for it. Put on the Vision Pro, or unlock the iPad or iPhone, then try again.")
+                           message: "Xcode has to reach the device to sign Slashplayed for it. Put on the Vision Pro, or unlock the iPad or iPhone, then try again.")
         }
         if has("Unable to find a destination") || has("is not available") && has("destination")
             || has("Timed out waiting for all destinations") {

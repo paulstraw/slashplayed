@@ -97,7 +97,7 @@ NSArray<NSData *> *sp_profile_certificates(NSData *profile, NSDate *now);
 
 // The certificates the profiles this app can see list: its own embedded.mobileprovision's, and those of
 // Library/spprofile.mobileprovision, a copy of the profile the companion installed on the device for the
-// SlashPlayed certificate (a paid team's, B; the app's own profile lists it only once Xcode has made one since
+// Slashplayed certificate (a paid team's, B; the app's own profile lists it only once Xcode has made one since
 // that certificate existed). The system's list is device-wide, but the app can't read it.
 NSArray<NSData *> *sp_listed_certificates(void);
 

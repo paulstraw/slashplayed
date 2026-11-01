@@ -8,7 +8,7 @@ import XCTest
 final class DeviceSigningTests: XCTestCase {
     static let scratch = FileManager.default.temporaryDirectory.appending(path: "sp-device-signing-tests-\(getpid())")
     static let team = "ABCDE12345"
-    static let commonName = "Apple Development: SlashPlayed Test (ABCDE12345)"
+    static let commonName = "Apple Development: Slashplayed Test (ABCDE12345)"
     static var fixture: URL { scratch.appending(path: "fixture.bundle") }
     static var p12: URL { scratch.appending(path: "identity.p12") }
     static var profile: URL { scratch.appending(path: "embedded.mobileprovision") }
@@ -52,16 +52,16 @@ final class DeviceSigningTests: XCTestCase {
         let openssl = "/usr/bin/openssl"
         try "\(password)\n".write(to: scratch.appending(path: "pass"), atomically: true, encoding: .utf8)
         try run(openssl, ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "ca.key", "-out", "ca.pem",
-                          "-days", "2", "-subj", "/CN=SlashPlayed Test CA"])
+                          "-days", "2", "-subj", "/CN=Slashplayed Test CA"])
         try run(openssl, ["req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", "leaf.key", "-out", "leaf.csr",
-                          "-subj", "/CN=\(commonName)/OU=\(team)/O=SlashPlayed Test/C=US"])
+                          "-subj", "/CN=\(commonName)/OU=\(team)/O=Slashplayed Test/C=US"])
         try run(openssl, ["x509", "-req", "-in", "leaf.csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-set_serial", "2",
                           "-days", "2", "-out", "leaf.pem"])
         try run(openssl, ["pkcs12", "-export", "-inkey", "leaf.key", "-in", "leaf.pem", "-certfile", "ca.pem",
                           "-out", p12.path, "-passout", "file:pass"])
         try run(openssl, ["x509", "-in", "leaf.pem", "-outform", "DER", "-out", "leaf.der"])
         let plist: [String: Any] = [
-            "Name": "SlashPlayed Test", "TeamIdentifier": [team], "ExpirationDate": Date(timeIntervalSinceNow: 2 * 24 * 3600),
+            "Name": "Slashplayed Test", "TeamIdentifier": [team], "ExpirationDate": Date(timeIntervalSinceNow: 2 * 24 * 3600),
             "DeveloperCertificates": [try Data(contentsOf: scratch.appending(path: "leaf.der"))],
             "Entitlements": ["application-identifier": "\(team).com.strawdynamics.sptest",
                              "com.apple.developer.team-identifier": team, "get-task-allow": true],
@@ -73,12 +73,12 @@ final class DeviceSigningTests: XCTestCase {
     }
 
     /// Another certificate of the team from the same CA, with its own key (Xcode's replacement for A, or the
-    /// SlashPlayed certificate, B), as second.p12 and second.der.
+    /// Slashplayed certificate, B), as second.p12 and second.der.
     static var secondP12: URL { scratch.appending(path: "second.p12") }
     static func makeSecondIdentity() throws {
         let openssl = "/usr/bin/openssl"
         try run(openssl, ["req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", "second.key", "-out", "second.csr",
-                          "-subj", "/CN=Apple Development: SlashPlayed Test Two (ABCDE12345)/OU=\(team)/O=SlashPlayed Test/C=US"])
+                          "-subj", "/CN=Apple Development: Slashplayed Test Two (ABCDE12345)/OU=\(team)/O=Slashplayed Test/C=US"])
         try run(openssl, ["x509", "-req", "-in", "second.csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-set_serial", "3",
                           "-days", "2", "-out", "second.pem"])
         try run(openssl, ["pkcs12", "-export", "-inkey", "second.key", "-in", "second.pem", "-certfile", "ca.pem",
@@ -151,7 +151,7 @@ final class DeviceSigningTests: XCTestCase {
         try Self.signatureBlob(Data(contentsOf: dest), type: 0x10000).write(to: cms)
         let chain = try Self.run("/usr/bin/openssl", ["pkcs7", "-inform", "DER", "-print_certs", "-noout", "-in", cms.path])
         XCTAssertTrue(chain.contains("subject=/CN=\(Self.commonName)"), chain)
-        XCTAssertTrue(chain.contains("subject=/CN=SlashPlayed Test CA"), chain)
+        XCTAssertTrue(chain.contains("subject=/CN=Slashplayed Test CA"), chain)
         // The designated requirement names the certificate as codesign's does for a development identity.
         let requirement = try Self.run("/usr/bin/codesign", ["-d", "-r-", dest.path])
         XCTAssertTrue(requirement.contains("designated => identifier spsigntest and anchor apple generic"), requirement)
@@ -351,7 +351,7 @@ final class DeviceSigningTests: XCTestCase {
 
         // Dates only: no line or status names the certificate or the team.
         for r in [none, forgotten, listed, unlisted, expired] {
-            XCTAssertFalse(r.line.contains("SlashPlayed Test") || r.status.contains("SlashPlayed Test"), r.line)
+            XCTAssertFalse(r.line.contains("Slashplayed Test") || r.status.contains("Slashplayed Test"), r.line)
             XCTAssertFalse(r.line.contains(Self.team) || r.status.contains(Self.team), r.line)
         }
     }

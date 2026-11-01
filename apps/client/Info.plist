@@ -4,7 +4,7 @@
 <dict>
 	<key>CFBundleIdentifier</key><string>@BUNDLE_ID@</string>
 	<key>CFBundleExecutable</key><string>slashplayed</string>
-	<key>CFBundleName</key><string>SlashPlayed</string>
+	<key>CFBundleName</key><string>Slashplayed</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>CFBundleVersion</key><string>1</string>
 	<key>CFBundleShortVersionString</key><string>@VERSION@</string>
@@ -13,7 +13,7 @@
 	<key>MinimumOSVersion</key><string>@MINOS@</string>
 	<key>UIDeviceFamily</key><array>@FAMILY@</array>
 	<key>UIFileSharingEnabled</key><true/>
-	<!-- With UIFileSharingEnabled, Documents/ shows in the Files app too (On My iPhone > SlashPlayed): game
+	<!-- With UIFileSharingEnabled, Documents/ shows in the Files app too (On My iPhone > Slashplayed): game
 	     settings and addons can be edited there. The start screen's Settings opens each game's folder in it. -->
 	<key>LSSupportsOpeningDocumentsInPlace</key><true/>
 	@PLATFORM_KEYS@
@@ -22,7 +22,7 @@
 	<!-- The headset's pairing (sppair.m) finds Settings' Remote Devices over Bonjour; the first browse asks for
 	     local network access. Only visionOS browses: an iPad or iPhone gets its pairing from the Mac. -->
 	<key>NSBonjourServices</key><array><string>_remotepairing-manual-pairing._tcp</string></array>
-	<key>NSLocalNetworkUsageDescription</key><string>SlashPlayed finds Remote Devices in Settings to pair with this Vision Pro, so it can prepare the game without a Mac.</string>
+	<key>NSLocalNetworkUsageDescription</key><string>Slashplayed finds Remote Devices in Settings to pair with this Vision Pro, so it can prepare the game without a Mac.</string>
 	<!-- LocalDevVPN's localdevvpn://enable?scheme=slashplayed turns it on and opens this, back to the app (spvpn.m). -->
 	<key>CFBundleURLTypes</key><array><dict>
 		<key>CFBundleURLName</key><string>slashplayed</string>

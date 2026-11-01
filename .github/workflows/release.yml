@@ -213,8 +213,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --verify-tag \
-            --title "SlashPlayed $VERSION" --notes-file build/release/notes.md \
-            "build/release/SlashPlayed-Companion-$VERSION.dmg" \
+            --title "Slashplayed $VERSION" --notes-file build/release/notes.md \
+            "build/release/Slashplayed-Companion-$VERSION.dmg" \
             build/release/SHA256SUMS
 
       # The live feed is the source of truth for past items, not site/: site/'s copy is only the empty

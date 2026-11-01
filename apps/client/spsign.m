@@ -14,7 +14,7 @@ int sp_zsign(const char *path, const char *identifier, const void *p12, size_t p
              const void *profile, size_t profile_len, int logfd);
 
 // The keychain items: the .p12 and its password, under one service (splogin.m's sign-in has its own).
-static NSString *const service = @"SlashPlayed signing identity";
+static NSString *const service = @"Slashplayed signing identity";
 static NSString *const pushedP12 = @"Library/spidentity.p12", *const pushedPassword = @"Library/spidentity.pass";
 // The companion's request to forget (it turned Update Games on This Device off), and the line for it to read.
 static NSString *const pushedForget = @"Library/spidentity.forget", *const statusFile = @"Library/spidentity.txt";

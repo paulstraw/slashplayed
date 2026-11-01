@@ -1,9 +1,9 @@
 import Foundation
 
-/// Help > Export Diagnostics: one zip to attach to a bug report, in ~/Library/Logs/SlashPlayed/diagnostics/.
+/// Help > Export Diagnostics: one zip to attach to a bug report, in ~/Library/Logs/Slashplayed/diagnostics/.
 /// It holds
 ///   - companion/: the companion's own logs (companion.txt, build.txt, console*.txt), the top
-///     of ~/Library/Logs/SlashPlayed;
+///     of ~/Library/Logs/Slashplayed;
 ///   - device/: from what Pull Device Logs fetches (DeviceLogs), when the device is reachable: the shims'
 ///     spconsole*.log, the system's crash, jetsam and resource reports, and its summary.txt. Not the
 ///     client's own Logs and Errors folders, which can hold account details (Pull Device Logs keeps them
@@ -126,7 +126,7 @@ enum Diagnostics {
         // Counted before the summary's own redaction, which finds none: it's made from what's above.
         summary += "\n\n" + redactedLine(exported)
         if input.deviceLogs != nil {
-            summary += "\nThe client's own Logs and Errors folders aren't included (they can hold account details); Pull Device Logs saves them in ~/Library/Logs/SlashPlayed/triage/."
+            summary += "\nThe client's own Logs and Errors folders aren't included (they can hold account details); Pull Device Logs saves them in ~/Library/Logs/Slashplayed/triage/."
         }
         if !exported.excluded.isEmpty {
             summary += "\nLeft out (Battle.net login files): \(exported.excluded.joined(separator: ", "))"
@@ -344,7 +344,7 @@ enum Diagnostics {
         let short = info["CFBundleShortVersionString"] as? String ?? "?", build = info["CFBundleVersion"] as? String ?? "?"
         var model = [CChar](repeating: 0, count: 64), size = model.count
         let mac = sysctlbyname("hw.model", &model, &size, nil, 0) == 0 ? String(cString: model) : "?"
-        var lines = ["SlashPlayed Companion \(short) (\(build))",
+        var lines = ["Slashplayed Companion \(short) (\(build))",
                      "macOS \(ProcessInfo.processInfo.operatingSystemVersionString), \(mac)",
                      "Xcode: \(xcode)"]
         if device == .none {
@@ -376,11 +376,11 @@ enum Diagnostics {
         return r.text.split(separator: "\n").joined(separator: ", ") + " at \(selected)"
     }
 
-    /// The zip for an export now: ~/Library/Logs/SlashPlayed/diagnostics/SlashPlayed-Diagnostics-<date-time>.zip.
+    /// The zip for an export now: ~/Library/Logs/Slashplayed/diagnostics/Slashplayed-Diagnostics-<date-time>.zip.
     static func outputURL() -> URL {
         let stamp = DateFormatter()
         stamp.dateFormat = "yyyyMMdd-HHmmss"
         stamp.locale = Locale(identifier: "en_US_POSIX")
-        return Paths.logs.appending(path: "diagnostics/SlashPlayed-Diagnostics-\(stamp.string(from: Date())).zip")
+        return Paths.logs.appending(path: "diagnostics/Slashplayed-Diagnostics-\(stamp.string(from: Date())).zip")
     }
 }

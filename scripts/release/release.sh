@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds a Developer ID-signed, notarized release of SlashPlayed Companion: the DMG users download, its
+# Builds a Developer ID-signed, notarized release of Slashplayed Companion: the DMG users download, its
 # Sparkle appcast item and checksums.
 #
 # Usage: scripts/release/release.sh [--unsigned]
@@ -25,7 +25,7 @@
 #                           scratch file.
 #
 # Artifacts, all in build/release/:
-#   SlashPlayed-Companion-<version>.dmg   signed, notarized and stapled; the app plus an /Applications link
+#   Slashplayed-Companion-<version>.dmg   signed, notarized and stapled; the app plus an /Applications link
 #   notes.md                              this version's CHANGELOG.md section (the GitHub release notes)
 #   appcast-item.xml                      one Sparkle <item>; appcast-merge.sh prepends it to the live feed
 #   SHA256SUMS                            for the DMG
@@ -61,7 +61,7 @@ done
 OUT=$ROOT/build/release
 DD=$OUT/DerivedData
 STAGE=$OUT/dmg
-APP_NAME="SlashPlayed Companion.app"
+APP_NAME="Slashplayed Companion.app"
 APP_ID=com.strawdynamics.slashplayed.companion
 PROJECT_YML=apps/companion/project.yml
 FEED_URL=https://slashplayed.strawdynamics.com/appcast.xml
@@ -174,9 +174,9 @@ fi
 
 # --- Build ---------------------------------------------------------------------------------------------
 # Clear everything a previous run left, so nothing stale can be uploaded with this run's output.
-rm -rf "$STAGE" "$OUT/notarize" "$OUT"/SlashPlayed-Companion-*.dmg "$OUT/appcast-item.xml" "$OUT/SHA256SUMS"
+rm -rf "$STAGE" "$OUT/notarize" "$OUT"/Slashplayed-Companion-*.dmg "$OUT/appcast-item.xml" "$OUT/SHA256SUMS"
 BUILD="$(date +%s)"
-echo "Building SlashPlayed Companion $VERSION ($BUILD), $([[ "$SIGNED" == yes ]] && echo "Developer ID" || echo "unsigned")"
+echo "Building Slashplayed Companion $VERSION ($BUILD), $([[ "$SIGNED" == yes ]] && echo "Developer ID" || echo "unsigned")"
 
 (cd apps/companion && ./idevice-config.sh && xcodegen generate --quiet)
 xcodebuild -project apps/companion/SPCompanion.xcodeproj -scheme SPCompanion \
@@ -296,9 +296,9 @@ is_macho() {
 refs=0
 {
   [[ -d work ]] && find work -type f \( -name 'wow-*' -o -name 'World of Warcraft*' \) -not -name '*.*' 2>/dev/null
-  find "$HOME/Library/Application Support/SlashPlayed" -type f \
+  find "$HOME/Library/Application Support/Slashplayed" -type f \
     -not -path '*.app/slashplayed' -not -path '*.app/Frameworks/*' -not -path '*.app/PlugIns/*' \
-    -not -path '*/DerivedData/*' -not -path '*/SlashPlayed/certificate/*' 2>/dev/null
+    -not -path '*/DerivedData/*' -not -path '*/Slashplayed/certificate/*' 2>/dev/null
   for f in "${SP_INSTALL:-/Applications/World of Warcraft}"/_*_/World\ of\ Warcraft*.app/Contents/MacOS/*; do
     [[ -f "$f" ]] && echo "$f"
   done
@@ -318,7 +318,7 @@ check_no_blizzard_bytes() {
       wow-*|*.metallib|.build.info|data.[0-9][0-9][0-9]|*.idx)
         echo "error: $rel is named like a game file" >&2; bad=1 ;;
     esac
-    if (( size > 20 * 1024 * 1024 )) && [[ "$rel" != "$APP_NAME/Contents/MacOS/SlashPlayed Companion" ]]; then
+    if (( size > 20 * 1024 * 1024 )) && [[ "$rel" != "$APP_NAME/Contents/MacOS/Slashplayed Companion" ]]; then
       echo "error: $rel is $((size / 1024 / 1024)) MB; nothing but the companion's executable may exceed 20 MB" >&2; bad=1
     fi
     is_macho "$f" || continue
@@ -369,10 +369,10 @@ if [[ "$SIGNED" == yes ]]; then
 fi
 
 # --- DMG -----------------------------------------------------------------------------------------------
-DMG_NAME="SlashPlayed-Companion-$VERSION.dmg"
+DMG_NAME="Slashplayed-Companion-$VERSION.dmg"
 DMG="$OUT/$DMG_NAME"
 ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname "SlashPlayed Companion" -srcfolder "$STAGE" -fs HFS+ -format UDZO -ov "$DMG" >/dev/null
+hdiutil create -volname "Slashplayed Companion" -srcfolder "$STAGE" -fs HFS+ -format UDZO -ov "$DMG" >/dev/null
 
 # Mount it read-only and look: the app is there, its signature holds, and the image holds no more than
 # was checked above.

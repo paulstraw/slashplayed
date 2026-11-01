@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copies a development identity's .p12 and its password into the installed SlashPlayed's Library/
+# Copies a development identity's .p12 and its password into the installed Slashplayed's Library/
 # (spidentity.p12, spidentity.pass), as the companion's push will: the launcher imports them into its
 # keychain at its next start (apps/client/spsign.m: checked with SecPKCS12Import first, this device only,
 # never synced) and zeroes and deletes both files whatever happens. A dev script, for testing the plumbing

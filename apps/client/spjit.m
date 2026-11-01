@@ -201,12 +201,12 @@ NSString *sp_jit_attach(void (^pump)(double)) {
             if ((problem = sp_vpn_wait(&pump, noun))) return problem;
             // The pairing screen waits on the person: UIKit has to be up for the launch watchdog.
             void (^ui)(double) = sp_launch_uikit();
-            if (!ui) return @"SlashPlayed needs to pair with this Vision Pro, but couldn't show its window.";
+            if (!ui) return @"Slashplayed needs to pair with this Vision Pro, but couldn't show its window.";
             pump = ui;
             pairing = sp_pair_headset(record, pump, &problem);
             if (!pairing) return problem;
 #else
-            return [NSString stringWithFormat:@"SlashPlayed isn't paired with this %@ yet.\n\nOpen SlashPlayed Companion on "
+            return [NSString stringWithFormat:@"Slashplayed isn't paired with this %@ yet.\n\nOpen Slashplayed Companion on "
                     @"your Mac and play once with this %@ connected by USB: it pairs it.", noun, noun];
 #endif
         }
@@ -214,19 +214,19 @@ NSString *sp_jit_attach(void (^pump)(double)) {
         say([NSString stringWithFormat:@"pairing record: %lu bytes", (unsigned long)pairing.length]);
         status = sp_jit_request(@{@"op": @"status", @"pairing": pairing, @"endpoints": endpoints}, 30, pump);
         if (!status) {
-            return @"SlashPlayed's helper didn't start.\n\nInstall SlashPlayed again from SlashPlayed Companion on your Mac.";
+            return @"Slashplayed's helper didn't start.\n\nInstall Slashplayed again from Slashplayed Companion on your Mac.";
         }
         say([@"status: " stringByAppendingString:summary(status)]);
         if ([status[@"ok"] boolValue]) break;
         if (![status[@"rejected"] boolValue]) {
             // LocalDevVPN turned off since the check: the loop waits for it again.
             if (sp_vpn_errno()) continue;
-            return [NSString stringWithFormat:@"SlashPlayed couldn't reach this %@'s developer services, though LocalDevVPN "
-                    @"is on.\n\nIn LocalDevVPN, turn it off and on again, then close SlashPlayed and open it again.\n\n(%@)",
+            return [NSString stringWithFormat:@"Slashplayed couldn't reach this %@'s developer services, though LocalDevVPN "
+                    @"is on.\n\nIn LocalDevVPN, turn it off and on again, then close Slashplayed and open it again.\n\n(%@)",
                     noun, summary(status)];
         }
         if (again) {
-            return [NSString stringWithFormat:@"This %@ didn't accept SlashPlayed's new pairing either.\n\n(%@)",
+            return [NSString stringWithFormat:@"This %@ didn't accept Slashplayed's new pairing either.\n\n(%@)",
                     noun, summary(status)];
         }
         again = YES;
@@ -234,15 +234,15 @@ NSString *sp_jit_attach(void (^pump)(double)) {
         [NSFileManager.defaultManager removeItemAtPath:record error:nil];
         pairing = nil;
 #if !TARGET_OS_VISION
-        return [NSString stringWithFormat:@"This %@ no longer accepts SlashPlayed's pairing.\n\nOpen SlashPlayed Companion "
+        return [NSString stringWithFormat:@"This %@ no longer accepts Slashplayed's pairing.\n\nOpen Slashplayed Companion "
                 @"on your Mac and play once with this %@ connected by USB: it pairs it again.", noun, noun];
 #endif
     }
     if (![status[@"mounted"] boolValue]) {
         NSDictionary *ddi = read_ddi(library);
         if (!ddi) {
-            return [NSString stringWithFormat:@"This %@ needs Apple's developer disk image, and SlashPlayed doesn't have a "
-                    @"copy yet.\n\nPlay once from SlashPlayed Companion on your Mac: it copies the image to the %@.", noun, noun];
+            return [NSString stringWithFormat:@"This %@ needs Apple's developer disk image, and Slashplayed doesn't have a "
+                    @"copy yet.\n\nPlay once from Slashplayed Companion on your Mac: it copies the image to the %@.", noun, noun];
         }
         NSDictionary *mount = sp_jit_request(@{@"op": @"mount", @"pairing": pairing, @"endpoints": endpoints, @"ddi": ddi}, 120, pump);
         if (mount) say([@"mount: " stringByAppendingString:summary(mount)]);
@@ -281,6 +281,6 @@ NSString *sp_jit_attach(void (^pump)(double)) {
         }
         pump(0.01);
     }
-    return [NSString stringWithFormat:@"SlashPlayed's helper couldn't attach to the game.\n\n(%@)",
+    return [NSString stringWithFormat:@"Slashplayed's helper couldn't attach to the game.\n\n(%@)",
             early ? summary(early) : @"it didn't attach within 30 s"];
 }

@@ -131,7 +131,7 @@ final class BindCheckTests: XCTestCase {
         try FileManager.default.copyItem(at: Self.manifest, to: res.appending(path: "exports.json"))
         var lines: [String] = []
         do {
-            try await ClientAssembly.assemble(app: base.appending(path: "SlashPlayed.app"), clients: [("classic_era", Self.patched, ClientAssemblyTests.stamp)],
+            try await ClientAssembly.assemble(app: base.appending(path: "Slashplayed.app"), clients: [("classic_era", Self.patched, ClientAssemblyTests.stamp)],
                                               platform: .xros, platformResources: res, templates: repo.appending(path: "apps/client"),
                                               team: "ABCDE12345", bundleID: "ABCDE12345.slashplayed",
                                               entitlements: base.appending(path: "e.plist"),
@@ -143,12 +143,12 @@ final class BindCheckTests: XCTestCase {
             XCTAssertEqual(e.unresolved, [Self.extraImport])
             XCTAssertTrue(lines.contains("UNRESOLVED AppKit _NSApplicationLoad"), "\(lines)")
             // Stopped before the rewrite: the image still loads the Mac's AppKit.
-            let image = base.appending(path: "SlashPlayed.app/wow-classic_era")
+            let image = base.appending(path: "Slashplayed.app/wow-classic_era")
             XCTAssertTrue(try MachO.loadedDylibs(Data(contentsOf: image)).contains("/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit"))
 
             let message = BindCheck.message(flavorName: "Classic Era", build: "1.15.9.70003", unsupported: e)
             XCTAssertEqual(message, """
-                Classic Era 1.15.9.70003 isn't supported by this version of SlashPlayed yet. Check for updates; if there isn't one, report it.
+                Classic Era 1.15.9.70003 isn't supported by this version of Slashplayed yet. Check for updates; if there isn't one, report it.
                 It imports 1 function the shims don't provide:
                   AppKit _NSApplicationLoad
                 """)

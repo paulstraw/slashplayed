@@ -40,9 +40,9 @@ else
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
   <channel>
-    <title>SlashPlayed Companion</title>
+    <title>Slashplayed Companion</title>
     <link>https://slashplayed.strawdynamics.com/appcast.xml</link>
-    <description>Updates for SlashPlayed Companion.</description>
+    <description>Updates for Slashplayed Companion.</description>
     <language>en</language>
   </channel>
 </rss>

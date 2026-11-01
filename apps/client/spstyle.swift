@@ -156,7 +156,7 @@ struct LauncherScreen<Controls: View>: View {
             ScrollView {
                 // Each line takes its full height: the newer-build screen (sppatchscreen.swift) changes its
                 // words while it shows, and in the scroll view a longer heading kept the old one's single line
-                // and was cut ("This patch needs a SlashPlayed up...").
+                // and was cut ("This patch needs a Slashplayed up...").
                 VStack(spacing: 24) {
                     Text(title).font(goodmountain(30, .title)).foregroundStyle(gold)
                         .fixedSize(horizontal: false, vertical: true)

@@ -97,7 +97,7 @@ struct SignInView: View {
     private var words: some View {
         VStack(spacing: 20) {
             Text("Sign in").font(goodmountain(30, .title)).foregroundStyle(gold)
-            Text("SlashPlayed signs into the game with your Battle.net email and password. They stay in this \(model.noun)'s keychain. If your account has an authenticator, the game client will ask for a code.")
+            Text("Slashplayed signs into the game with your Battle.net email and password. They stay in this \(model.noun)'s keychain. If your account has an authenticator, the game client will ask for a code.")
                 .foregroundStyle(gold.opacity(0.85))
         }
         .multilineTextAlignment(.center)

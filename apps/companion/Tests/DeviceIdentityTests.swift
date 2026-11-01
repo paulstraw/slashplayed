@@ -49,7 +49,7 @@ final class DeviceIdentityTests: XCTestCase {
         try run("/usr/bin/openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "ca.key", "-out", "ca.pem", "-days", "2",
                                      "-subj", "/CN=Apple Worldwide Developer Relations Certification Authority/OU=G3/O=Apple Inc./C=US"])
         try run("/usr/bin/openssl", ["req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", "leaf.key", "-out", "leaf.csr",
-                                     "-subj", "/CN=Apple Development: SlashPlayed Test (ABCDE12345)/OU=ABCDE12345/O=SlashPlayed Test/C=US"])
+                                     "-subj", "/CN=Apple Development: Slashplayed Test (ABCDE12345)/OU=ABCDE12345/O=Slashplayed Test/C=US"])
         try run("/usr/bin/openssl", ["x509", "-req", "-in", "leaf.csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-set_serial", "2",
                                      "-days", "2", "-out", "leaf.pem"])
         try run("/usr/bin/openssl", ["x509", "-in", "leaf.pem", "-outform", "DER", "-out", "leaf.der"])
@@ -162,7 +162,7 @@ final class DeviceIdentityTests: XCTestCase {
         XCTAssertEqual(decide(status: S(state: .forgotten)), .turnOff)
         // Turned on again after that (the record went with the turn-off): sent again.
         XCTAssertTrue(pushes(decide(pushed: nil, status: S(state: .forgotten))))
-        // No identity: nothing, for A (no build yet) or B (no SlashPlayed certificate set up, or expired).
+        // No identity: nothing, for A (no build yet) or B (no Slashplayed certificate set up, or expired).
         XCTAssertTrue(nothing(decide(identity: nil, pushed: nil, status: nil)))
         XCTAssertTrue(nothing(decide(source: .b, identity: nil, pushed: nil, status: nil)))
         // B's certificate decides as A's identity does.
@@ -182,13 +182,13 @@ final class DeviceIdentityTests: XCTestCase {
         XCTAssertTrue(nothing(decide(status: S(state: .none), pending: true)))
         XCTAssertTrue(pushes(decide(pushed: "OLD", status: S(state: .none), pending: true)))
         // Xcode replaced the certificate: the companion's SHA-1 changed.
-        XCTAssertEqual(decide(pushed: "OLD"), .push("Xcode replaced the certificate SlashPlayed signs with"))
-        XCTAssertEqual(decide(source: .b, pushed: "OLD", pushedSource: .b), .push("there's a new SlashPlayed certificate"))
+        XCTAssertEqual(decide(pushed: "OLD"), .push("Xcode replaced the certificate Slashplayed signs with"))
+        XCTAssertEqual(decide(source: .b, pushed: "OLD", pushedSource: .b), .push("there's a new Slashplayed certificate"))
         // The source switched (the override set or deleted): it says so, not that Xcode replaced anything.
         XCTAssertEqual(decide(source: .b, identity: (hash: "B", validUntil: "2027-10-24")),
-                       .push("the device gets the SlashPlayed certificate (B) instead of the identity this Mac signs with (A)"))
+                       .push("the device gets the Slashplayed certificate (B) instead of the identity this Mac signs with (A)"))
         XCTAssertEqual(decide(pushed: "B", pushedSource: .b),
-                       .push("the device gets the identity this Mac signs with (A) instead of the SlashPlayed certificate (B)"))
+                       .push("the device gets the identity this Mac signs with (A) instead of the Slashplayed certificate (B)"))
         // Nothing on record, but the device holds one.
         XCTAssertEqual(decide(pushed: nil, pushedSource: nil),
                        .push("the device's identity wasn't sent from this Mac since Update Games on This Device was turned on"))
@@ -197,7 +197,7 @@ final class DeviceIdentityTests: XCTestCase {
     }
 
     /// The source of what was pushed: the record kept with it, or for a push from before that record, B if it's
-    /// the SlashPlayed certificate's SHA-1 and A otherwise.
+    /// the Slashplayed certificate's SHA-1 and A otherwise.
     func testPushedSource() {
         XCTAssertNil(DeviceIdentity.pushedSource(recorded: "A", pushed: nil, certificate: "B1"))
         XCTAssertEqual(DeviceIdentity.pushedSource(recorded: "A", pushed: "B1", certificate: "B1"), .a)
@@ -235,7 +235,7 @@ final class DeviceIdentityTests: XCTestCase {
         let password = try DeviceIdentity.newPassword()
         let p12 = try DeviceIdentity.export(hash: hash, password: password, keychains: [keychain])
         let plist: [String: Any] = [
-            "Name": "SlashPlayed Test", "TeamIdentifier": ["ABCDE12345"],
+            "Name": "Slashplayed Test", "TeamIdentifier": ["ABCDE12345"],
             "DeveloperCertificates": [try Data(contentsOf: Self.scratch.appending(path: "leaf.der"))],
             "Entitlements": ["application-identifier": "ABCDE12345.com.strawdynamics.sptest",
                              "com.apple.developer.team-identifier": "ABCDE12345"],
@@ -294,7 +294,7 @@ final class DeviceIdentityTests: XCTestCase {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/openssl")
         p.arguments = ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", dir.appending(path: "k.pem").path,
-                       "-out", dir.appending(path: "c.der").path, "-outform", "DER", "-days", "1", "-subj", "/CN=SlashPlayed Test"]
+                       "-out", dir.appending(path: "c.der").path, "-outform", "DER", "-days", "1", "-subj", "/CN=Slashplayed Test"]
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
         try p.run()

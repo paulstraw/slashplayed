@@ -10,7 +10,7 @@ import Observation
 /// device fetches its own data, so the install step only says what the Mac has, for the two things that
 /// use it (Copy Game Files from This Mac and Play with My Mac's Battle.net), and always passes. The last
 /// two steps act rather than check: the first install on each device (Pipeline.installForSetup), after
-/// which SlashPlayed opens on the device alone, and, optionally, Update Games on This Device.
+/// which Slashplayed opens on the device alone, and, optionally, Update Games on This Device.
 @MainActor @Observable
 final class Onboarding {
     static let doneKey = "onboarded"
@@ -28,7 +28,7 @@ final class Onboarding {
             case .helper: "LocalDevVPN"
             case .games: "Games"
             case .install: "Game on this Mac (optional)"
-            case .firstInstall: "Install SlashPlayed"
+            case .firstInstall: "Install Slashplayed"
             case .updates: "Updates on the device (optional)"
             }
         }
@@ -134,7 +134,7 @@ final class Onboarding {
         if current.rawValue > 0 { go(to: StepID(rawValue: current.rawValue - 1)) }
     }
 
-    /// Whether the team SlashPlayed signs with is a free Personal Team, as of the account step.
+    /// Whether the team Slashplayed signs with is a free Personal Team, as of the account step.
     var teamIsFree: Bool { teams.first { $0.id == pipeline.teamID }?.isFree == true }
 
     /// Ready: the main window takes over.
@@ -205,7 +205,7 @@ final class Onboarding {
         }
         if let problem = await liveCheck(team, appleIDs: accounts.appleIDs) { return problem }
         let free = team.isFree ? " It's a free Personal Team: its signature lasts 7 days, and Play signs the app again after that." : ""
-        return .ok("SlashPlayed signs with \(team.name) (\(team.id)), as \(Signing.bundleID).\(free)")
+        return .ok("Slashplayed signs with \(team.name) (\(team.id)), as \(Signing.bundleID).\(free)")
     }
 
     /// The accounts the teams were last asked of Apple for (Signing.fetchTeams), and when.
@@ -248,9 +248,9 @@ final class Onboarding {
         guard !liveCheckRunning else { return status[.account] ?? .checking }
         liveCheckRunning = true
         defer { liveCheckRunning = false }
-        let work = FileManager.default.temporaryDirectory.appending(path: "SlashPlayed-account-check")
+        let work = FileManager.default.temporaryDirectory.appending(path: "Slashplayed-account-check")
         defer { try? FileManager.default.removeItem(at: work) }
-        // Its xcodebuild lines go to ~/Library/Logs/SlashPlayed/team-check.txt (in Export Diagnostics).
+        // Its xcodebuild lines go to ~/Library/Logs/Slashplayed/team-check.txt (in Export Diagnostics).
         let logFile = LogFile(Paths.logs.appending(path: "team-check.txt"), t0: Date())
         var problem: Status?
         do {
@@ -295,7 +295,7 @@ final class Onboarding {
         } catch {
             teamIDError = error.localizedDescription
         }
-        pipeline.appendLog("[setup] typed Team ID \(id): " + (teamIDError ?? "checked with Xcode, and SlashPlayed signs with it"))
+        pipeline.appendLog("[setup] typed Team ID \(id): " + (teamIDError ?? "checked with Xcode, and Slashplayed signs with it"))
     }
 
     private func checkDevices() async -> Status {
@@ -316,8 +316,8 @@ final class Onboarding {
         let usable = devices.filter { $0.supported && $0.developerMode != false }
         if usable.isEmpty {
             if devices.allSatisfy({ !$0.supported }) {
-                return .problem(devices.count == 1 ? "This \(devices[0].device.noun) can't run SlashPlayed" : "These devices can't run SlashPlayed",
-                                "SlashPlayed needs an iPad with an M2 chip or later, an iPhone 15 Pro or later, or a Vision Pro.")
+                return .problem(devices.count == 1 ? "This \(devices[0].device.noun) can't run Slashplayed" : "These devices can't run Slashplayed",
+                                "Slashplayed needs an iPad with an M2 chip or later, an iPhone 15 Pro or later, or a Vision Pro.")
             }
             return .problem("Developer Mode is off",
                             "On the device: Settings > Privacy & Security > Developer Mode (it shows there once the device is paired), then restart it when asked and confirm.")
@@ -417,7 +417,7 @@ final class Onboarding {
         for d in usable {
             let need = await ClientBuild.installNeed(d.device, askDevice: d.reachable)
             if installed[d.id] != need {
-                pipeline.appendLog("[setup] SlashPlayed on \(d.device.name): \(SetupStatus.logName(need))"
+                pipeline.appendLog("[setup] Slashplayed on \(d.device.name): \(SetupStatus.logName(need))"
                                    + (d.reachable ? "" : " (not reachable: this Mac's record)"))
             }
             installed[d.id] = need

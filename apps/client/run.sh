@@ -17,7 +17,7 @@
 # SP_PATCH_CHOOSE=<a button's title> presses that button on its screen (Update, Play Anyway).
 # SP_PATCH_DRILL is the patch drill (sppatch.m): `binds` shows the newer-build screen for the current
 # build, as one that binds; a symbol (_NSApp) is withheld from the check, so it says the patch needs a
-# SlashPlayed update.
+# Slashplayed update.
 # SP_LOADING_DRILL=loading or a percent 0-100 keeps the loading screen up over the game (the AppKit shim's
 # sploading.m), showing "Loading…" or the data setup's progress at that percent, for screenshots.
 # SP_SCENE_CONNECT_LATE=1 holds the scene's connect until the client has set its layer (the AppKit shim's
@@ -44,7 +44,7 @@ if [ "$SP_START" = 1 ]; then
   [ -n "$SP_START_DRILL" ] && export DEVICECTL_CHILD_SP_START_DRILL=$SP_START_DRILL
   [ -n "$SP_START_TEXT_SIZE" ] && export DEVICECTL_CHILD_SP_START_TEXT_SIZE=$SP_START_TEXT_SIZE
 else
-  [ -f $OUT/SlashPlayed.app/wow-$SP_FLAVOR ] || { echo "$SP_FLAVOR isn't in the installed build (build.sh)"; exit 1; }
+  [ -f $OUT/Slashplayed.app/wow-$SP_FLAVOR ] || { echo "$SP_FLAVOR isn't in the installed build (build.sh)"; exit 1; }
   [ $# = 0 ] && set -- $SP_ARGS
   echo $SP_FLAVOR > ../../work/clienttest/last-flavor
   export DEVICECTL_CHILD_SP_LAUNCH_FLAVOR=$SP_FLAVOR

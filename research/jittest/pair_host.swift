@@ -47,7 +47,7 @@ func sp_pair(_ out: SPLog) -> Int32 {
     try? FileManager.default.removeItem(at: pinFile())
     var record: OpaquePointer?
     do {
-        try check("generate", rp_pairing_file_generate("SlashPlayed", &record))
+        try check("generate", rp_pairing_file_generate("Slashplayed", &record))
     } catch {
         log.say("FAIL: \(error)")
         return 1
@@ -64,7 +64,7 @@ func sp_pair(_ out: SPLog) -> Int32 {
     log.say("pairing through 10.7.0.1:49152 with a fresh record")
     let error = withUnsafePointer(to: &address) {
         $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-            tunnel_create_rppairing($0, socklen_t(MemoryLayout<sockaddr_in>.size), "SlashPlayed", record,
+            tunnel_create_rppairing($0, socklen_t(MemoryLayout<sockaddr_in>.size), "Slashplayed", record,
                 askPin, nil, &adapter, &handshake)
         }
     }
@@ -111,7 +111,7 @@ func pairManual(_ log: HostLog) async -> Int32 {
         }
         var record: OpaquePointer?
         do {
-            try check("generate", rp_pairing_file_generate("SlashPlayed", &record))
+            try check("generate", rp_pairing_file_generate("Slashplayed", &record))
         } catch {
             log.say("FAIL: \(error)")
             return 1
@@ -124,7 +124,7 @@ func pairManual(_ log: HostLog) async -> Int32 {
             log.say("pair-setup through \(endpoint)")
             let error = withUnsafePointer(to: &address) {
                 $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                    rppairing_pair_network($0, length, "SlashPlayed", record, askPin, nil, nil)
+                    rppairing_pair_network($0, length, "Slashplayed", record, askPin, nil, nil)
                 }
             }
             do {

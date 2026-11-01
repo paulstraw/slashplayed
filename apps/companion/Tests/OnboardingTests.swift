@@ -88,13 +88,13 @@ final class OnboardingTests: XCTestCase {
     /// it says whether one needs an update or none has it.
     func testFirstInstallPassesWithOneDevice() {
         XCTAssertEqual(SetupStatus.firstInstall([("iPad", .notOnDevice), ("iPhone", .notFromThisMac)]),
-                       .problem("SlashPlayed isn't on a device yet", "Press Install for the device you'll play on."))
+                       .problem("Slashplayed isn't on a device yet", "Press Install for the device you'll play on."))
         XCTAssertFalse(SetupStatus.firstInstall([]).isOK)
-        XCTAssertEqual(SetupStatus.firstInstall([("iPad", .olderBuild), ("iPhone", .upToDate)]), .ok("SlashPlayed is on iPhone."))
+        XCTAssertEqual(SetupStatus.firstInstall([("iPad", .olderBuild), ("iPhone", .upToDate)]), .ok("Slashplayed is on iPhone."))
         XCTAssertEqual(SetupStatus.firstInstall([("Vision Pro", .upToDate), ("iPad", .upToDate), ("iPhone", .upToDate)]),
-                       .ok("SlashPlayed is on Vision Pro, iPad, and iPhone."))
+                       .ok("Slashplayed is on Vision Pro, iPad, and iPhone."))
         XCTAssertEqual(SetupStatus.firstInstall([("Vision Pro", .otherGames), ("iPad", .notOnDevice), ("iPhone", .replaced)]),
-                       .problem("SlashPlayed on Vision Pro and iPhone needs an update", "Press Update for the device you'll play on."))
+                       .problem("Slashplayed on Vision Pro and iPhone needs an update", "Press Update for the device you'll play on."))
     }
 
     /// "Not installed" only for a device without the app: rc7's iPad had an older build of the shared one
@@ -136,11 +136,11 @@ final class OnboardingTests: XCTestCase {
 
     /// Stop Using It names one device in the singular: "Paul's Apple Vision Pro delete their copies" (rc9).
     func testStopUsingItAgreesWithItsDevices() {
-        XCTAssertEqual(SlashPlayedCertificate.deletedLine(sentTo: []), "deleted the SlashPlayed certificate and its key from this Mac")
-        XCTAssertEqual(SlashPlayedCertificate.deletedLine(sentTo: ["Vision Pro"]),
-                       "deleted the SlashPlayed certificate and its key from this Mac; Vision Pro deletes its copy at its next Play or Update Client")
-        XCTAssertEqual(SlashPlayedCertificate.deletedLine(sentTo: ["Vision Pro", "iPad"]),
-                       "deleted the SlashPlayed certificate and its key from this Mac; Vision Pro and iPad delete their copies at their next Play or Update Client")
+        XCTAssertEqual(SlashplayedCertificate.deletedLine(sentTo: []), "deleted the Slashplayed certificate and its key from this Mac")
+        XCTAssertEqual(SlashplayedCertificate.deletedLine(sentTo: ["Vision Pro"]),
+                       "deleted the Slashplayed certificate and its key from this Mac; Vision Pro deletes its copy at its next Play or Update Client")
+        XCTAssertEqual(SlashplayedCertificate.deletedLine(sentTo: ["Vision Pro", "iPad"]),
+                       "deleted the Slashplayed certificate and its key from this Mac; Vision Pro and iPad delete their copies at their next Play or Update Client")
     }
 
     /// Retail on an iPad or iPhone: space is only warned about when the device is short of it, by the free
@@ -174,7 +174,7 @@ final class OnboardingTests: XCTestCase {
                        FreeSpace(bytes: 588_716_797_952 + 774_823_397_924 - 585_728_000_000))
         // The headset (no lockdown), or a device usbmuxd doesn't list: the launcher's own, as of its start.
         XCTAssertEqual(FreeSpace.now(lockdown: nil, launcher: launcher), FreeSpace(bytes: 774_823_397_924))
-        // Before SlashPlayed has started there, or with an older launcher's one line: lockdown's, as a floor.
+        // Before Slashplayed has started there, or with an older launcher's one line: lockdown's, as a floor.
         XCTAssertEqual(FreeSpace.now(lockdown: 588_716_797_952, launcher: nil), FreeSpace(bytes: 588_716_797_952, atLeast: true))
         XCTAssertEqual(FreeSpace.now(lockdown: 588_716_797_952, launcher: FreeSpace.Launcher(free: 805_900_000_000, outright: nil)),
                        FreeSpace(bytes: 588_716_797_952, atLeast: true))

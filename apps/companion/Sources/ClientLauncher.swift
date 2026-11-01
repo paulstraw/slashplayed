@@ -6,7 +6,7 @@ import Foundation
 /// the Mac debugs the client. When the helper can't do its part, the launcher says why, on the device's
 /// screen and on the console, and that's the failure shown here. devicectl sometimes fails to attach the
 /// console while the app still starts; then the client is relaunched, up to 3 attempts (a launch spends
-/// nothing: the token is only used at login). Logs go to ~/Library/Logs/SlashPlayed/console.txt (failed
+/// nothing: the token is only used at login). Logs go to ~/Library/Logs/Slashplayed/console.txt (failed
 /// attempts: console-failN.txt).
 @MainActor
 final class ClientLauncher {
@@ -185,7 +185,7 @@ final class ClientLauncher {
                             throw Failure("The client didn't start because the \(device.noun) is locked. Unlock it, then press Retry Launch.")
                         }
                     }
-                    throw Failure("The client's code wasn't prepared within \(Int(Self.prepareTimeout)) s. The log has its last messages (~/Library/Logs/SlashPlayed/console.txt).")
+                    throw Failure("The client's code wasn't prepared within \(Int(Self.prepareTimeout)) s. The log has its last messages (~/Library/Logs/Slashplayed/console.txt).")
                 }
                 try? await Task.sleep(for: .milliseconds(200))
             }
@@ -215,7 +215,7 @@ final class ClientLauncher {
             try? FileManager.default.moveItem(at: logs.appending(path: "console.txt"),
                                               to: logs.appending(path: "console-fail\(attempt).txt"))
         }
-        throw Failure("devicectl couldn't attach to the client's console \(Self.attempts) times. Logs are in ~/Library/Logs/SlashPlayed/.")
+        throw Failure("devicectl couldn't attach to the client's console \(Self.attempts) times. Logs are in ~/Library/Logs/Slashplayed/.")
     }
 
     private func env(_ flavor: Flavor) -> [String: String] {

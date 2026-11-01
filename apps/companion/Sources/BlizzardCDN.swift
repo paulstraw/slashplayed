@@ -367,7 +367,7 @@ struct BlizzardCDN {
         switch chunk.first {
         case UInt8(ascii: "N"): return Data(chunk.dropFirst())
         case UInt8(ascii: "Z"): return try GameStore.inflate(chunk.dropFirst())
-        default: throw Failure("A BLTE chunk from Blizzard's CDN has mode \(chunk.first.map { String(UnicodeScalar($0)) } ?? "?"), which SlashPlayed doesn't read.")
+        default: throw Failure("A BLTE chunk from Blizzard's CDN has mode \(chunk.first.map { String(UnicodeScalar($0)) } ?? "?"), which Slashplayed doesn't read.")
         }
     }
 
@@ -377,11 +377,11 @@ struct BlizzardCDN {
     /// page index, and the one page whose first key is the last at or before `ckey`.
     func encodedKey(_ ckey: Data, encoding: Blob) async throws -> Data {
         let head = try await read(encoding, 0..<22, cache: true)
-        guard head.prefix(2) == Data("EN".utf8) else { throw Failure("The build's encoding file on Blizzard's CDN isn't one SlashPlayed reads.") }
+        guard head.prefix(2) == Data("EN".utf8) else { throw Failure("The build's encoding file on Blizzard's CDN isn't one Slashplayed reads.") }
         let ckeyLen = Int(head[head.startIndex + 3]), ekeyLen = Int(head[head.startIndex + 4])
         let pageSize = Int(Self.be(head, 5, 2)) * 1024, pages = Int(Self.be(head, 9, 4)), espec = Int(Self.be(head, 18, 4))
         guard ckeyLen == ckey.count, ekeyLen > 0, pageSize > 0, pages > 0 else {
-            throw Failure("The build's encoding file on Blizzard's CDN isn't one SlashPlayed reads.")
+            throw Failure("The build's encoding file on Blizzard's CDN isn't one Slashplayed reads.")
         }
         let entry = ckeyLen + 16, indexStart = 22 + espec
         let index = Data(try await read(encoding, indexStart..<(indexStart + pages * entry), cache: true))
@@ -424,7 +424,7 @@ struct BlizzardCDN {
 
     static func installEntries(_ manifest: Data) throws -> [InstallEntry] {
         let d = Data(manifest)
-        let bad = Failure("The build's install manifest on Blizzard's CDN isn't one SlashPlayed reads.")
+        let bad = Failure("The build's install manifest on Blizzard's CDN isn't one Slashplayed reads.")
         guard d.count >= 10, d.prefix(2) == Data("IN".utf8) else { throw bad }
         let keyLen = Int(d[3]), tagCount = Int(be(d, 4, 2)), count = Int(be(d, 6, 4))
         let maskLen = (count + 7) / 8
@@ -486,7 +486,7 @@ struct BlizzardCDN {
     /// table of contents (a last key and a hash per block), then a 28-byte footer giving the sizes.
     static func archiveIndex(_ index: Data, find key: Data) throws -> (offset: Int, size: Int)? {
         let d = Data(index)
-        let bad = Failure("An archive index on Blizzard's CDN isn't one SlashPlayed reads.")
+        let bad = Failure("An archive index on Blizzard's CDN isn't one Slashplayed reads.")
         guard d.count >= 28 else { throw bad }
         let f = d.count - 28
         let blockSize = Int(d[f + 11]) * 1024, offsetLen = Int(d[f + 12]), sizeLen = Int(d[f + 13])

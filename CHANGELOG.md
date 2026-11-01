@@ -1,7 +1,7 @@
 # Changelog
 
-All notable changes to SlashPlayed are documented here. The format is based on
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and SlashPlayed uses
+All notable changes to Slashplayed are documented here. The format is based on
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and Slashplayed uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
@@ -9,7 +9,7 @@ All notable changes to SlashPlayed are documented here. The format is based on
 ## [1.0.1] - 2026-10-31
 
 The first public release. Early and experimental: expect rough edges, and expect a game patch to
-break it now and then until SlashPlayed catches up. SlashPlayed is unofficial and not affiliated with
+break it now and then until Slashplayed catches up. Slashplayed is unofficial and not affiliated with
 Blizzard Entertainment, and it includes no Blizzard files; use it at your own risk.
 
 ### Added
@@ -20,7 +20,7 @@ Blizzard Entertainment, and it includes no Blizzard files; use it at your own ri
   been played on the Vision Pro and an iPhone 16 Pro, and is untested on the iPad. Retail has been
   played on an M2 iPad, where it runs hot and gets a memory warning, and on an iPhone 16 Pro. Of the
   iPhones, only the 16 Pro has been tested.
-- SlashPlayed Companion, a Mac app that builds the SlashPlayed app, signs it with your own Apple ID,
+- Slashplayed Companion, a Mac app that builds the Slashplayed app, signs it with your own Apple ID,
   and installs it on your device. It needs Xcode and an Apple ID, nothing else: no game install or
   Battle.net on the Mac.
 - No game install on the Mac needed. The companion downloads the game client from Blizzard's servers,
@@ -28,10 +28,10 @@ Blizzard Entertainment, and it includes no Blizzard files; use it at your own ri
   first start of a game takes a few minutes.
 - Copy Game Files from This Mac, an option per device when the game is also installed on the Mac:
   the companion copies the game data over first, and later copies send only what a patch changed.
-- Sign in on the device. The first time, SlashPlayed asks for your Battle.net email and password and
+- Sign in on the device. The first time, Slashplayed asks for your Battle.net email and password and
   keeps them in the device's keychain (that device only, never synced), so the game signs in at every
   start with no Mac. Forget My Sign-In in the app's Settings signs out at once, after a confirmation.
-- Play from the device alone: once installed, open SlashPlayed on the device, with the Mac asleep or
+- Play from the device alone: once installed, open Slashplayed on the device, with the Mac asleep or
   away, and pick a game on its start screen. Every launch from the home screen opens on it, even with
   one game.
 - Settings on the device, from the start screen's gear: show the saved Battle.net email, sign in
@@ -44,9 +44,9 @@ Blizzard Entertainment, and it includes no Blizzard files; use it at your own ri
   [LocalDevVPN](https://apps.apple.com/app/id6755608044) (free, from the App Store). The headset
   pairs with itself on its first launch; the companion pairs an iPad or iPhone over USB.
 - Update Games on This Device, off until you turn it on for a device. When Blizzard patches a game,
-  the device checks that this SlashPlayed can run the new build, then makes and signs the new game
+  the device checks that this Slashplayed can run the new build, then makes and signs the new game
   program itself with a signing key of your team, no Mac needed. A free team sends a copy of its Apple
-  Development key; a paid team can use a SlashPlayed certificate of its own, made in the companion's
+  Development key; a paid team can use a Slashplayed certificate of its own, made in the companion's
   Settings. Forget Signing Identity in the app's Settings deletes the key from the device at once,
   after a confirmation. With the setting off, the device says to update on your Mac.
 - Free Apple IDs (Personal Teams) work, every game included. Their signature lasts 7 days: the
@@ -59,7 +59,7 @@ Blizzard Entertainment, and it includes no Blizzard files; use it at your own ri
   Mac copy of the game.
 - A clear "this game version isn't supported yet" message after a game patch the release doesn't
   cover, on the Mac with a link that opens a pre-filled issue, and on the device as "This patch needs
-  a SlashPlayed update."
+  a Slashplayed update."
 - Help > Export Diagnostics…, a zip of logs and versions to attach to bug reports, with your
   credentials left out.
 - Automatic updates. The companion checks for new versions itself; turn that off in Settings, or use
@@ -74,10 +74,10 @@ Blizzard Entertainment, and it includes no Blizzard files; use it at your own ri
   or log out from the game menu first.
 - The game window has once vanished after the headset was off for a few minutes. Stop the client and
   play again.
-- LocalDevVPN has to be on every time the game starts. If it's off, SlashPlayed opens it.
+- LocalDevVPN has to be on every time the game starts. If it's off, Slashplayed opens it.
 - On an iPhone, a mouse needs AssistiveTouch on to show a cursor.
 - The game shows no on-screen keyboard: typing in chat, or an authenticator's code at sign-in, needs
   a hardware keyboard.
-- A game patch can need a SlashPlayed update before that game plays again.
+- A game patch can need a Slashplayed update before that game plays again.
 - A game's intro movie doesn't play on its first launch on a device (the game's first session there
   would wait on it forever). It's in the game's Cinematics menu.

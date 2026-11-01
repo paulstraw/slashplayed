@@ -1,5 +1,5 @@
 // The headset's pairing, on the launcher's side (spjit.m calls it on visionOS when there's no
-// Library/sppairing.plist, or the headset stopped accepting it: the person removed SlashPlayed under
+// Library/sppairing.plist, or the headset stopped accepting it: the person removed Slashplayed under
 // Remote Devices). The JIT helper's tunnel needs a RemotePairing record, and on visionOS the app can make
 // its own, the way Xcode pairs a Vision Pro over Wi-Fi (research/jittest's p2): with Settings > General >
 // Remote Devices open, visionOS advertises _remotepairing-manual-pairing._tcp, and pair-setup there makes
@@ -273,7 +273,7 @@ static BOOL write_record(NSData *record, NSString *path) {
 NSData *sp_pair_headset(NSString *path, void (^pump)(double), NSString **problem) {
     UIViewController *root = sp_scene_root();
     if (!root) {
-        *problem = @"SlashPlayed needs to pair with this Vision Pro, but has no window to ask in.";
+        *problem = @"Slashplayed needs to pair with this Vision Pro, but has no window to ask in.";
         return nil;
     }
     // What the screen sends: the code once it's six digits (else what to say), and a request for a new one.
@@ -295,7 +295,7 @@ NSData *sp_pair_headset(NSString *path, void (^pump)(double), NSString **problem
     for (double end = now() + 5; !shown && now() < end;) pump(0.05);
     if (!shown || !ui.presentingViewController) {
         say([NSString stringWithFormat:@"the pairing screen didn't show (the root presents %@)", root.presentedViewController]);
-        *problem = @"SlashPlayed couldn't show its pairing screen.\n\nClose SlashPlayed and open it again.";
+        *problem = @"Slashplayed couldn't show its pairing screen.\n\nClose Slashplayed and open it again.";
         [ui dismissViewControllerAnimated:NO completion:nil];
         return nil;
     }
@@ -309,8 +309,8 @@ NSData *sp_pair_headset(NSString *path, void (^pump)(double), NSString **problem
         sp_screen_status(ui, last ?: @"Looking for Remote Devices…");
         while (![browse anything]) {
             if (browse.denied) {
-                sp_screen_status(ui, @"SlashPlayed needs local network access to find Remote Devices. Turn it on in "
-                                     @"Settings > Apps > SlashPlayed, then open SlashPlayed again.");
+                sp_screen_status(ui, @"Slashplayed needs local network access to find Remote Devices. Turn it on in "
+                                     @"Settings > Apps > Slashplayed, then open Slashplayed again.");
             }
             pump(0.1);
         }
@@ -324,7 +324,7 @@ NSData *sp_pair_headset(NSString *path, void (^pump)(double), NSString **problem
                                  : @"Found Remote Devices. Waiting for its code…");
         SPPinListener *listener = [SPPinListener new];
         if (!listener) {
-            *problem = @"SlashPlayed couldn't start pairing (no code listener).";
+            *problem = @"Slashplayed couldn't start pairing (no code listener).";
             break;
         }
         entered = nil;
@@ -355,7 +355,7 @@ NSData *sp_pair_headset(NSString *path, void (^pump)(double), NSString **problem
         [listener close];
         sp_pair_ask(ui, NO);
         if (!reply) {
-            *problem = @"SlashPlayed's helper didn't start.\n\nInstall SlashPlayed again from SlashPlayed Companion on your Mac.";
+            *problem = @"Slashplayed's helper didn't start.\n\nInstall Slashplayed again from Slashplayed Companion on your Mac.";
             break;
         }
         say([NSString stringWithFormat:@"reply: %@%@", [reply[@"ok"] boolValue] ? @"" : @"FAIL: ", reply[@"summary"]]);
@@ -367,7 +367,7 @@ NSData *sp_pair_headset(NSString *path, void (^pump)(double), NSString **problem
             continue;
         }
         if (!write_record(data, path)) {
-            *problem = [NSString stringWithFormat:@"SlashPlayed paired, but couldn't save the pairing: errno %d (%s).",
+            *problem = [NSString stringWithFormat:@"Slashplayed paired, but couldn't save the pairing: errno %d (%s).",
                         errno, strerror(errno)];
             break;
         }

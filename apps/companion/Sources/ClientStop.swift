@@ -19,7 +19,7 @@ enum ClientStop {
     /// The step's detail, the action first. A file error went away on the next Play in the rc9 run (it came
     /// while the game streamed its data), so it says to press Play again.
     static func message(code: Int, alert: String?) -> String {
-        let log = "The log has its last messages (~/Library/Logs/SlashPlayed/console.txt)."
+        let log = "The log has its last messages (~/Library/Logs/Slashplayed/console.txt)."
         guard let alert else { return "It quit with exit code \(code). \(log)" }
         if alert.localizedCaseInsensitiveContains("File I/O") {
             return "Press Play to try again. The game stopped on a file error (“\(alert)”), which can happen while it streams its data; the next start usually works. If it keeps happening, check the device's free space. \(log)"

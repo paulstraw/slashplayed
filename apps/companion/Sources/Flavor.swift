@@ -135,14 +135,14 @@ enum Paths {
 
     static var addon: URL { resource("SPHover") }
 
-    /// ~/Library/Logs/SlashPlayed.
+    /// ~/Library/Logs/Slashplayed.
     static var logs: URL {
-        directory(FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Logs/SlashPlayed"))
+        directory(FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Logs/Slashplayed"))
     }
 
-    /// ~/Library/Application Support/SlashPlayed: thinned clients and the assembled device apps.
+    /// ~/Library/Application Support/Slashplayed: thinned clients and the assembled device apps.
     static var support: URL {
-        directory(URL.applicationSupportDirectory.appending(path: "SlashPlayed"))
+        directory(URL.applicationSupportDirectory.appending(path: "Slashplayed"))
     }
 
     /// BlizzardCDN's downloads: the configs, manifest chunks, and arm64 slices of each game's current build.
@@ -152,7 +152,7 @@ enum Paths {
     static func clientDir(_ device: Device) -> URL { directory(support.appending(path: "client-\(device.platform)")) }
 
     /// The device app built there (and installed).
-    static func clientApp(_ device: Device) -> URL { clientDir(device).appending(path: "SlashPlayed.app") }
+    static func clientApp(_ device: Device) -> URL { clientDir(device).appending(path: "Slashplayed.app") }
 
     private static func directory(_ url: URL) -> URL {
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

@@ -4,13 +4,13 @@
 // that couldn't be made (offline, a timeout, an answer without the row): it costs a few seconds at most and
 // never stops a launch.
 //
-// A newer build out shows a screen that says so, and whether this SlashPlayed can run the new build: it
+// A newer build out shows a screen that says so, and whether this Slashplayed can run the new build: it
 // fetches the new client's arm64 slice from Blizzard's CDN (spcdn.m, about 50 MB; on cellular or in Low
 // Data Mode only if the person says so) and checks its imports against the shims' exports.json the app
 // carries (spbind.m), as the companion's bind check would. It binds: "Update on your Mac to play it" (the
 // companion builds the new image from the CDN), and Update too when the device holds a signing identity the
 // companion sent it (spsign.m): the device then makes the new image itself (update, below) and loads it
-// from Library/spgames/. It doesn't: "This patch needs a SlashPlayed update". Couldn't tell: the first.
+// from Library/spgames/. It doesn't: "This patch needs a Slashplayed update". Couldn't tell: the first.
 // Play Anyway goes on with the image it has. The slice is kept in Library/spslice/ with its own stamp, so a
 // later launch doesn't fetch it again (and an update builds from it).
 //
@@ -212,7 +212,7 @@ static void dismiss(SPPatchController *screen, void (^pump)(double)) {
 // the service's current build counts as newer than the image even when it's the same, so the screen shows,
 // its slice is fetched (or kept), and it's checked. `binds` leaves the check alone (it binds: "Update on
 // your Mac" or Update); any other value is a symbol withheld from the app's shims for the check, as the
-// companion's SPPatchDrillImport (BindCheck.Manifest.withheld): "This patch needs a SlashPlayed update".
+// companion's SPPatchDrillImport (BindCheck.Manifest.withheld): "This patch needs a Slashplayed update".
 // Returns whether the drill is on, and *symbol the withheld one (nil for binds).
 static BOOL drill(NSString **symbol) {
     NSString *value = NSProcessInfo.processInfo.environment[@"SP_PATCH_DRILL"];
@@ -248,7 +248,7 @@ static NSString *new_slice(NSString *flavor, NSString *product, NSString *region
     if (costly_network(pump)) {
         say(@"on cellular or Low Data Mode: asking before the download");
         [screen setHeading:heading
-                      body:[NSString stringWithFormat:@"To check whether SlashPlayed can run it, this %@ downloads about "
+                      body:[NSString stringWithFormat:@"To check whether Slashplayed can run it, this %@ downloads about "
                                                       @"%.0f MB from Blizzard. You're on cellular data or Low Data Mode.",
                                                       sp_device_noun(), megabytes]
                       note:note
@@ -261,7 +261,7 @@ static NSString *new_slice(NSString *flavor, NSString *product, NSString *region
         say(@"Download");
     }
     // The words stay put while the download counts in the status line.
-    [screen setHeading:heading body:@"Checking whether SlashPlayed can run it…" note:note buttons:@[]];
+    [screen setHeading:heading body:@"Checking whether Slashplayed can run it…" note:note buttons:@[]];
     [screen setStatus:[NSString stringWithFormat:@"Downloading about %.0f MB from Blizzard", megabytes]];
     double t = now();
     NSString *problem = nil;
@@ -516,9 +516,9 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
     verdict v = check_new_build(flavor, bundled, product, region, row, screen, heading, has, *pump, &why);
     BOOL here = v == binds && sp_identity_usable();
     if (v == needs_update) {
-        say([NSString stringWithFormat:@"message: needs a SlashPlayed update: %@ %@ doesn't bind, the image is %@", product,
+        say([NSString stringWithFormat:@"message: needs a Slashplayed update: %@ %@ doesn't bind, the image is %@", product,
                                        version, stamp[@"Version"]]);
-        [screen setHeading:@"This patch needs a SlashPlayed update."
+        [screen setHeading:@"This patch needs a Slashplayed update."
                       body:sp_patch_needs_update_body(news)
                       note:has
                    buttons:@[@"Play Anyway"]];
@@ -527,7 +527,7 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
                                        version, stamp[@"Version"]]);
         [screen setHeading:heading
                       body:[NSString stringWithFormat:@"This %@ can update itself in a few seconds, signed with the key "
-                                                      @"your Mac sent it. Or press Play in SlashPlayed Companion on your Mac.", noun]
+                                                      @"your Mac sent it. Or press Play in Slashplayed Companion on your Mac.", noun]
                       note:has
                    buttons:@[@"Update", @"Play Anyway"]];
     } else {
@@ -535,7 +535,7 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
                                        v == binds ? @"binds" : [NSString stringWithFormat:@"(couldn't tell whether it binds: %@)", why],
                                        stamp[@"Version"]]);
         [screen setHeading:heading
-                      body:[NSString stringWithFormat:@"Update on your Mac to play it: press Play in SlashPlayed Companion, "
+                      body:[NSString stringWithFormat:@"Update on your Mac to play it: press Play in Slashplayed Companion, "
                                                       @"and it brings this %@ the new version.", noun]
                       note:has
                    buttons:@[@"Play Anyway"]];
@@ -558,7 +558,7 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
         }
         say_update([NSString stringWithFormat:@"failed after %.1f s: %@", now() - t, why]);
         [screen setHeading:[NSString stringWithFormat:@"%@ couldn't be updated on this %@.", game, noun]
-                      body:@"Update on your Mac instead: press Play in SlashPlayed Companion."
+                      body:@"Update on your Mac instead: press Play in Slashplayed Companion."
                       // The reason, for a report, under the plain words, then the build it has.
                       note:[NSString stringWithFormat:@"%@%@.\n%@", [why substringToIndex:1].uppercaseString,
                                                       [why substringFromIndex:1], has]

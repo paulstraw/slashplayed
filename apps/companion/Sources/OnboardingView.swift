@@ -11,7 +11,7 @@ struct OnboardingView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Set Up SlashPlayed").font(.headline).padding(.bottom, 6)
+                Text("Set Up Slashplayed").font(.headline).padding(.bottom, 6)
                 ForEach(Onboarding.StepID.allCases) { step in
                     SetupStepRow(title: step.title, status: setup.current == step ? .checking : setup.status[step],
                                  isCurrent: setup.current == step, isBeyond: setup.current.map { step.rawValue > $0.rawValue } ?? false)
@@ -121,11 +121,11 @@ private struct StepPage: View {
         case .account: return "Sign in to Xcode with your Apple Account."
         case .device: return "Pair each device you'll play on with this Mac."
         case .helper:
-            return ok ? "Nothing to do now: leave LocalDevVPN off. SlashPlayed asks for it when the game starts."
+            return ok ? "Nothing to do now: leave LocalDevVPN off. Slashplayed asks for it when the game starts."
                 : "Install LocalDevVPN, free on the App Store, on each device."
         case .games: return "Choose the games for each device."
         case .install: return "Nothing to do here, unless World of Warcraft is on this Mac in another folder."
-        case .firstInstall: return "Install SlashPlayed on each device you'll play on."
+        case .firstInstall: return "Install Slashplayed on each device you'll play on."
         case .updates: return "Optional: let a device update a game itself when Blizzard patches it."
         }
     }
@@ -134,13 +134,13 @@ private struct StepPage: View {
     private var details: String? {
         switch step {
         case .xcode:
-            "SlashPlayed uses Xcode's tools to sign, install, and start the app on your devices. You won't need Xcode itself after setup."
+            "Slashplayed uses Xcode's tools to sign, install, and start the app on your devices. You won't need Xcode itself after setup."
         case .account:
             "Any Apple Account works. A free one's Personal Team signs for 7 days at a time, and Play signs again after that. A paid Apple Developer Program team signs for a year."
         case .device:
-            "SlashPlayed runs on an iPad with an M2 chip or later, an iPhone 15 Pro or later, and Apple Vision Pro."
+            "Slashplayed runs on an iPad with an M2 chip or later, an iPhone 15 Pro or later, and Apple Vision Pro."
         case .helper:
-            "Each time the game starts, SlashPlayed prepares its code on the device, with no Mac needed. It reaches the device's developer services through LocalDevVPN. If a device stops accepting SlashPlayed's pairing later, File > Pair Again makes a new one."
+            "Each time the game starts, Slashplayed prepares its code on the device, with no Mac needed. It reaches the device's developer services through LocalDevVPN. If a device stops accepting Slashplayed's pairing later, File > Pair Again makes a new one."
         case .games:
             "Each game streams its data from Blizzard as you play, so its first start takes a few minutes."
                 + (Flavor.installed.isEmpty ? "" : " A game installed on this Mac can be copied instead (Settings > Games), at about 30 MB a second.")
@@ -161,7 +161,7 @@ private struct StepPage: View {
                     Link("Get Xcode on the Mac App Store", destination: URL(string: "macappstore://apps.apple.com/app/id497799835")!)
                 }
                 CommandBox(command: Signing.selectXcodeCommand,
-                           note: "Then run this in Terminal, so SlashPlayed uses that Xcode (it asks for your Mac password):")
+                           note: "Then run this in Terminal, so Slashplayed uses that Xcode (it asks for your Mac password):")
             }
         case .account:
             let teams = setup.teams
@@ -357,8 +357,8 @@ private struct DeviceLine: View {
                 Text(info.device.name)
                 Group {
                     if !info.supported {
-                        Text(info.device.kind == .iPhone ? "Not supported: SlashPlayed needs an iPhone 15 Pro or later."
-                             : "Not supported: SlashPlayed needs an iPad with an M2 chip or later.").foregroundStyle(.orange)
+                        Text(info.device.kind == .iPhone ? "Not supported: Slashplayed needs an iPhone 15 Pro or later."
+                             : "Not supported: Slashplayed needs an iPad with an M2 chip or later.").foregroundStyle(.orange)
                     } else if info.developerMode == false {
                         Text("Developer Mode is off: Settings > Privacy & Security > Developer Mode.").foregroundStyle(.orange)
                     } else {
@@ -467,7 +467,7 @@ private struct PipelineProgress: View {
     }
 }
 
-/// The last step: the SlashPlayed certificate a paid team needs first, then each device's Update Games
+/// The last step: the Slashplayed certificate a paid team needs first, then each device's Update Games
 /// on This Device, sent to it at once (Onboarding.setUpdatesGames).
 private struct UpdatesChooser: View {
     let setup: Onboarding
@@ -482,7 +482,7 @@ private struct UpdatesChooser: View {
             let ready = source == .a || { if case .ready = pipeline.certificate { true } else { false } }()
             VStack(alignment: .leading, spacing: 10) {
                 if !ready {
-                    Text("First, make the SlashPlayed certificate: a paid team's devices sign updates with a certificate of their own.")
+                    Text("First, make the Slashplayed certificate: a paid team's devices sign updates with a certificate of their own.")
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 // One grouped form, so the switches line up as they do in Settings. Its height is its
@@ -565,7 +565,7 @@ private struct GamesChooser: View {
     }
 }
 
-/// Ready: SlashPlayed is on a device (the install step), so it's played from there; the Mac's Play is for
+/// Ready: Slashplayed is on a device (the install step), so it's played from there; the Mac's Play is for
 /// what the device can't do alone.
 private struct ReadyPage: View {
     let setup: Onboarding
@@ -574,19 +574,19 @@ private struct ReadyPage: View {
         let kinds = Set(setup.usable.map(\.device.kind))
         VStack(alignment: .leading, spacing: 14) {
             Text("Ready").font(.title2.weight(.semibold))
-            Text("Open SlashPlayed on your device to play.").font(.body.weight(.medium))
+            Text("Open Slashplayed on your device to play.").font(.body.weight(.medium))
             VStack(alignment: .leading, spacing: 8) {
                 if setup.teamIsFree {
                     Text("• The first time, the device says “Untrusted Developer”: open Settings > General > VPN & Device Management there, tap your Apple Account, and tap Trust.")
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if kinds.contains(.headset) {
-                    Text("• Vision Pro, the first time: SlashPlayed shows a code. Open Settings > General > Remote Devices on the headset and type it into SlashPlayed. Leave the other entries there alone: one is this Mac.")
+                    Text("• Vision Pro, the first time: Slashplayed shows a code. Open Settings > General > Remote Devices on the headset and type it into Slashplayed. Leave the other entries there alone: one is this Mac.")
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Text("• Sign in to Battle.net there. SlashPlayed keeps the sign-in in the device's keychain.")
+                Text("• Sign in to Battle.net there. Slashplayed keeps the sign-in in the device's keychain.")
                     .fixedSize(horizontal: false, vertical: true)
-                Text("• Turn on LocalDevVPN when SlashPlayed asks. It opens it for you.")
+                Text("• Turn on LocalDevVPN when Slashplayed asks. It opens it for you.")
                     .fixedSize(horizontal: false, vertical: true)
                 Text("• A game's first start takes a few minutes while it fetches its data.")
                     .fixedSize(horizontal: false, vertical: true)

@@ -1,6 +1,6 @@
-# Contributing to SlashPlayed
+# Contributing to Slashplayed
 
-Thanks for helping out. SlashPlayed is a Mac companion app (`apps/companion`), a device app
+Thanks for helping out. Slashplayed is a Mac companion app (`apps/companion`), a device app
 (`apps/client`, with its on-device JIT helper in `apps/client/helper`), and the shim libraries it
 loads (`shims/`). [docs/architecture.md](docs/architecture.md)
 explains how they fit together; read it before changing the pipeline, the shims or the launcher.
@@ -60,7 +60,7 @@ scripts/build-idevice.sh xros             # and on the Vision Pro (all three int
 scripts/build-zsign.sh                    # once: zsign + OpenSSL for ios, xros, and macos (work/zsign/)
 shims/build.sh xros                       # build/xros/*.dylib + exports.json
 shims/build.sh ios                        # the same for iPadOS and iOS
-apps/companion/build.sh                   # build/companion/SlashPlayed Companion.app, resources bundled
+apps/companion/build.sh                   # build/companion/Slashplayed Companion.app, resources bundled
 apps/companion/test.sh                    # the companion's unit tests (extra args go to xcodebuild)
 ```
 

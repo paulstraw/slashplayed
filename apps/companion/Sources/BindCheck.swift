@@ -111,7 +111,7 @@ enum BindCheck {
     /// binds` has Play launch the game with SP_PATCH_DRILL=binds (ClientLauncher): the device treats the
     /// current build as newer than its image, fetches its slice, and finds it binds, so it offers "Update on
     /// your Mac" (or Update, with Update Games on This Device on). A symbol instead (`_NSApp`) is withheld from
-    /// the device's check too, so it says "This patch needs a SlashPlayed update". Only Play passes it, so a
+    /// the device's check too, so it says "This patch needs a Slashplayed update". Only Play passes it, so a
     /// start from the device alone never drills. Honoured only in Debug builds and pre-release versions
     /// (`drill`); apps/client/run.sh passes SP_PATCH_DRILL for a dev build.
     static var deviceDrill: String? { drill("SPDevicePatchDrill") }
@@ -137,7 +137,7 @@ enum BindCheck {
         #endif
     }
 
-    /// The build stops on this: a client this version of SlashPlayed can't run yet. Carries what the
+    /// The build stops on this: a client this version of Slashplayed can't run yet. Carries what the
     /// "New game patch broke it" issue form asks for.
     struct Unsupported: LocalizedError {
         /// The flavor's raw value (classic_era).
@@ -155,11 +155,11 @@ enum BindCheck {
     static let issueForm = URL(string: "https://github.com/paulstraw/slashplayed/issues/new")!
 
     /// What the companion shows for an unsupported client: "<Flavor> <build> isn't supported by this
-    /// version of SlashPlayed yet…", then the missing imports.
+    /// version of Slashplayed yet…", then the missing imports.
     static func message(flavorName: String, build: String, unsupported: Unsupported) -> String {
         let list = unsupported.unresolved.prefix(10).map { "  \($0)" }.joined(separator: "\n")
         let more = unsupported.unresolved.count > 10 ? "\n  … and \(unsupported.unresolved.count - 10) more" : ""
-        return "\(flavorName) \(build) isn't supported by this version of SlashPlayed yet. Check for updates; if there isn't one, report it.\n"
+        return "\(flavorName) \(build) isn't supported by this version of Slashplayed yet. Check for updates; if there isn't one, report it.\n"
             + "It imports \(unsupported.unresolved.count) function\(unsupported.unresolved.count == 1 ? "" : "s") the shims don't provide:\n\(list)\(more)"
     }
 

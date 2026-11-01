@@ -17,7 +17,7 @@ secrets, or Pages (see Releasing): those are the owner's.
   `com.strawdynamics.slashplayed.companion`). `Sources/` is the whole user-time pipeline in Swift:
   `ClientAssembly.swift` (thin, rewrite, set platform, retype, assemble), `BindCheck.swift`,
   `Signing.swift`, `DeviceIdentity.swift` (the signing identity a device updates games with: the opt-in,
-the push, the export), `SlashPlayedCertificate.swift` (a paid team's own certificate for that: key, request,
+the push, the export), `SlashplayedCertificate.swift` (a paid team's own certificate for that: key, request,
   `.cer` checks, in a keychain off the search list), `GameStore.swift`/`GameFiles.swift` (archive selection, sync), `BlizzardCDN.swift` (the
   patch service and CDN: version rows, configs, and the client's arm64 slice), `ClientLauncher.swift`
   (launch, following the on-device prepare), `TokenRelay.swift`, `Pairing.swift` (the device's
@@ -78,7 +78,7 @@ scripts/build-idevice.sh ios; scripts/build-idevice.sh xros   # the JIT helper l
 scripts/build-zsign.sh                     # once: zsign + OpenSSL (ios, xros: the launcher; macos: the tests)
 scripts/fetch-font.sh                      # once: the start screen's font and its license, into work/fonts/
 shims/build.sh <xros|ios>                  # build/<platform>/*.dylib + exports.json
-apps/companion/build.sh                    # build/companion/SlashPlayed Companion.app (needs xcodegen)
+apps/companion/build.sh                    # build/companion/Slashplayed Companion.app (needs xcodegen)
 apps/companion/test.sh                     # companion unit tests; extra args go to xcodebuild
 SP_PLATFORM=ios SP_NO_INSTALL=1 apps/client/build.sh   # the script build of the device app, no install
 research/<harness>/build.sh                # research harnesses (they install; no no-install switch)
@@ -96,8 +96,8 @@ skipped there), `-update`, `-sync`, `-pull-logs`, `-export-diagnostics`, `-setup
 `-check-for-updates`, `-pair` (Pair Again: an iPad or iPhone on USB gets a new RemotePairing record;
 the headset's is cleared, so its next launch pairs), `-push-identity` (what Play does about the device's
 signing identity for Update Games on This Device, alone; `DeviceIdentity.swift`), `-certificate-request`
-(a paid team's SlashPlayed certificate: its key and request, `SlashPlayedCertificate.swift`). These act inside the running
-GUI app, which doesn't quit afterwards: follow `~/Library/Logs/SlashPlayed/companion.txt` and quit it.
+(a paid team's Slashplayed certificate: its key and request, `SlashplayedCertificate.swift`). These act inside the running
+GUI app, which doesn't quit afterwards: follow `~/Library/Logs/Slashplayed/companion.txt` and quit it.
 
 ## config/local.env
 
@@ -116,7 +116,7 @@ which looks like a locked or disconnected phone but isn't.
 Xcode 27 has no Devices and Simulators window: devices are paired in **Device Hub** (Xcode > Open
 Developer Tool > Device Hub). The headset pairs there with Settings > General > Remote Devices open on it.
 Clearing that Remote Devices list unpairs the Mac too (devicectl then shows the headset unavailable), so
-pairing SlashPlayed on the headset never needs it cleared.
+pairing Slashplayed on the headset never needs it cleared.
 
 Changing a device app's bundle ID gives it a new, empty data container, so every game file is copied
 again (over an hour for Retail on the headset). Don't change it casually.

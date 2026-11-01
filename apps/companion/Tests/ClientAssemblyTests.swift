@@ -272,7 +272,7 @@ final class ClientAssemblyTests: XCTestCase {
         try Data("car".utf8).write(to: res.appending(path: "icon/Assets.car"))
         try Self.writeManifest(for: Self.fixture, to: res.appending(path: "exports.json"))
         try Self.writeLicenses(in: res)
-        let app = base.appending(path: "SlashPlayed.app"), ents = base.appending(path: "entitlements.plist")
+        let app = base.appending(path: "Slashplayed.app"), ents = base.appending(path: "entitlements.plist")
         let helperEnts = base.appending(path: "helper-entitlements.plist")
         var lines: [String] = []
         try await ClientAssembly.assemble(app: app, clients: [("toy", Self.fixture, Self.stamp)], platform: .xros,
@@ -314,7 +314,7 @@ final class ClientAssemblyTests: XCTestCase {
             .write(to: res.appending(path: "rewrite-map.txt"), atomically: true, encoding: .utf8)
         try Self.writeManifest(for: Self.fixture, to: res.appending(path: "exports.json"))
         do {
-            try await ClientAssembly.assemble(app: base.appending(path: "SlashPlayed.app"), clients: [("toy", Self.fixture, Self.stamp)],
+            try await ClientAssembly.assemble(app: base.appending(path: "Slashplayed.app"), clients: [("toy", Self.fixture, Self.stamp)],
                                               platform: .xros, platformResources: res, templates: Self.repo.appending(path: "apps/client"),
                                               team: "T", bundleID: "T.slashplayed", entitlements: base.appending(path: "e.plist"),
                                               helperEntitlements: base.appending(path: "h.plist")) { _ in }
@@ -359,7 +359,7 @@ final class ClientAssemblyTests: XCTestCase {
     /// don't. Build them unsigned first, e.g. with an identity that can't sign (build.sh stops at codesign,
     /// after the images are made):
     ///   SP_PLATFORM=xros SP_NO_INSTALL=1 SP_SIGN_ID=none SP_OUT=$TMPDIR/cmp-xros apps/client/build.sh
-    /// then run the tests with TEST_RUNNER_SP_COMPARE_APP=$TMPDIR/cmp-xros/SlashPlayed.app
+    /// then run the tests with TEST_RUNNER_SP_COMPARE_APP=$TMPDIR/cmp-xros/Slashplayed.app
     /// TEST_RUNNER_SP_COMPARE_PLATFORM=xros (SP_INSTALL as for build.sh). The slice is of the install's
     /// build (the CDN's current one once Battle.net has updated it); the stamp from the patch service's
     /// row is compared too when that's the install's build. The CDN's files go to $TMPDIR and are deleted.

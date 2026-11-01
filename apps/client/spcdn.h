@@ -56,7 +56,7 @@ BOOL sp_update_caught_up(NSDictionary<NSString *, NSString *> *_Nullable bundled
 // sentences both start from it.
 NSString *sp_patch_news(NSString *game, NSString *_Nullable version);
 
-// The body of the screen headed "This patch needs a SlashPlayed update.": the news (sp_patch_news) and what to
+// The body of the screen headed "This patch needs a Slashplayed update.": the news (sp_patch_news) and what to
 // do. The device's own version goes in the screen's note, under it (sppatch.m).
 NSString *sp_patch_needs_update_body(NSString *news);
 

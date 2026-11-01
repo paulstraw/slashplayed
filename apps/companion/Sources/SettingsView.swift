@@ -185,7 +185,7 @@ struct SettingsView: View {
             Toggle("Check for updates automatically", isOn: $autoUpdate)
                 .onChange(of: autoUpdate) { Updater.shared.setAutomaticChecks(autoUpdate) }
         } footer: {
-            caption("An update is never installed without asking. SlashPlayed Companion > Check for Updates… works either way.")
+            caption("An update is never installed without asking. Slashplayed Companion > Check for Updates… works either way.")
         }
     }
 
@@ -194,7 +194,7 @@ struct SettingsView: View {
     }
 
     private var changeWarning: String {
-        "Your devices get a new, empty SlashPlayed app, which fetches its game data from Blizzard again as you play (with copying on, every game file is copied again). The old app stays until you delete it from each device."
+        "Your devices get a new, empty Slashplayed app, which fetches its game data from Blizzard again as you play (with copying on, every game file is copied again). The old app stays until you delete it from each device."
     }
 
     private var cleanedTeamID: String { teamIDDraft.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
@@ -296,8 +296,8 @@ private struct DeviceGamesSection: View {
             return "\(free.text) on the \(device.noun)."
         }
         return device.kind == .headset
-            ? "The headset's free space shows once SlashPlayed has started on it."
-            : "The \(device.noun)'s free space shows when it's connected with USB, or once SlashPlayed has started on it."
+            ? "The headset's free space shows once Slashplayed has started on it."
+            : "The \(device.noun)'s free space shows when it's connected with USB, or once Slashplayed has started on it."
     }
 }
 
@@ -320,7 +320,7 @@ private struct Pane<Content: View>: View {
 }
 
 /// Settings' Updates on Devices: each device's Update Games on This Device, and for a paid team the
-/// SlashPlayed certificate the devices sign with. Where the key comes from depends on the team
+/// Slashplayed certificate the devices sign with. Where the key comes from depends on the team
 /// (DeviceIdentity): a free team's is the identity the app is signed with; a paid team's is the
 /// certificate, set up in the section below.
 private struct DeviceUpdatesPane: View {
@@ -334,7 +334,7 @@ private struct DeviceUpdatesPane: View {
             Section {
                 // The reason first, when the switches can't be turned on: last, they looked broken (the rc6 run).
                 if !ready {
-                    Text("Set up the SlashPlayed certificate below first.")
+                    Text("Set up the Slashplayed certificate below first.")
                         .font(.callout.weight(.medium))
                 }
                 ForEach(pipeline.devices) { device in
@@ -371,7 +371,7 @@ private struct DeviceUpdatesPane: View {
 enum UpdateGamesConsent {
     static func summary(_ source: DeviceIdentity.Source) -> String {
         "A device with this on makes and signs a patched game itself, with a copy of "
-            + (source == .a ? "the key this Mac signs SlashPlayed with" : "the SlashPlayed certificate's key, made for this alone")
+            + (source == .a ? "the key this Mac signs Slashplayed with" : "the Slashplayed certificate's key, made for this alone")
             + ". Turning it off deletes the key from the device."
     }
 
@@ -381,12 +381,12 @@ enum UpdateGamesConsent {
         let alert = NSAlert()
         alert.messageText = "Let the \(device.noun) update games itself?"
         let what = source == .a
-            ? "a copy of the key this Mac signs SlashPlayed with (macOS asks you to allow the export)"
-            : "a copy of the SlashPlayed certificate's key"
+            ? "a copy of the key this Mac signs Slashplayed with (macOS asks you to allow the export)"
+            : "a copy of the Slashplayed certificate's key"
         alert.informativeText = """
-            At the next Play, SlashPlayed sends the \(device.noun) \(what). It stays in SlashPlayed's keychain on the \(device.noun) alone, used only to sign game updates.
+            At the next Play, Slashplayed sends the \(device.noun) \(what). It stays in Slashplayed's keychain on the \(device.noun) alone, used only to sign game updates.
 
-            To take it back, turn this off, or tap Forget Signing Identity in Settings on SlashPlayed's start screen on the \(device.noun).
+            To take it back, turn this off, or tap Forget Signing Identity in Settings on Slashplayed's start screen on the \(device.noun).
             """
         alert.addButton(withTitle: "Turn On")
         alert.addButton(withTitle: "Cancel")
@@ -395,9 +395,9 @@ enum UpdateGamesConsent {
     }
 }
 
-/// Settings' SlashPlayed Certificate (a paid team's key for devices that update games themselves, B): makes
+/// Settings' Slashplayed Certificate (a paid team's key for devices that update games themselves, B): makes
 /// the request, walks the person through developer.apple.com, takes the .cer they download (Choose, or
-/// dropped here), and stops using it. SlashPlayedCertificate does the keychain work.
+/// dropped here), and stops using it. SlashplayedCertificate does the keychain work.
 struct CertificateSection: View {
     let pipeline: Pipeline
     @State private var problem: String?
@@ -405,16 +405,16 @@ struct CertificateSection: View {
     @State private var confirmingStop = false
 
     var body: some View {
-        Section("SlashPlayed Certificate") {
+        Section("Slashplayed Certificate") {
             switch pipeline.certificate {
             case .none:
-                Text("Devices that update games themselves need a certificate of SlashPlayed's own. Making it takes a minute on developer.apple.com, and you can revoke it without touching anything else.")
+                Text("Devices that update games themselves need a certificate of Slashplayed's own. Making it takes a minute on developer.apple.com, and you can revoke it without touching anything else.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Make Certificate Request…") { run { try reveal(pipeline.makeCertificateRequest()) } }
             case .requested:
                 Text("""
-                    1. SlashPlayed saved a certificate request to Downloads: \(SlashPlayedCertificate.requestFile.lastPathComponent). Its key stays on this Mac, in SlashPlayed's own keychain.
+                    1. Slashplayed saved a certificate request to Downloads: \(SlashplayedCertificate.requestFile.lastPathComponent). Its key stays on this Mac, in Slashplayed's own keychain.
                     2. On developer.apple.com, signed in with your team, open Certificates, IDs & Profiles > Certificates and click +.
                     3. Choose Apple Development, Continue, and upload the request. Greyed out ("Maximum number of certificates generated")? Revoke one you no longer use in the Certificates list, then click + again.
                     4. Download the certificate, then choose it here or drop it on this section.
@@ -424,7 +424,7 @@ struct CertificateSection: View {
                 // Two rows, each button at its full width: four in one row cut "Open developer.apple.com" short
                 // (the rc6 run).
                 HStack {
-                    Button("Open developer.apple.com") { NSWorkspace.shared.open(SlashPlayedCertificate.portalURL) }
+                    Button("Open developer.apple.com") { NSWorkspace.shared.open(SlashplayedCertificate.portalURL) }
                         .fixedSize()
                     Button("Show Request") { run { try reveal(pipeline.makeCertificateRequest()) } }
                         .fixedSize()
@@ -446,15 +446,15 @@ struct CertificateSection: View {
                         .font(.caption).foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Button("Stop Using the SlashPlayed Certificate…", action: stop)
+                Button("Stop Using the Slashplayed Certificate…", action: stop)
             case .otherCopy(let cert):
                 // The fix first: rc9's only hint was "turn it on to be asked again", which couldn't help.
-                Text(SlashPlayedCertificate.otherCopyFix)
+                Text(SlashplayedCertificate.otherCopyFix)
                     .font(.caption).foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
                 if let cert {
                     LabeledContent("Certificate", value: cert.name)
-                    Button("Stop Using the SlashPlayed Certificate…", action: stop)
+                    Button("Stop Using the Slashplayed Certificate…", action: stop)
                 } else {
                     Button("Start Over") { pipeline.stopUsingCertificate() }
                 }
@@ -468,7 +468,7 @@ struct CertificateSection: View {
         .task(id: pipeline.certificate) { await pipeline.checkCertificateStanding() }
         // As the team-change alert has it: Stop Using red, Cancel the default (Return). An NSAlert made
         // the first button, Stop Using, the default (6.2 on rc12); roles alone left no default (rc13).
-        .alert("Stop using the SlashPlayed certificate?", isPresented: $confirmingStop) {
+        .alert("Stop using the Slashplayed certificate?", isPresented: $confirmingStop) {
             Button("Stop Using", role: .destructive) { pipeline.stopUsingCertificate() }
             Button("Cancel", role: .cancel) {}
                 .keyboardShortcut(.defaultAction)

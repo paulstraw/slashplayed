@@ -82,7 +82,7 @@ final class AcknowledgementsTests: XCTestCase {
     /// The built companion (apps/companion/build.sh's, when there is one: CI builds it before the tests) ships
     /// the notices: Sparkle's from its build phase, idevice's as the companion links it, and the device app's.
     func testBuiltCompanionShipsTheNotices() throws {
-        let app = ClientAssemblyTests.repo.appending(path: "build/companion/SlashPlayed Companion.app")
+        let app = ClientAssemblyTests.repo.appending(path: "build/companion/Slashplayed Companion.app")
         guard FileManager.default.fileExists(atPath: app.path) else { throw XCTSkip("no build/companion app: run apps/companion/build.sh") }
         let res = app.appending(path: "Contents/Resources")
         let ack = res.appending(path: "Acknowledgements")

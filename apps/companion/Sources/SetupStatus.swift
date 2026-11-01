@@ -26,28 +26,28 @@ enum SetupStatus: Equatable {
     /// it passes once one is up to date, since that one can be played on and the rest installed later.
     static func firstInstall(_ devices: [(name: String, need: ClientBuild.InstallNeed)]) -> SetupStatus {
         let done = devices.filter { $0.need == .upToDate }.map(\.name)
-        guard done.isEmpty else { return .ok("SlashPlayed is on \(list(done)).") }
+        guard done.isEmpty else { return .ok("Slashplayed is on \(list(done)).") }
         let stale = devices.filter { installState($0.need, wake: nil).button == "Update" }.map(\.name)
         guard stale.isEmpty else {
-            return .problem("SlashPlayed on \(list(stale)) needs an update", "Press Update for the device you'll play on.")
+            return .problem("Slashplayed on \(list(stale)) needs an update", "Press Update for the device you'll play on.")
         }
-        return .problem("SlashPlayed isn't on a device yet", "Press Install for the device you'll play on.")
+        return .problem("Slashplayed isn't on a device yet", "Press Install for the device you'll play on.")
     }
 
-    /// The main window's heading with nothing running (Headline). Once SlashPlayed is on the device it
+    /// The main window's heading with nothing running (Headline). Once Slashplayed is on the device it
     /// starts from there, and Play here builds and installs first; with it deleted there (rc19's run: the
     /// heading still said to open it), Play is the only way back.
     static func idleHeading(noun: String, appMissing: Bool) -> (title: String, detail: String) {
         appMissing
-            ? ("Press Play to install SlashPlayed on the \(noun)",
-               "SlashPlayed isn't on the \(noun): it was deleted there, or never installed. Play builds it, installs it, and starts the game.")
-            : ("Open SlashPlayed on the \(noun) to play",
+            ? ("Press Play to install Slashplayed on the \(noun)",
+               "Slashplayed isn't on the \(noun): it was deleted there, or never installed. Play builds it, installs it, and starts the game.")
+            : ("Open Slashplayed on the \(noun) to play",
                "Or press Play here: it updates the app on the \(noun) first, after a patch or a change of games, and then starts the game.")
     }
 
     /// The install step's line for a device (ClientBuild.installNeed with the device asked) and its button
     /// (nil once it's up to date). "Not installed" only when it isn't there: rc7's run showed it for an iPad
-    /// that had SlashPlayed, an older build of the one the iPad and the iPhone share. One this Mac didn't
+    /// that had Slashplayed, an older build of the one the iPad and the iPhone share. One this Mac didn't
     /// install may be another Mac's or not there at all (an unreachable device can't say), so it's worded
     /// to be true either way. `wake` is what makes an unreachable device answer ("Connect it with USB").
     static func installState(_ need: ClientBuild.InstallNeed, wake: String?) -> (text: String, button: String?) {

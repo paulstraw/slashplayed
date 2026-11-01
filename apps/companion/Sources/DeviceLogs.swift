@@ -7,7 +7,7 @@ import Foundation
 ///   - Documents/<flavor folder>/Logs and Errors: the client's own logs and error reports, for each of
 ///     the device's games.
 ///   - The system's crash, jetsam and resource reports that mention the app.
-/// Into ~/Library/Logs/SlashPlayed/triage/<date-time>/ (app/ and system/ as on the device, summary.txt).
+/// Into ~/Library/Logs/Slashplayed/triage/<date-time>/ (app/ and system/ as on the device, summary.txt).
 /// Needs the device reachable; the headset awake.
 ///
 /// Each file is its own devicectl call, about 0.6 s over USB and more over Wi-Fi (the rc6 run: 74 files,

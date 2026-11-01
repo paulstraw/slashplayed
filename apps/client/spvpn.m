@@ -1,12 +1,12 @@
 // LocalDevVPN, on the launcher's side. The JIT helper reaches the device's own developer services
 // (RemotePairing at 10.7.0.1:49152) through LocalDevVPN, a loopback VPN, and it has to be on at every
 // start: it doesn't turn itself back on after a restart. When it's off, the launch waits for it here
-// rather than failing with "turn it on, then open SlashPlayed again": opening an app that's still running
+// rather than failing with "turn it on, then open Slashplayed again": opening an app that's still running
 // only brings it back to the front, so that took a force quit.
 //
 // The screen opens localdevvpn://enable?scheme=slashplayed, once by itself and again from its button.
 // LocalDevVPN (com.jkcoxson.LocalDevVPN, its LocalDevVPNApp.swift) turns its VPN on and, a second later,
-// opens slashplayed:// (Info.plist's CFBundleURLTypes), which brings SlashPlayed back. The URL itself
+// opens slashplayed:// (Info.plist's CFBundleURLTypes), which brings Slashplayed back. The URL itself
 // needs no handling here: a connect through the VPN, tried every second off the main thread, is what
 // ends the wait, so turning it on by hand and coming back works too. On iOS the app is suspended while
 // it's in the background, and the tries pick up again when it's back.
@@ -88,8 +88,8 @@ NSString *sp_vpn_wait(void (^*pump)(double), NSString *noun) {
     void (^ui)(double) = sp_launch_uikit();
     UIViewController *root = ui ? sp_scene_root() : nil;
     if (!root) {
-        return [NSString stringWithFormat:@"SlashPlayed couldn't reach this %@'s developer services.\n\nOpen LocalDevVPN "
-                @"and turn it on, then close SlashPlayed and open it again.", noun];
+        return [NSString stringWithFormat:@"Slashplayed couldn't reach this %@'s developer services.\n\nOpen LocalDevVPN "
+                @"and turn it on, then close Slashplayed and open it again.", noun];
     }
     *pump = ui;
     __block __weak UIViewController *weakScreen = nil;

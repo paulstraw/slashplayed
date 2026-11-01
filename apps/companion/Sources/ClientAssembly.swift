@@ -201,7 +201,7 @@ enum ClientAssembly {
     /// changing or renaming the file (scripts/fetch-font.sh, bundle-resources.sh).
     static let fontFile = "Goodmountain-Regular.otf"
 
-    /// Assembles an unsigned SlashPlayed.app at `app` from the given clients (flavor raw value → the Mac
+    /// Assembles an unsigned Slashplayed.app at `app` from the given clients (flavor raw value → the Mac
     /// client, universal or its arm64 slice, and the build it is, for its Stamp) and the companion's resources: `platformResources` (<platform>/: the shims, the
     /// launcher, the JIT helper's executable, rewrite-map.txt, exports.json, licenses/, the start screen's
     /// font) and `templates` (client/:

@@ -13,8 +13,8 @@ private struct PairView: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        LauncherScreen(model: model, title: "Pair SlashPlayed with this Vision Pro",
-                       message: "SlashPlayed pairs with this Vision Pro once, so it can prepare the game on its own.\n\nOpen Settings > General > Remote Devices and keep it open. When it shows a code, type the code here.") {
+        LauncherScreen(model: model, title: "Pair Slashplayed with this Vision Pro",
+                       message: "Slashplayed pairs with this Vision Pro once, so it can prepare the game on its own.\n\nOpen Settings > General > Remote Devices and keep it open. When it shows a code, type the code here.") {
             if model.asking {
                 VStack(spacing: 20) {
                     TextField("Code", text: $code, prompt: Text("Code").foregroundStyle(gold.opacity(0.6)))

@@ -6,12 +6,12 @@ import Security
 /// client image it assembles (apps/client/spsign.m), and the image loads from Library/ because an installed
 /// profile lists the certificate (research/dlopentest). It comes from this Mac, only for a device whose
 /// Update Games on This Device is on (off for every device until the person turns it on, after reading what
-/// it sends), and goes into SlashPlayed's keychain on that device alone (this device only, never synced).
+/// it sends), and goes into Slashplayed's keychain on that device alone (this device only, never synced).
 ///
 /// Where the key comes from depends on the team. A free team uses **A**: the identity the companion already
 /// signs the app with (Signing.provision's), exported from the login keychain as a .p12 here, with
-/// macOS's own export prompt as the consent. A paid team uses **B**: a certificate of SlashPlayed's own,
-/// made for this and kept out of Xcode's reach (SlashPlayedCertificate; until it's set up, a paid team gets
+/// macOS's own export prompt as the consent. A paid team uses **B**: a certificate of Slashplayed's own,
+/// made for this and kept out of Xcode's reach (SlashplayedCertificate; until it's set up, a paid team gets
 /// nothing), which the companion exports without asking. The `signingSource` default (A or B) overrides
 /// the team's choice, so a paid team can test A.
 ///
@@ -48,7 +48,7 @@ enum DeviceIdentity {
     static let forgetPath = "Library/spidentity.forget"
     /// What the launcher found at its last start (sp_identity_describe), for the decision.
     static let statusPath = "Library/spidentity.txt"
-    /// A copy of the profile the companion installed for the SlashPlayed certificate (B), so the launcher knows
+    /// A copy of the profile the companion installed for the Slashplayed certificate (B), so the launcher knows
     /// a profile lists it (sp_listed_certificates): it can read its own embedded.mobileprovision, not the
     /// device's list of installed profiles.
     static let profilePath = "Library/spprofile.mobileprovision"
@@ -103,7 +103,7 @@ enum DeviceIdentity {
     /// - on: its Update Games on This Device.
     /// - source: the team's (or the override's).
     /// - identity: the SHA-1 of the identity to send, and its certificate's last valid day (`day`): for A the
-    ///   built app's signer (nil when there's no build yet), for B the SlashPlayed certificate (nil until
+    ///   built app's signer (nil when there's no build yet), for B the Slashplayed certificate (nil until
     ///   it's set up, or once it has expired).
     /// - pushed: the SHA-1 last pushed to the device (pushedKey), nil if none since the setting was last off.
     /// - pushedSource: the source that SHA-1 came from (pushedSource(recorded:pushed:certificate:)), for the
@@ -119,9 +119,9 @@ enum DeviceIdentity {
         if status?.state == .forgotten && pushed != nil { return .turnOff }
         guard let identity else {
             return .nothing(source == .a ? "there's no build yet to take the signing identity from"
-                                         : "a paid team signs device updates with a SlashPlayed certificate of its own, which isn't set up (Settings > Updates on Devices)")
+                                         : "a paid team signs device updates with a Slashplayed certificate of its own, which isn't set up (Settings > Updates on Devices)")
         }
-        if pending && pushed == identity.hash { return .nothing("the identity sent last is waiting for SlashPlayed's next start on the device") }
+        if pending && pushed == identity.hash { return .nothing("the identity sent last is waiting for Slashplayed's next start on the device") }
         guard let status else { return .push("the device hasn't said whether it has one") }
         switch status.state {
         case .none: return .push("the device has none")
@@ -140,17 +140,17 @@ enum DeviceIdentity {
     /// nil when nothing was sent since the setting was last turned on, and the device holds one anyway.
     static func change(from pushed: Source?, to source: Source) -> String {
         switch (pushed, source) {
-        case (.a, .a): "Xcode replaced the certificate SlashPlayed signs with"
-        case (.b, .b): "there's a new SlashPlayed certificate"
-        case (.a, .b): "the device gets the SlashPlayed certificate (B) instead of the identity this Mac signs with (A)"
-        case (.b, .a): "the device gets the identity this Mac signs with (A) instead of the SlashPlayed certificate (B)"
+        case (.a, .a): "Xcode replaced the certificate Slashplayed signs with"
+        case (.b, .b): "there's a new Slashplayed certificate"
+        case (.a, .b): "the device gets the Slashplayed certificate (B) instead of the identity this Mac signs with (A)"
+        case (.b, .a): "the device gets the identity this Mac signs with (A) instead of the Slashplayed certificate (B)"
         case (nil, _): "the device's identity wasn't sent from this Mac since Update Games on This Device was turned on"
         }
     }
 
     /// The source of the SHA-1 last pushed: the one recorded with it (pushedSourceKey), or, for a push from
-    /// before that record existed, B if it's the SlashPlayed certificate's SHA-1 and A otherwise (stopping the
-    /// SlashPlayed certificate turns the setting off on every device it went to, so a B push that's still on
+    /// before that record existed, B if it's the Slashplayed certificate's SHA-1 and A otherwise (stopping the
+    /// Slashplayed certificate turns the setting off on every device it went to, so a B push that's still on
     /// record is the current certificate's). Nil if nothing was pushed.
     static func pushedSource(recorded: String?, pushed: String?, certificate: String?) -> Source? {
         guard let pushed else { return nil }
@@ -173,7 +173,7 @@ enum DeviceIdentity {
             guard SecIdentityCopyCertificate(id, &cert) == errSecSuccess, let cert else { return false }
             return sha1(SecCertificateCopyData(cert) as Data) == hash.uppercased()
         }
-        guard let identity else { throw Failure("The identity SlashPlayed signs with isn't in this Mac's keychain any more. Press Play or Update Client to sign with the current one.") }
+        guard let identity else { throw Failure("The identity Slashplayed signs with isn't in this Mac's keychain any more. Press Play or Update Client to sign with the current one.") }
         var params = SecItemImportExportKeyParameters()
         params.version = UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION)
         let passphrase = password as CFString
@@ -311,7 +311,7 @@ enum DeviceIdentity {
     }
 
     /// Exports the identity with a new password (`export`: from the login keychain for A, from the
-    /// SlashPlayed certificate's keychain for B) and copies both into the device's Library/. Returns the
+    /// Slashplayed certificate's keychain for B) and copies both into the device's Library/. Returns the
     /// sizes, for the log.
     static func push(hash: String, to device: Device,
                      export: @escaping @Sendable (_ hash: String, _ password: String) throws -> Data = { try DeviceIdentity.export(hash: $0, password: $1) })

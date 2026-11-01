@@ -615,7 +615,7 @@ NSString *sp_patch_news(NSString *game, NSString *version) {
 }
 
 NSString *sp_patch_needs_update_body(NSString *news) {
-    return [NSString stringWithFormat:@"%@, and this version of SlashPlayed can't run it yet. In SlashPlayed Companion on "
+    return [NSString stringWithFormat:@"%@, and this version of Slashplayed can't run it yet. In Slashplayed Companion on "
                                       @"your Mac, check for updates; once there's one for it, press Play there.", news];
 }
 

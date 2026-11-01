@@ -1,14 +1,14 @@
 import Security
 import XCTest
 
-/// SlashPlayedCertificate (B): the request, the checks on the certificate the person brings back, the
+/// SlashplayedCertificate (B): the request, the checks on the certificate the person brings back, the
 /// export, and whether a profile lists the certificate. Everything runs in keychain files of its own under
 /// $TMPDIR (never on the search list, deleted afterwards), with a CA of our own standing in for Apple's; the
 /// login keychain and the companion's own store are never touched, and macOS is never allowed to prompt.
-final class SlashPlayedCertificateTests: XCTestCase {
+final class SlashplayedCertificateTests: XCTestCase {
     static let scratch = FileManager.default.temporaryDirectory.appending(path: "sp-certificate-tests-\(getpid())")
     static let team = "ABCDE12345"
-    var stores: [SlashPlayedCertificate.Store] = []
+    var stores: [SlashplayedCertificate.Store] = []
 
     override func setUpWithError() throws {
         try FileManager.default.createDirectory(at: Self.scratch, withIntermediateDirectories: true)
@@ -23,8 +23,8 @@ final class SlashPlayedCertificateTests: XCTestCase {
     }
 
     /// A new store: a keychain path that hasn't existed in this process, and a random password.
-    func makeStore() throws -> SlashPlayedCertificate.Store {
-        let store = SlashPlayedCertificate.Store(path: Self.scratch.appending(path: "b-\(UUID().uuidString).keychain-db"),
+    func makeStore() throws -> SlashplayedCertificate.Store {
+        let store = SlashplayedCertificate.Store(path: Self.scratch.appending(path: "b-\(UUID().uuidString).keychain-db"),
                                                  password: try DeviceIdentity.newPassword())
         stores.append(store)
         return store
@@ -63,15 +63,15 @@ final class SlashPlayedCertificateTests: XCTestCase {
                          "-subj", "/CN=Apple Worldwide Developer Relations Certification Authority/OU=G3/O=Apple Inc./C=US"])
         }
         try openssl(["ca", "-config", "ca.cnf", "-batch", "-notext", "-in", csr, "-cert", "ca.pem", "-keyfile", "ca.key", "-days", "2",
-                     "-subj", "/CN=Apple Development: SlashPlayed Test (\(team))/OU=\(team)/O=SlashPlayed Test/C=US", "-out", out])
+                     "-subj", "/CN=Apple Development: Slashplayed Test (\(team))/OU=\(team)/O=Slashplayed Test/C=US", "-out", out])
         try openssl(["x509", "-in", out, "-outform", "DER", "-out", out + ".der"])
     }
 
     func data(_ name: String) throws -> Data { try Data(contentsOf: Self.scratch.appending(path: name)) }
 
     /// A request for the store's key, saved as `name`.
-    func request(_ store: SlashPlayedCertificate.Store, _ name: String = "sp.csr") throws -> Data {
-        let pem = try SlashPlayedCertificate.request(store)
+    func request(_ store: SlashplayedCertificate.Store, _ name: String = "sp.csr") throws -> Data {
+        let pem = try SlashplayedCertificate.request(store)
         try pem.write(to: Self.scratch.appending(path: name))
         return pem
     }
@@ -80,25 +80,25 @@ final class SlashPlayedCertificateTests: XCTestCase {
 
     func testTheRequestIsAValidRequestForAKeyKeptApart() throws {
         let store = try makeStore()
-        XCTAssertEqual(try SlashPlayedCertificate.state(of: store), .none)
+        XCTAssertEqual(try SlashplayedCertificate.state(of: store), .none)
         let pem = try request(store)
-        XCTAssertEqual(try SlashPlayedCertificate.state(of: store), .requested)
+        XCTAssertEqual(try SlashplayedCertificate.state(of: store), .requested)
         // openssl checks the request's signature against the key in it.
         let text = try openssl(["req", "-in", "sp.csr", "-verify", "-noout", "-subject"])
         XCTAssertTrue(text.contains("verify OK"), text)
-        XCTAssertTrue(text.contains("CN=SlashPlayed") || text.contains("CN = SlashPlayed"), text)
+        XCTAssertTrue(text.contains("CN=Slashplayed") || text.contains("CN = Slashplayed"), text)
         let key = try openssl(["req", "-in", "sp.csr", "-noout", "-text"])
         XCTAssertTrue(key.contains("2048 bit"), key)
         XCTAssertTrue(key.contains("sha256WithRSAEncryption"), key)
         // The same key, so the same request: asking again is harmless.
-        XCTAssertEqual(try SlashPlayedCertificate.request(store), pem)
+        XCTAssertEqual(try SlashplayedCertificate.request(store), pem)
         // The keychain file is 0600 and off the search list, and the key is found only by naming it.
         let mode = try FileManager.default.attributesOfItem(atPath: store.path.path)[.posixPermissions] as? Int
         XCTAssertEqual(mode, 0o600)
         let list = try DeviceIdentityTests.run("/usr/bin/security", ["list-keychains"], in: Self.scratch)
         XCTAssertFalse(list.contains(store.path.lastPathComponent), list)
         var found: CFTypeRef?
-        XCTAssertEqual(SecItemCopyMatching([kSecClass: kSecClassKey, kSecAttrLabel: SlashPlayedCertificate.label,
+        XCTAssertEqual(SecItemCopyMatching([kSecClass: kSecClassKey, kSecAttrLabel: SlashplayedCertificate.label,
                                             kSecReturnRef: true] as CFDictionary, &found), errSecItemNotFound)
     }
 
@@ -114,12 +114,12 @@ final class SlashPlayedCertificateTests: XCTestCase {
         let store = try makeStore()
         try request(store)
         try issue("sp.csr", out: "sp.pem")
-        let cert = try SlashPlayedCertificate.add(try data("sp.pem.der"), team: Self.team, to: store)
+        let cert = try SlashplayedCertificate.add(try data("sp.pem.der"), team: Self.team, to: store)
         XCTAssertEqual(cert.hash, DeviceIdentity.sha1(try data("sp.pem.der")))
-        XCTAssertTrue(cert.name.contains("Apple Development: SlashPlayed Test"), cert.name)
-        XCTAssertEqual(try SlashPlayedCertificate.state(of: store), .ready(cert))
+        XCTAssertTrue(cert.name.contains("Apple Development: Slashplayed Test"), cert.name)
+        XCTAssertEqual(try SlashplayedCertificate.state(of: store), .ready(cert))
         // PEM too, and again (already kept) is fine.
-        XCTAssertEqual(try SlashPlayedCertificate.add(try data("sp.pem"), team: Self.team, to: store), cert)
+        XCTAssertEqual(try SlashplayedCertificate.add(try data("sp.pem"), team: Self.team, to: store), cert)
     }
 
     func testRefusesAnotherTeamsAnotherKeysAndExpiredCertificates() throws {
@@ -127,23 +127,23 @@ final class SlashPlayedCertificateTests: XCTestCase {
         try request(store)
         // Another team's.
         try issue("sp.csr", team: "ZZZZZ99999", out: "other-team.pem")
-        XCTAssertThrowsError(try SlashPlayedCertificate.add(try data("other-team.pem.der"), team: Self.team, to: store)) {
+        XCTAssertThrowsError(try SlashplayedCertificate.add(try data("other-team.pem.der"), team: Self.team, to: store)) {
             XCTAssertTrue($0.localizedDescription.contains("ZZZZZ99999"), $0.localizedDescription)
         }
         // Another key's (a request openssl made).
         try openssl(["req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", "x.key", "-out", "x.csr", "-subj", "/CN=x"])
         try issue("x.csr", out: "other-key.pem")
-        XCTAssertThrowsError(try SlashPlayedCertificate.add(try data("other-key.pem.der"), team: Self.team, to: store)) {
+        XCTAssertThrowsError(try SlashplayedCertificate.add(try data("other-key.pem.der"), team: Self.team, to: store)) {
             XCTAssertTrue($0.localizedDescription.contains("request"), $0.localizedDescription)
         }
         // The right one, but checked after it runs out.
         try issue("sp.csr", out: "sp.pem")
-        XCTAssertThrowsError(try SlashPlayedCertificate.add(try data("sp.pem.der"), team: Self.team, to: store,
+        XCTAssertThrowsError(try SlashplayedCertificate.add(try data("sp.pem.der"), team: Self.team, to: store,
                                                             now: Date().addingTimeInterval(3 * 24 * 3600))) {
             XCTAssertTrue($0.localizedDescription.contains("expired"), $0.localizedDescription)
         }
-        XCTAssertThrowsError(try SlashPlayedCertificate.add(Data("not a certificate".utf8), team: Self.team, to: store))
-        XCTAssertEqual(try SlashPlayedCertificate.state(of: store), .requested, "nothing refused was kept")
+        XCTAssertThrowsError(try SlashplayedCertificate.add(Data("not a certificate".utf8), team: Self.team, to: store))
+        XCTAssertEqual(try SlashplayedCertificate.state(of: store), .requested, "nothing refused was kept")
     }
 
     func testNoKeyNoCertificate() throws {
@@ -151,7 +151,7 @@ final class SlashPlayedCertificateTests: XCTestCase {
         try request(store)
         try issue("sp.csr", out: "sp.pem")
         let empty = try makeStore()
-        XCTAssertThrowsError(try SlashPlayedCertificate.add(try data("sp.pem.der"), team: Self.team, to: empty))
+        XCTAssertThrowsError(try SlashplayedCertificate.add(try data("sp.pem.der"), team: Self.team, to: empty))
     }
 
     // MARK: The export
@@ -162,9 +162,9 @@ final class SlashPlayedCertificateTests: XCTestCase {
         let store = try makeStore()
         try request(store)
         try issue("sp.csr", out: "sp.pem")
-        let cert = try SlashPlayedCertificate.add(try data("sp.pem.der"), team: Self.team, to: store)
+        let cert = try SlashplayedCertificate.add(try data("sp.pem.der"), team: Self.team, to: store)
         let password = try DeviceIdentity.newPassword()
-        let p12 = try SlashPlayedCertificate.export(store, hash: cert.hash, password: password)
+        let p12 = try SlashplayedCertificate.export(store, hash: cert.hash, password: password)
         let (status, list) = DeviceIdentityTests.importP12(p12, password: password)
         XCTAssertEqual(status, errSecSuccess)
         XCTAssertEqual(list.count, 1)
@@ -177,12 +177,12 @@ final class SlashPlayedCertificateTests: XCTestCase {
 
     /// Puts a key made outside the companion (PEM, from openssl) into the store, labelled as its own, with an
     /// access list that trusts only `app`: what a key another copy of the companion made looks like to this one.
-    func importKey(_ pem: Data, trusting app: String, into store: SlashPlayedCertificate.Store) throws {
-        try SlashPlayedCertificate.withKeychain(store, create: true) { keychain in
+    func importKey(_ pem: Data, trusting app: String, into store: SlashplayedCertificate.Store) throws {
+        try SlashplayedCertificate.withKeychain(store, create: true) { keychain in
             var trusted: SecTrustedApplication?
             XCTAssertEqual(SecTrustedApplicationCreateFromPath(app, &trusted), errSecSuccess)
             var access: SecAccess?
-            XCTAssertEqual(SecAccessCreate(SlashPlayedCertificate.label as CFString, [try XCTUnwrap(trusted)] as CFArray, &access), errSecSuccess)
+            XCTAssertEqual(SecAccessCreate(SlashplayedCertificate.label as CFString, [try XCTUnwrap(trusted)] as CFArray, &access), errSecSuccess)
             var params = SecItemImportExportKeyParameters()
             params.version = UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION)
             params.accessRef = Unmanaged.passUnretained(try XCTUnwrap(access))
@@ -193,7 +193,7 @@ final class SlashPlayedCertificateTests: XCTestCase {
             }
             XCTAssertEqual(st, errSecSuccess)
             let key = try XCTUnwrap((items as? [SecKey])?.first)
-            XCTAssertEqual(SecItemUpdate([kSecValueRef: key] as CFDictionary, [kSecAttrLabel: SlashPlayedCertificate.label] as CFDictionary), errSecSuccess)
+            XCTAssertEqual(SecItemUpdate([kSecValueRef: key] as CFDictionary, [kSecAttrLabel: SlashplayedCertificate.label] as CFDictionary), errSecSuccess)
         }
     }
 
@@ -203,16 +203,16 @@ final class SlashPlayedCertificateTests: XCTestCase {
     func testAnotherCopysKeyIsSaidSo() throws {
         let store = try makeStore()
         try openssl(["genrsa", "-out", "other.key", "2048"])
-        try openssl(["req", "-new", "-key", "other.key", "-subj", "/CN=SlashPlayed", "-out", "other.csr"])
+        try openssl(["req", "-new", "-key", "other.key", "-subj", "/CN=Slashplayed", "-out", "other.csr"])
         try importKey(try data("other.key"), trusting: "/usr/bin/true", into: store)
-        XCTAssertEqual(try SlashPlayedCertificate.state(of: store), .otherCopy(nil))
-        XCTAssertThrowsError(try SlashPlayedCertificate.request(store)) {
-            XCTAssertEqual($0.localizedDescription, SlashPlayedCertificate.otherCopyFix)
+        XCTAssertEqual(try SlashplayedCertificate.state(of: store), .otherCopy(nil))
+        XCTAssertThrowsError(try SlashplayedCertificate.request(store)) {
+            XCTAssertEqual($0.localizedDescription, SlashplayedCertificate.otherCopyFix)
         }
         try issue("other.csr", out: "other.pem")
-        let cert = try SlashPlayedCertificate.add(try data("other.pem.der"), team: Self.team, to: store)
-        XCTAssertEqual(try SlashPlayedCertificate.state(of: store), .otherCopy(cert))
-        XCTAssertThrowsError(try SlashPlayedCertificate.export(store, hash: cert.hash, password: try DeviceIdentity.newPassword())) {
+        let cert = try SlashplayedCertificate.add(try data("other.pem.der"), team: Self.team, to: store)
+        XCTAssertEqual(try SlashplayedCertificate.state(of: store), .otherCopy(cert))
+        XCTAssertThrowsError(try SlashplayedCertificate.export(store, hash: cert.hash, password: try DeviceIdentity.newPassword())) {
             XCTAssertTrue($0 is DeviceIdentity.Refused, "\($0)")
         }
     }
@@ -221,7 +221,7 @@ final class SlashPlayedCertificateTests: XCTestCase {
     func testThisCopysKeyIsUsable() throws {
         let store = try makeStore()
         try request(store)
-        XCTAssertEqual(try SlashPlayedCertificate.state(of: store), .requested)
+        XCTAssertEqual(try SlashplayedCertificate.state(of: store), .requested)
     }
 
     // MARK: Profiles
@@ -242,11 +242,11 @@ final class SlashPlayedCertificateTests: XCTestCase {
                          "-signer", "ca.pem", "-inkey", "ca.key", "-out", "profile.mobileprovision"])
             return try data("profile.mobileprovision")
         }
-        let other = SecCertificateCopyData(try XCTUnwrap(SlashPlayedCertificate.certificate(from: data("ca.pem")))) as Data
-        XCTAssertTrue(SlashPlayedCertificate.lists(profile: try profile([other, der]), hash: hash))
-        XCTAssertTrue(SlashPlayedCertificate.lists(profile: try profile([der]), hash: hash.lowercased()))
-        XCTAssertFalse(SlashPlayedCertificate.lists(profile: try profile([other]), hash: hash))
-        XCTAssertFalse(SlashPlayedCertificate.lists(profile: try profile([]), hash: hash))
-        XCTAssertFalse(SlashPlayedCertificate.lists(profile: Data("junk".utf8), hash: hash))
+        let other = SecCertificateCopyData(try XCTUnwrap(SlashplayedCertificate.certificate(from: data("ca.pem")))) as Data
+        XCTAssertTrue(SlashplayedCertificate.lists(profile: try profile([other, der]), hash: hash))
+        XCTAssertTrue(SlashplayedCertificate.lists(profile: try profile([der]), hash: hash.lowercased()))
+        XCTAssertFalse(SlashplayedCertificate.lists(profile: try profile([other]), hash: hash))
+        XCTAssertFalse(SlashplayedCertificate.lists(profile: try profile([]), hash: hash))
+        XCTAssertFalse(SlashplayedCertificate.lists(profile: Data("junk".utf8), hash: hash))
     }
 }

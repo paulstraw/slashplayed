@@ -220,7 +220,7 @@ enum GameStore {
             try b.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
                 let p = raw.bindMemory(to: UInt8.self)
                 guard p.count >= 0x28, le16(p, 8) == 7, p[12] == 4, p[13] == 5, p[14] == 9, p[15] == 30 else {
-                    throw Failure("\(name) in the game install isn't a local index this version of SlashPlayed reads.")
+                    throw Failure("\(name) in the game install isn't a local index this version of Slashplayed reads.")
                 }
                 let n = Int(le32(p, 0x20))
                 guard 0x28 + n <= p.count else { throw Failure("\(name) in the game install is cut short.") }
@@ -278,7 +278,7 @@ enum GameStore {
             switch chunk.first {
             case UInt8(ascii: "N"): out.append(chunk.dropFirst())
             case UInt8(ascii: "Z"): out.append(try inflate(chunk.dropFirst()))
-            default: throw Failure("A BLTE chunk has mode \(chunk.first.map { String(UnicodeScalar($0)) } ?? "?"), which SlashPlayed doesn't read.")
+            default: throw Failure("A BLTE chunk has mode \(chunk.first.map { String(UnicodeScalar($0)) } ?? "?"), which Slashplayed doesn't read.")
             }
         }
         return out
@@ -288,7 +288,7 @@ enum GameStore {
     static func forEachEncodedKey(_ encoding: Data, _ body: (KeyPrefix) throws -> Void) throws {
         let enc = Data(encoding)
         guard enc.count >= 22, enc[0] == UInt8(ascii: "E"), enc[1] == UInt8(ascii: "N") else {
-            throw Failure("The build's encoding file isn't one SlashPlayed reads.")
+            throw Failure("The build's encoding file isn't one Slashplayed reads.")
         }
         let ckeyLen = Int(enc[3]), ekeyLen = Int(enc[4])
         let pageSize = (Int(enc[5]) << 8 | Int(enc[6])) * 1024

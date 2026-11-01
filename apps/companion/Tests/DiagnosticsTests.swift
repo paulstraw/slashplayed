@@ -53,10 +53,10 @@ final class DiagnosticsTests: XCTestCase {
         try write(plist, "logs/spnetbattle.plist")
         try write(plist, "device/app/Library/spnetbattle.plist")
 
-        let zip = dir.appending(path: "out/SlashPlayed-Diagnostics-test.zip")
+        let zip = dir.appending(path: "out/Slashplayed-Diagnostics-test.zip")
         let exported = try Diagnostics.export(.init(
             logs: dir.appending(path: "logs"), deviceLogs: dir.appending(path: "device"),
-            versions: "SlashPlayed Companion 0.1 (1)\nGame install: \(path)", summary: "Steps:\n  failed: The client stopped",
+            versions: "Slashplayed Companion 0.1 (1)\nGame install: \(path)", summary: "Steps:\n  failed: The client stopped",
             secrets: secrets, excluded: [dir.appending(path: "sptoken"), dir.appending(path: "device/app/Library")],
             output: zip))
 
@@ -68,7 +68,7 @@ final class DiagnosticsTests: XCTestCase {
         try ditto.run()
         ditto.waitUntilExit()
         XCTAssertEqual(ditto.terminationStatus, 0)
-        let root = out.appending(path: "SlashPlayed-Diagnostics-test")
+        let root = out.appending(path: "Slashplayed-Diagnostics-test")
         let files = Diagnostics.regularFiles(in: root, recursive: true).map(\.path)
         XCTAssertEqual(files, ["companion/companion.txt", "companion/console.txt",
                                "device/app/Documents/spconsole.1.log", "device/summary.txt",
@@ -116,7 +116,7 @@ final class DiagnosticsTests: XCTestCase {
         try write("junk", "device/system/.DS_Store")
         try write("== spconsole.log\n", "device/summary.txt")
 
-        let zip = dir.appending(path: "out/SlashPlayed-Diagnostics-ids.zip")
+        let zip = dir.appending(path: "out/Slashplayed-Diagnostics-ids.zip")
         let exported = try Diagnostics.export(.init(
             logs: dir.appending(path: "logs"), deviceLogs: dir.appending(path: "device"),
             versions: "Device: Apple Vision Pro", summary: "Steps:\n  failed: provisioning for \(udid)",
@@ -129,7 +129,7 @@ final class DiagnosticsTests: XCTestCase {
         try ditto.run()
         ditto.waitUntilExit()
         XCTAssertEqual(ditto.terminationStatus, 0)
-        let root = out.appending(path: "SlashPlayed-Diagnostics-ids")
+        let root = out.appending(path: "Slashplayed-Diagnostics-ids")
         let files = Diagnostics.regularFiles(in: root, recursive: true).map(\.path)
         XCTAssertEqual(files, ["companion/build.txt", "companion/companion.txt", "device/summary.txt",
                                "device/system/JetsamEvent-2026-10-25.ips", "device/system/slashplayed.bin",
@@ -177,11 +177,11 @@ final class DiagnosticsTests: XCTestCase {
         try write("  4.83 [step] done: \(headset) connected\n  5.00 \(headset.replacingOccurrences(of: "’", with: "'")) and iPad (2)\n" +
                   "teams: \(personal.name), \(team.name); account \(appleID)\n" +
                   "macOS 26.6.2 on \(computer), Jos-MacBook-Pro.local\n" +
-                  "/Users/\(user)/Library/Logs/SlashPlayed and /Users/Shared/SlashPlayed-rc1\n", "logs/companion.txt")
+                  "/Users/\(user)/Library/Logs/Slashplayed and /Users/Shared/Slashplayed-rc1\n", "logs/companion.txt")
         try write(#"{"bundleID":"\#(team.id).slashplayed","path":"\/Users\/\#(user)\/Library"}"#, "device/system/slashplayed.ips")
         try write("== spconsole.log\n", "device/summary.txt")
 
-        let zip = dir.appending(path: "out/SlashPlayed-Diagnostics-personal.zip")
+        let zip = dir.appending(path: "out/Slashplayed-Diagnostics-personal.zip")
         let exported = try Diagnostics.export(.init(
             logs: dir.appending(path: "logs"), deviceLogs: dir.appending(path: "device"),
             versions: "Device: iPhone 16 Pro (iPhone17,1)\nGame install: /Users/\(user)/Games/World of Warcraft",
@@ -194,7 +194,7 @@ final class DiagnosticsTests: XCTestCase {
         try ditto.run()
         ditto.waitUntilExit()
         XCTAssertEqual(ditto.terminationStatus, 0)
-        let root = out.appending(path: "SlashPlayed-Diagnostics-personal")
+        let root = out.appending(path: "Slashplayed-Diagnostics-personal")
         let files = Diagnostics.regularFiles(in: root, recursive: true).map(\.path)
         // "Jo’s" and "Jo's" alone are too short to be names: only whole device and Mac names go.
         let forbidden = [fullName, team.id, team.name, personal.id, appleID, certID, user, phone,
@@ -212,7 +212,7 @@ final class DiagnosticsTests: XCTestCase {
         XCTAssertEqual(log, "  4.83 [step] done: [device name] connected\n  5.00 [device name] and iPad (2)\n" +
                        "teams: [team], [team]; account [apple id]\n" +
                        "macOS 26.6.2 on [mac name], [mac name]\n" +
-                       "/Users/[user]/Library/Logs/SlashPlayed and /Users/Shared/SlashPlayed-rc1\n")
+                       "/Users/[user]/Library/Logs/Slashplayed and /Users/Shared/Slashplayed-rc1\n")
         let report = try String(contentsOf: root.appending(path: "device/system/slashplayed.ips"), encoding: .utf8)
         XCTAssertEqual(report, #"{"bundleID":"[team id].slashplayed","path":"\/Users\/[user]\/Library"}"#)
         let versions = try String(contentsOf: root.appending(path: "versions.txt"), encoding: .utf8)

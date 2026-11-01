@@ -130,12 +130,12 @@ final class DeviceBindCheckTests: XCTestCase {
         }
     }
 
-    /// The device's "This patch needs a SlashPlayed update." screen (sppatch.m) says the news once: it read
+    /// The device's "This patch needs a Slashplayed update." screen (sppatch.m) says the news once: it read
     /// "Classic Era 1.15.9.70003 is out. is out, and …" when the body was built from the heading.
     func testPatchScreenNeedsUpdateBody() {
         XCTAssertEqual(sp_patch_news("Classic Era", "1.15.9.70003") + ".", "Classic Era 1.15.9.70003 is out.")
         XCTAssertEqual(sp_patch_needs_update_body(sp_patch_news("Classic Era", "1.15.9.70003")),
-                       "Classic Era 1.15.9.70003 is out, and this version of SlashPlayed can't run it yet. In SlashPlayed "
+                       "Classic Era 1.15.9.70003 is out, and this version of Slashplayed can't run it yet. In Slashplayed "
                        + "Companion on your Mac, check for updates; once there's one for it, press Play there.")
         XCTAssertEqual(sp_patch_news("Retail", nil), "A new build of Retail is out")
         XCTAssertEqual(sp_patch_news("Retail", ""), "A new build of Retail is out")

@@ -107,9 +107,9 @@ fi
 rm -f "$OUT/BUILD.txt"
 for p in $PLATFORMS; do
   case $p in
-    ios) export IPHONEOS_DEPLOYMENT_TARGET=26.0; features=$DEVICE_FEATURES; ships="the SlashPlayed app's JIT helper on iPadOS and iOS" ;;
-    xros) export XROS_DEPLOYMENT_TARGET=27.0; features=$DEVICE_FEATURES; ships="the SlashPlayed app's JIT helper on visionOS" ;;
-    macos) export MACOSX_DEPLOYMENT_TARGET=15.0; features=$MAC_FEATURES; ships="SlashPlayed Companion" ;;
+    ios) export IPHONEOS_DEPLOYMENT_TARGET=26.0; features=$DEVICE_FEATURES; ships="the Slashplayed app's JIT helper on iPadOS and iOS" ;;
+    xros) export XROS_DEPLOYMENT_TARGET=27.0; features=$DEVICE_FEATURES; ships="the Slashplayed app's JIT helper on visionOS" ;;
+    macos) export MACOSX_DEPLOYMENT_TARGET=15.0; features=$MAC_FEATURES; ships="Slashplayed Companion" ;;
   esac
   mkdir -p "$OUT/$p"
   libs=()

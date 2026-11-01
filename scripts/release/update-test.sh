@@ -54,7 +54,7 @@ done
 OUT=$ROOT/build/update-test
 SERVE=$OUT/serve
 FEED_URL="http://127.0.0.1:$PORT/appcast.xml"
-APP_NAME="SlashPlayed Companion.app"
+APP_NAME="Slashplayed Companion.app"
 APP_ID=com.strawdynamics.slashplayed.companion
 PROJECT_YML=apps/companion/project.yml
 
@@ -149,7 +149,7 @@ sign_app() {
 # build <old|new> <marketing version> <build number>
 build() {
   local dir=$OUT/$1 version=$2 number=$3
-  echo "Building SlashPlayed Companion $version ($number) into $dir"
+  echo "Building Slashplayed Companion $version ($number) into $dir"
   rm -rf "$DD/Build/Products"
   xcodebuild -project apps/companion/SPCompanion.xcodeproj -scheme SPCompanion -configuration Release \
     -derivedDataPath "$DD" -quiet \
@@ -177,7 +177,7 @@ build old "$OLD_VERSION" "$OLD_BUILD"
 build new "$NEW_VERSION" "$NEW_BUILD"
 
 # ditto, not zip: it keeps the bundle's symlinks and extended attributes, which the signature covers.
-ARCHIVE_NAME="SlashPlayed-Companion-$NEW_VERSION.zip"
+ARCHIVE_NAME="Slashplayed-Companion-$NEW_VERSION.zip"
 ditto -c -k --sequesterRsrc --keepParent "$OUT/new/$APP_NAME" "$SERVE/$ARCHIVE_NAME"
 ED_SIGNATURE="$(sign_archive "$SERVE/$ARCHIVE_NAME")"
 [[ -n "$ED_SIGNATURE" ]] || { echo "error: sign_update produced no EdDSA signature" >&2; exit 1; }
@@ -188,7 +188,7 @@ cat > "$SERVE/appcast.xml" <<XML
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
   <channel>
-    <title>SlashPlayed Companion (local update test)</title>
+    <title>Slashplayed Companion (local update test)</title>
     <link>$FEED_URL</link>
     <description>Throwaway feed from scripts/release/update-test.sh.</description>
     <language>en</language>

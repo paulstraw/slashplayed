@@ -413,7 +413,7 @@ struct AcknowledgementsView: View {
             Section {
                 ForEach(licenses, id: \.self) { NavigationLink($0.name, value: Page.license($0)) }
             } footer: {
-                Text("SlashPlayed includes these open-source components and the Goodmountain typeface.")
+                Text("Slashplayed includes these open-source components and the Goodmountain typeface.")
             }
         }
         .listStyle(.insetGrouped)

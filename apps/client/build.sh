@@ -13,7 +13,7 @@
 # client images), and the launcher on the device in spassemble.m (the same unsigned image from the same
 # slice); keep the three in step.
 # SP_NO_INSTALL=1 builds without installing (the Mac companion installs once the headset is awake).
-# SP_OUT puts the build elsewhere (the companion: ~/Library/Application Support/SlashPlayed/client-<platform>).
+# SP_OUT puts the build elsewhere (the companion: ~/Library/Application Support/Slashplayed/client-<platform>).
 # <out>/build-complete marks a finished build; needs-install, one not yet installed. (The companion keeps
 # its own record of what each device holds instead: ClientBuild.installNeed.)
 set -e
@@ -28,7 +28,7 @@ sp_need SP_TEAM SP_SIGN_ID SP_BUNDLE_ID
 [ "$SP_NO_INSTALL" = 1 ] || sp_need_device
 FLAVORS=${SP_BUILD_FLAVORS:-$SP_FLAVORS}
 OUT=${SP_OUT:-../../work/clienttest$SP_SUFFIX}
-APP="$OUT"/SlashPlayed.app
+APP="$OUT"/Slashplayed.app
 BUNDLE_ID=$SP_BUNDLE_ID
 HELPER_ID=$BUNDLE_ID.helper
 : "${SP_PROFILE:=$(sp_profile $BUNDLE_ID)}"

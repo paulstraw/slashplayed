@@ -86,7 +86,7 @@ private let askPin: @convention(c) (UnsafeMutableRawPointer?) -> UnsafePointer<C
 func pair(endpoints: [String], pinPort: UInt16, pinToken: String, log: @escaping (String) -> Void) throws -> Data {
     guard pinPort != 0, !pinToken.isEmpty else { throw HelperError("no code listener in the request") }
     var record: OpaquePointer?
-    try check("generate", rp_pairing_file_generate("SlashPlayed", &record))
+    try check("generate", rp_pairing_file_generate("Slashplayed", &record))
     defer { rp_pairing_file_free(record) }
     let source = PinSource(port: pinPort, token: pinToken, log: log)
     var failures: [String] = []
@@ -101,7 +101,7 @@ func pair(endpoints: [String], pinPort: UInt16, pinToken: String, log: @escaping
         log("pair-setup through \(endpoint)")
         let error = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                rppairing_pair_network($0, length, "SlashPlayed", record, askPin,
+                rppairing_pair_network($0, length, "Slashplayed", record, askPin,
                     Unmanaged.passUnretained(source).toOpaque(), nil)
             }
         }

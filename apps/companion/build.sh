@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds the Mac companion app into "build/companion/SlashPlayed Companion.app" (needs xcodegen), with its
+# Builds the Mac companion app into "build/companion/Slashplayed Companion.app" (needs xcodegen), with its
 # run-time resources bundled in (bundle-resources.sh: shims, launcher, and JIT helper for both platforms,
 # templates, the addon, the signing stub project). To work on it in Xcode, run this once, then open
 # apps/companion/SPCompanion.xcodeproj (an app run from Xcode has no bundled resources until this runs).
@@ -7,13 +7,13 @@ set -e
 cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)
 OUT=$ROOT/build/companion
-APP="$OUT/SlashPlayed Companion.app"
+APP="$OUT/Slashplayed Companion.app"
 ./idevice-config.sh
 xcodegen generate --quiet
 xcodebuild -project SPCompanion.xcodeproj -scheme SPCompanion -configuration Release \
   -derivedDataPath "$OUT/DerivedData" -quiet build
 rm -rf "$APP"
-cp -R "$OUT/DerivedData/Build/Products/Release/SlashPlayed Companion.app" "$OUT/"
+cp -R "$OUT/DerivedData/Build/Products/Release/Slashplayed Companion.app" "$OUT/"
 ./bundle-resources.sh "$APP"
 # Re-sealed after the resources go in, deliberately without the hardened runtime: its library validation
 # only loads frameworks with the app's own Team ID, and the embedded Sparkle.framework keeps the ad hoc
@@ -35,4 +35,4 @@ else
 fi
 # Earlier builds told the companion where the repo was; it reads nothing from it now.
 defaults delete com.strawdynamics.slashplayed.companion SPDevRepoRoot 2>/dev/null || true
-echo "built build/companion/SlashPlayed Companion.app"
+echo "built build/companion/Slashplayed Companion.app"

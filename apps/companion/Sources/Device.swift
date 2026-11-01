@@ -131,7 +131,7 @@ struct Device: Identifiable, Hashable {
     /// Library/spfree.txt (FreeSpace.Launcher). Nil if the client hasn't started since the launcher began
     /// writing it. The window asks freeSpaceNow (Pairing.swift), which brings it up to date for an iPad or
     /// iPhone usbmuxd lists.
-    /// Throws AppMissing when SlashPlayed isn't on the device (the window's idle heading then says to
+    /// Throws AppMissing when Slashplayed isn't on the device (the window's idle heading then says to
     /// press Play to install it); nil for anything else that stops the read.
     func launcherFreeSpace() async throws(AppMissing) -> FreeSpace.Launcher? {
         let library: [String: (size: Int64, date: Date)]
@@ -214,7 +214,7 @@ struct Device: Identifiable, Hashable {
 
     /// The app's state in devicectl's listing of every app. A listing without the device's built-in apps
     /// (Settings and the rest: default and not removable, 25 on the headset and 29 on the iPhone) is cut
-    /// short, and says nothing about the app: rc7's run saw the headset's SlashPlayed and LocalDevVPN
+    /// short, and says nothing about the app: rc7's run saw the headset's Slashplayed and LocalDevVPN
     /// both "missing" in one session and listed in the next, which made setup say "Not installed" and would
     /// have made Play install again.
     static func appState(_ bundleID: String, in apps: [[String: Any]]) -> AppState {
@@ -231,7 +231,7 @@ struct Device: Identifiable, Hashable {
     struct AppMissing: LocalizedError {
         var noun: String
         var errorDescription: String? {
-            "SlashPlayed isn't installed on the \(noun). It may have been deleted there. Press Play to install it again."
+            "Slashplayed isn't installed on the \(noun). It may have been deleted there. Press Play to install it again."
         }
 
         /// Whether devicectl's error says the app's data container isn't there.
@@ -530,11 +530,11 @@ struct Device: Identifiable, Hashable {
         return files
     }
 
-    /// The running client's pid (the launcher, SlashPlayed.app/slashplayed), if any.
+    /// The running client's pid (the launcher, Slashplayed.app/slashplayed), if any.
     func clientPID() async throws -> Int? {
         let result = try await Self.json(["device", "info", "processes", "--device", udid])
         for p in result["runningProcesses"] as? [[String: Any]] ?? [] {
-            if (p["executable"] as? String ?? "").hasSuffix("/SlashPlayed.app/slashplayed") {
+            if (p["executable"] as? String ?? "").hasSuffix("/Slashplayed.app/slashplayed") {
                 return p["processIdentifier"] as? Int
             }
         }
@@ -578,7 +578,7 @@ struct Device: Identifiable, Hashable {
 /// each start (launcher.m write_free_space); their difference, added to lockdown's, gives Settings' now.
 struct FreeSpace: Equatable {
     var bytes: Int64
-    /// Only lockdown's figure is known (SlashPlayed hasn't started on the device yet), so Settings shows
+    /// Only lockdown's figure is known (Slashplayed hasn't started on the device yet), so Settings shows
     /// more: what iOS can clear.
     var atLeast = false
 

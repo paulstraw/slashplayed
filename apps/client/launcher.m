@@ -17,7 +17,7 @@
 // game's render scale gets its first-run default (default_render_scale), a launch with no arguments gets
 // the last ones saved for the flavor, else Battle.net's (launch_arguments), the image's build stamp is logged against the game data's
 // (image_build), and the patch service is asked whether a newer build is out (sppatch.m: a screen says
-// so, and whether this SlashPlayed can run it, from the new client's imports; then Play Anyway, or Update,
+// so, and whether this Slashplayed can run it, from the new client's imports; then Play Anyway, or Update,
 // which makes and signs the new image on the device). That also picks the image: the bundled one, or one
 // an update on the device made in Library/spgames/ (sppatch.m says when). If dlopen refuses an updated one,
 // it's deleted and the bundled one loads. An update's .build.info row is written once its image has loaded.
@@ -147,7 +147,7 @@ static NSString *copy_unfinished(void) {
     }
     say(@"the last copy of game files stopped before it finished");
     return [NSString stringWithFormat:@"The last copy of game files from your Mac to this %@ stopped before it finished, "
-                                      @"so the game data here is incomplete.\n\nOn your Mac, press Play in SlashPlayed "
+                                      @"so the game data here is incomplete.\n\nOn your Mac, press Play in Slashplayed "
                                       @"Companion with this %@ connected: it finishes the copy.", sp_device_noun(), sp_device_noun()];
 }
 
@@ -396,7 +396,7 @@ static void retire_caught_up(NSString *flavor, NSDictionary<NSString *, NSString
 // whose signer no installed profile lists, as it does an ad hoc one (research/dlopentest, 5.3). That signer can
 // drop out of the profiles while the image stays: Xcode replaces a free team's certificate (A) and the app is
 // installed again with a profile that lists only the new one, or a regenerated profile no longer lists the
-// SlashPlayed certificate (B). So before the image is chosen, its signer is looked for in the profiles the app
+// Slashplayed certificate (B). So before the image is chosen, its signer is looked for in the profiles the app
 // can see (sp_listed_certificates). Not there: it's signed again, in place, with the device's identity when a
 // profile lists that one (the companion sends the new identity at the same Play that installs the new
 // profile, and it's imported before this); otherwise this start loads the bundled image, and the update is
