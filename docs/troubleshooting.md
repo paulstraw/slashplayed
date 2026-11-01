@@ -93,8 +93,11 @@ copying on, every game file is copied again. Only change them on purpose.
     the accessory connect, then tap Trust on the device. It shows up in the step on its own.
   - Vision Pro: on the headset open Settings > General > Remote Devices; then in Xcode choose
     Xcode > Open Developer Tool > Device Hub, select the headset, and pair it.
-- **"This iPad can't run Slashplayed"** (or "This iPhone…"): Slashplayed needs an iPad with an M2
-  chip or later or an iPhone 15 Pro or later (or a Vision Pro).
+- **"This iPad can't run Slashplayed"** (or "This iPhone…", or your device's name): Slashplayed needs
+  an iPad with an M2 chip or later, an iPhone 15 Pro or later, or a Vision Pro. The game is built for
+  the M1's instruction set and stops at once on an older chip. The device menus still list such a
+  device, marked "not supported", but don't let you pick it, and Play stops before building anything
+  for one picked earlier: choose another device.
 - **"Developer Mode is off"**: on the device, Settings > Privacy & Security > Developer Mode (it only
   shows there once the device has been paired with Xcode), turn it on, restart when asked and confirm.
 - **"Xcode can't see the device"** (while making the provisioning profile): Xcode couldn't reach the

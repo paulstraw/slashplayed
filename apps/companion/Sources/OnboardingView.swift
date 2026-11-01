@@ -356,9 +356,8 @@ private struct DeviceLine: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(info.device.name)
                 Group {
-                    if !info.supported {
-                        Text(info.device.kind == .iPhone ? "Not supported: Slashplayed needs an iPhone 15 Pro or later."
-                             : "Not supported: Slashplayed needs an iPad with an M2 chip or later.").foregroundStyle(.orange)
+                    if let reason = info.device.unsupportedReason(model: info.model) {
+                        Text(reason).foregroundStyle(.orange)
                     } else if info.developerMode == false {
                         Text("Developer Mode is off: Settings > Privacy & Security > Developer Mode.").foregroundStyle(.orange)
                     } else {

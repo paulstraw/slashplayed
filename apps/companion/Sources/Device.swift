@@ -48,6 +48,30 @@ struct Device: Identifiable, Hashable {
         }
     }
 
+    /// Why this device's model can't run the client, as onboarding and the device menus word it; nil when
+    /// it can or the model isn't known. The Mac client is built for the M1's instruction set, so an older
+    /// chip stops it at its first newer instruction, a moment after it loads (a 2018 iPad Pro did).
+    func unsupportedReason(model: String?) -> String? {
+        guard !isSupported(model: model) else { return nil }
+        return kind == .iPhone ? "Not supported: Slashplayed needs an iPhone 15 Pro or later."
+            : "Not supported: Slashplayed needs an iPad with an M2 chip or later."
+    }
+
+    /// The device an action works on: `target` (the one it was started for), else `pin` (the Device menu's
+    /// UDID, "" for Automatic), whether or not either can run the client: they were picked by name, and the
+    /// action then says why not. Automatic passes over a model known not to run it (`models`, by UDID): a
+    /// reachable device, the last one used (`last`) if several are, else the last one used, or the first,
+    /// to wait for. Only when no paired device can run the client does it pick from all of them, so the
+    /// action says why. `.none` when nothing is paired.
+    static func choose(from devices: [Device], target: String?, pin: String, last: String?,
+                       reachable: Set<String>, models: [String: String]) -> Device {
+        if let d = devices.first(where: { $0.udid == target }) ?? devices.first(where: { $0.udid == pin }) { return d }
+        let supported = devices.filter { $0.isSupported(model: models[$0.udid]) }
+        let pool = supported.isEmpty ? devices : supported
+        let up = pool.filter { reachable.contains($0.udid) }
+        return up.first { $0.udid == last } ?? up.first ?? pool.first { $0.udid == last } ?? pool.first ?? .none
+    }
+
     // MARK: Games
 
     /// UserDefaults key of the games the user chose for the device: an array of Flavor raw values.

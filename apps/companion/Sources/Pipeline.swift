@@ -101,6 +101,10 @@ final class Pipeline {
     private var copyRates: [String: Double] = [:]
     /// Each paired device's model (productType), by UDID, from the last device listing (Device.paired).
     private var models: [String: String] = [:]
+    /// Why `device` can't run the client (Device.unsupportedReason), by its model as last listed: the
+    /// device menus list it disabled, and an action on it stops at once (start). Nil when it can, or before
+    /// its model is known.
+    func unsupportedReason(_ device: Device) -> String? { device.unsupportedReason(model: models[device.udid]) }
     /// The device copies game files from this Mac over a USB 2 link it could beat with a USB 3 cable
     /// (USBLink.slowCable): the main window says so by the device's status, whether or not a copy is running.
     var slowCable: Bool {
@@ -545,7 +549,7 @@ final class Pipeline {
     /// Fetches the device's console logs, the client's logs and error reports and the system's crash
     /// reports about the app into ~/Library/Logs/Slashplayed/triage/, and puts the summary in the log.
     func pullDeviceLogs() {
-        start([.device]) {
+        start([.device], anyModel: true) {
             try await self.waitForDevice()
             self.set(.device, .active, title: "Pulling logs from \(self.device.name)…", detail: "Listing the logs on the \(self.device.noun)…")
             let pulled = try await DeviceLogs.pull(from: self.device, flavors: self.device.flavors) { done, total in
@@ -632,8 +636,12 @@ final class Pipeline {
     }
 
     /// Starts an action: picks the device (`chosen` if given, else as chooseDevice does), then shows the
-    /// steps `ids` (nil: Play's, freshSteps) and runs `body`.
-    private func start(_ ids: [StepID]?, on chosen: Device? = nil, _ body: @escaping () async throws -> Void) {
+    /// steps `ids` (nil: Play's, freshSteps) and runs `body`. A device whose model can't run the client
+    /// stops it before anything is built or installed, unless `anyModel` (pulling its logs, which say why):
+    /// otherwise a pinned or last-used A12X iPad Pro built, installed, and launched, and the client died at
+    /// its first instruction the chip lacks.
+    private func start(_ ids: [StepID]?, on chosen: Device? = nil, anyModel: Bool = false,
+                       _ body: @escaping () async throws -> Void) {
         guard !isBusy else { return }
         target = chosen?.udid
         flavor = nil
@@ -651,6 +659,11 @@ final class Pipeline {
             await self.chooseDevice()
             self.target = nil
             self.steps = Self.freshSteps(self.device, ids)
+            if !anyModel, let reason = self.unsupportedReason(self.device) {
+                self.appendLog("[companion] \(self.device.name) (\(self.models[self.device.udid] ?? "?")): \(reason)")
+                throw StepFailure(.device, reason + " Pick another device in the device menu.",
+                                  title: "\(self.device.name) can't run Slashplayed")
+            }
             // Before the device: its app's data container is named by the bundle ID, from the team.
             do {
                 try await Signing.checkXcode()
@@ -1481,9 +1494,9 @@ final class Pipeline {
         set(.device, .done, title: "\(device.name) connected")
     }
 
-    /// Picks the device for the next action: the one it was started for (start(on:)), else the Device
-    /// menu's, else a reachable paired device, the last one used if several are (else the last one used,
-    /// or the first paired, to wait for).
+    /// Picks the device for the next action (Device.choose): the one it was started for (start(on:)), else
+    /// the Device menu's, else a reachable paired device that can run the client, the last one used if
+    /// several are (else the last one used, or the first paired, to wait for).
     private func chooseDevice() async {
         let paired = await Device.paired()
         let teams = Signing.teams()
@@ -1493,11 +1506,11 @@ final class Pipeline {
             Device.cached = paired.devices
         }
         let available = paired?.reachable ?? []
-        let pinned = devices.first { $0.udid == target } ?? devices.first { $0.udid == devicePin }
-        let last = UserDefaults.standard.string(forKey: Self.lastDeviceKey)
-        let reachable = devices.filter { available.contains($0.udid) }
-        let chosen = pinned ?? reachable.first { $0.udid == last } ?? reachable.first ??
-            devices.first { $0.udid == last } ?? devices.first ?? .none
+        // Before choosing: Automatic passes over a model known not to run the client.
+        if let paired { models.merge(paired.models) { $1 } }
+        let chosen = Device.choose(from: devices, target: target, pin: devicePin,
+                                   last: UserDefaults.standard.string(forKey: Self.lastDeviceKey),
+                                   reachable: available, models: models)
         let wasAvailable = deviceAvailable, changed = chosen != device
         if changed || profileExpires == nil {
             profileExpires = ClientBuild.profile(chosen)?.expires
@@ -1516,7 +1529,6 @@ final class Pipeline {
         }
         deviceAvailable = available.contains(device.udid)
         if deviceAvailable == true, changed || wasAvailable != true { await refreshFreeSpace() }
-        if let paired { models.merge(paired.models) { $1 } }
         refreshUSBLink()
     }
 

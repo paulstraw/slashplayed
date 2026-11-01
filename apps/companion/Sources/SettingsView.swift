@@ -175,11 +175,11 @@ struct SettingsView: View {
     @ViewBuilder private var general: some View {
         Section {
             Picker("Play on", selection: Bindable(pipeline).devicePin) {
-                Text("Automatic").tag("")
-                ForEach(pipeline.devices) { Text($0.name).tag($0.udid) }
+                DeviceChoices(pipeline: pipeline)
             }
         } footer: {
-            caption("Automatic uses whichever paired device is reachable, the last one used if several are.")
+            caption((["Automatic uses whichever paired device is reachable, the last one used if several are."]
+                     + DeviceChoices.reasons(pipeline)).joined(separator: " "))
         }
         Section {
             Toggle("Check for updates automatically", isOn: $autoUpdate)

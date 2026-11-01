@@ -61,9 +61,9 @@ struct CompanionApp: App {
                 Divider()
                 // Which device Play, Copy Game Files and Update Client work on, from the next one.
                 Picker("Device", selection: Bindable(pipeline).devicePin) {
-                    Text("Automatic").tag("")
-                    ForEach(pipeline.devices) { Text($0.name).tag($0.udid) }
+                    DeviceChoices(pipeline: pipeline)
                 }
+                DeviceChoices.Reasons(pipeline: pipeline)
                 // Which games each device holds, whether it copies them, and whether it updates them itself:
                 // Settings' Games pane, where ticking several stays open. A submenu here closed after every
                 // tick (the rc9 run).
@@ -440,23 +440,28 @@ struct DevicePicker: View {
 
     var body: some View {
         let device = pipeline.device, available = pipeline.deviceAvailable
+        let unsupported = pipeline.unsupportedReason(device)
         HStack(spacing: 5) {
             // Beside the menu, not in its label: a menu's label shows only its text and images.
-            Circle().fill(available == true ? .green : available == false ? .orange : .gray).frame(width: 8, height: 8)
-            let status = available == true ? "\(device.name) connected"
+            Circle().fill(unsupported != nil ? .red : available == true ? .green : available == false ? .orange : .gray)
+                .frame(width: 8, height: 8)
+            // Connected or not, a device that can't run the client says so first: Play stops on it at once.
+            let status = unsupported != nil ? "\(device.name) not supported"
+                : available == true ? "\(device.name) connected"
                 : available == false ? (device.kind == .headset ? "Headset asleep or away" : "\(device.noun) not connected")
                 : "Checking \(device.noun)…"
             if pipeline.devices.count < 2 || pipeline.isBusy {
                 Text(status)
                     .foregroundStyle(.secondary)
+                    .help(unsupported ?? "")
             } else {
                 Menu(status) {
                     Picker("Device", selection: Bindable(pipeline).devicePin) {
-                        Text("Automatic").tag("")
-                        ForEach(pipeline.devices) { Text($0.name).tag($0.udid) }
+                        DeviceChoices(pipeline: pipeline)
                     }
                     .pickerStyle(.inline)
                     .labelsHidden()
+                    DeviceChoices.Reasons(pipeline: pipeline)
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
@@ -466,6 +471,44 @@ struct DevicePicker: View {
             }
         }
         .font(.callout)
+    }
+}
+
+/// What the device menus (File > Device, the window's, Settings' Play on) offer: Automatic and every paired
+/// device. One whose model can't run the client (Pipeline.unsupportedReason) is listed, so it isn't taken
+/// for unpaired, but can't be picked.
+struct DeviceChoices: View {
+    let pipeline: Pipeline
+
+    var body: some View {
+        Text("Automatic").tag("")
+        ForEach(pipeline.devices) { device in
+            let unsupported = pipeline.unsupportedReason(device) != nil
+            Text(unsupported ? "\(device.name) (not supported)" : device.name)
+                .tag(device.udid)
+                .disabled(unsupported)
+        }
+    }
+
+    /// Why: onboarding's wording, once for each kind of device listed that can't (a menu item has no
+    /// subtitle, so it's a disabled line under the choices).
+    static func reasons(_ pipeline: Pipeline) -> [String] {
+        var seen: [String] = []
+        for reason in pipeline.devices.compactMap(pipeline.unsupportedReason) where !seen.contains(reason) { seen.append(reason) }
+        return seen
+    }
+
+    /// Those reasons, as menu lines after a divider; nothing when every device can run the client.
+    struct Reasons: View {
+        let pipeline: Pipeline
+
+        var body: some View {
+            let reasons = DeviceChoices.reasons(pipeline)
+            if !reasons.isEmpty {
+                Divider()
+                ForEach(reasons, id: \.self) { Text($0) }
+            }
+        }
     }
 }
 

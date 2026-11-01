@@ -61,6 +61,52 @@ final class OnboardingTests: XCTestCase {
         XCTAssertTrue(Device(name: "", udid: "", kind: .headset).isSupported(model: "RealityDevice14,1"))
     }
 
+    func testOlderIPadProsUnsupported() {
+        // The 2018 (A12X) and 2020 (A12Z) iPad Pros: the client stopped at an instruction the A12X lacks.
+        for model in ["iPad8,1", "iPad8,3", "iPad8,5", "iPad8,8", "iPad8,9", "iPad8,12"] {
+            XCTAssertFalse(Device.isSupportedIPad(model: model), model)
+        }
+        // A model that doesn't parse is unknown, so allowed.
+        XCTAssertTrue(Device.isSupportedIPad(model: "iPad"))
+    }
+
+    func testUnsupportedReason() {
+        let iPad = Device(name: "", udid: "", kind: .iPad), iPhone = Device(name: "", udid: "", kind: .iPhone)
+        XCTAssertEqual(iPad.unsupportedReason(model: "iPad8,1"), "Not supported: Slashplayed needs an iPad with an M2 chip or later.")
+        XCTAssertEqual(iPhone.unsupportedReason(model: "iPhone15,4"), "Not supported: Slashplayed needs an iPhone 15 Pro or later.")
+        XCTAssertNil(iPad.unsupportedReason(model: "iPad14,5"))
+        XCTAssertNil(iPad.unsupportedReason(model: nil))
+        XCTAssertNil(Device(name: "", udid: "", kind: .headset).unsupportedReason(model: "RealityDevice14,1"))
+    }
+
+    func testChooseDevice() {
+        let headset = Device(name: "Vision Pro", udid: "h", kind: .headset)
+        let old = Device(name: "Old iPad", udid: "o", kind: .iPad)
+        let iPhone = Device(name: "iPhone", udid: "p", kind: .iPhone)
+        let all = [headset, old, iPhone]
+        let models = ["h": "RealityDevice14,1", "o": "iPad8,1", "p": "iPhone17,1"]
+        func choose(target: String? = nil, pin: String = "", last: String? = nil, reachable: Set<String> = [],
+                    devices: [Device] = all, models: [String: String] = models) -> Device {
+            Device.choose(from: devices, target: target, pin: pin, last: last, reachable: reachable, models: models)
+        }
+        // Automatic passes over the old iPad, reachable and last used or not.
+        XCTAssertEqual(choose(last: "o", reachable: ["o", "p"]), iPhone)
+        XCTAssertEqual(choose(last: "o", reachable: ["o"]), headset)
+        XCTAssertEqual(choose(last: "o"), headset)
+        XCTAssertEqual(choose(last: "p", reachable: ["h", "p"]), iPhone)
+        XCTAssertEqual(choose(reachable: ["h", "p"]), headset)
+        // Unknown models count as supported.
+        XCTAssertEqual(choose(last: "o", reachable: ["o"], models: [:]), old)
+        // A pin or a target is kept, so the action can say why it stops.
+        XCTAssertEqual(choose(pin: "o", reachable: ["p"]), old)
+        XCTAssertEqual(choose(target: "o", pin: "p"), old)
+        // A pin that isn't paired any more falls back to Automatic.
+        XCTAssertEqual(choose(pin: "gone", reachable: ["p"]), iPhone)
+        // With only unsupported devices, one is still picked.
+        XCTAssertEqual(choose(reachable: ["o"], devices: [old]), old)
+        XCTAssertEqual(choose(devices: []), .none)
+    }
+
     func testBundlePrefixes() {
         for p in ["", "ABCDE12345", "com.example", "my-team.games"] {
             XCTAssertTrue(Signing.isValidBundlePrefix(p), p)
