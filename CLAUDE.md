@@ -53,7 +53,8 @@ the push, the export), `SlashplayedCertificate.swift` (a paid team's own certifi
 - `shims/`: hand-written shims (`appkit/`, `audio/`, `coregraphics/`, `ident/`, `security/`, `system/`)
   and `generated/` (`gen_stubs.py`'s output, committed, one set for both platforms; it `#include`s the
   hand-written files). `exports_manifest.py` writes `exports.json`, the bind check's manifest.
-- `addon/SPHover`: the in-game addon (headset only); `addon/test/test.sh` tests it on the Mac (needs lua).
+- `addon/SPHover`: the in-game addon (headset only); `addon/test/test.sh` tests it (needs lua and cc;
+  CI runs it on Linux with Lua 5.1, the game's).
 - `scripts/`: `build-idevice.sh` (idevice from source at a pinned commit, Rust pinned: `macos` for the
   companion, `ios`/`xros` for the on-device JIT helper; into `work/idevice/`, with `<platform>/licenses/`),
   `fetch-font.sh` (Goodmountain, the start screen's and the site's face, OTF and woff2, and its license, at a
@@ -183,7 +184,8 @@ again (over an hour for Retail on the headset). Don't change it casually.
 - **CI** (`.github/workflows/ci.yml`, PRs and `main`): `scripts/check-tree.sh` (the scrub and
   no-hardcoding greps; run it before committing), shims for both platforms, the unsigned companion,
   its tests, with idevice built from source first (rustup-init pinned by version and checksum). Runner `xcode-27` (GitHub's hosted image, Xcode 27.1 selected; listed in
-  `.github/actionlint.yaml` so `actionlint` accepts it). Keep `actionlint` clean.
+  `.github/actionlint.yaml` so `actionlint` accepts it). And the addon's test, `addon/test/test.sh`,
+  on Linux with Lua 5.1. Keep `actionlint` clean.
 - **Version**: `MARKETING_VERSION` in `apps/companion/project.yml` is the source of truth. A release
   needs a `## [X.Y.Z] - <date>` section in `CHANGELOG.md` with a real date (the signed build refuses
   `XX` placeholders) and the real Sparkle key in `SP_SPARKLE_PUBLIC_KEY`.

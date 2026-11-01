@@ -65,6 +65,28 @@ jobs:
       - name: Scrub and no-hardcoding checks
         run: scripts/check-tree.sh
 
+  # The SPHover addon against the mock WoW API, through the shim's own pixel-strip decoder
+  # (addon/test/test.sh). Lua 5.1, the version WoW embeds, so a 5.2+ idiom in the addon fails here rather
+  # than in the game; the maintainer's Mac runs Homebrew's 5.4, so between them both are covered.
+  # Not gated by changes: it takes seconds on Linux, and an ungated job never sits skipped.
+  addon-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Lua 5.1
+        run: |
+          set -euo pipefail
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends lua5.1
+          lua5.1 -v
+      - name: Test the addon
+        env:
+          LUA: lua5.1
+        run: addon/test/test.sh
+
   # Whether the companion jobs have anything to do: a PR that touches only the site, docs/, or Markdown
   # can't change what they build or test (nothing they run reads them), and the macOS jobs are the slow,
   # costly ones.
