@@ -15,7 +15,7 @@ body:
     attributes:
       label: Companion version
       description: Slashplayed Companion › About Slashplayed Companion.
-      placeholder: 1.2.0 (1)
+      placeholder: 1.3.0 (1)
     validations:
       required: true
   - type: dropdown
