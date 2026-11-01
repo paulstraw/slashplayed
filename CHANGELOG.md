@@ -6,6 +6,14 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Right- and middle-click by touch on an iPhone or iPad: press with two fingers together to
+  right-click, or three to middle-click, and hold them down to drag, so a two-finger drag is
+  mouselook. The click is where the leftmost finger is, or the rightmost with Settings > Touch >
+  Click With. A one-finger click now waits a moment (50 ms) to tell it from a chord. With
+  Accessibility Zoom on, three-finger presses lag about half a second.
+
 ### Fixed
 
 - A device that can't run the game (an iPad older than M2, an iPhone older than the 15 Pro) could
