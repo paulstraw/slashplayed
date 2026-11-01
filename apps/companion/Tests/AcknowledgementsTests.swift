@@ -20,7 +20,9 @@ final class AcknowledgementsTests: XCTestCase {
         var withText: Set<String> = []
         init(_ text: String) throws {
             for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
-                if let m = line.wholeMatch(of: #/  (\S+) (\S+)(?: \(lib (\S+)\))?  .*/#) {
+                // Exactly two spaces first, as every match starts: the regex on all ~7,700 lines takes ~0.9 s,
+                // on the ~150 left ~0.03 s (the license texts' indented lines mostly start with more).
+                if line.hasPrefix("  ") && !line.hasPrefix("   "), let m = line.wholeMatch(of: #/  (\S+) (\S+)(?: \(lib (\S+)\))?  .*/#) {
                     libraries[String(m.3 ?? m.1).replacing("-", with: "_")] = "\(m.1) \(m.2)"
                 } else if line.hasPrefix("The license text of: ") {
                     for crate in line.dropFirst("The license text of: ".count).split(separator: ", ") { withText.insert(String(crate)) }
@@ -34,8 +36,12 @@ final class AcknowledgementsTests: XCTestCase {
     static func linkedCrates(_ archive: URL) async throws -> Set<String> {
         let r = try await Shell.run("/bin/sh", ["-c", #"set -o pipefail; xcrun nm -U -j "$1" | sed -n 's/^_\(_R\)/\1/p' | xcrun llvm-cxxfilt"#,
                                                 "sh", archive.path])
-        let demangled = String(decoding: r.stdout, as: UTF8.self)
-        return Set(demangled.matches(of: #/(?:^|[^A-Za-z0-9_:])([a-z_][a-z0-9_]*)::/#.anchorsMatchLineEndings()).map { String($0.1) })
+        // NSRegularExpression, not a Swift Regex: ~0.05 s over the ~1 MB of names, against ~0.2 s. The
+        // names are ASCII, so its UTF-16 units and a Regex's characters match alike.
+        let demangled = String(decoding: r.stdout, as: UTF8.self) as NSString
+        let crate = try NSRegularExpression(pattern: #"(?:^|[^A-Za-z0-9_:])([a-z_][a-z0-9_]*)::"#, options: .anchorsMatchLines)
+        return Set(crate.matches(in: demangled as String, range: NSRange(location: 0, length: demangled.length))
+            .map { demangled.substring(with: $0.range(at: 1)) })
     }
 
     func check(_ platform: String) async throws {
