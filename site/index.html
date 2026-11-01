@@ -8,6 +8,17 @@
   <link rel="icon" type="image/png" href="icon-1024.png">
   <link rel="apple-touch-icon" href="icon-1024.png">
   <meta name="description" content="Slashplayed is a free, open-source compatibility layer that runs the Mac World of Warcraft clients, unmodified, on M2-or-later iPads, iPhone 15 Pro and later, and Apple Vision Pro.">
+  <!-- The link preview (Open Graph, and X's card). Crawlers need absolute URLs. -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Slashplayed">
+  <meta property="og:title" content="Slashplayed">
+  <meta property="og:description" content="Slashplayed is a free, open-source compatibility layer that runs the Mac World of Warcraft clients, unmodified, on M2-or-later iPads, iPhone 15 Pro and later, and Apple Vision Pro.">
+  <meta property="og:url" content="https://slashplayed.strawdynamics.com/">
+  <meta property="og:image" content="https://slashplayed.strawdynamics.com/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="The Slashplayed logo, a gold S on a green medallion, beside the name and “The Mac World of Warcraft clients on iPad, iPhone, and Vision Pro.”">
+  <meta name="twitter:card" content="summary_large_image">
   <style>
     /* Goodmountain, the start screen's face. Its license forbids committing or changing the file, so
        the Pages deploy fetches it (scripts/fetch-font.sh) and serves it next to this page, unchanged,
@@ -108,7 +119,7 @@
       color: var(--gold);
     }
     .eyebrow { margin: 0; }
-    .wordmark { margin: -8px 0 0; font-family: var(--display); font-weight: 400; font-size: clamp(3.25rem, 9vw, 6.5rem); line-height: 1; color: var(--cream); }
+    .wordmark { margin: 4px 0 0; font-family: var(--display); font-weight: 400; font-size: clamp(3.25rem, 9vw, 6.5rem); line-height: 1; color: var(--cream); }
     .tagline { margin: 0; max-width: 36rem; font-size: clamp(1.125rem, 2.2vw, 1.3125rem); line-height: 1.5; }
     .cta { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; margin-top: 16px; }
     .cta-sub { margin: 0; font-size: .9375rem; color: var(--text-2); }
@@ -285,7 +296,7 @@
             <path class="s" d="M683.448 551.627L673.285 632.935V718.054L518.291 817.148L402.046 747.909L343.606 772.048L374.732 597.998L400.776 632.935C409.669 645.004 420.468 652.627 435.078 661.52L515.75 711.067L576.096 672.954V608.796L362.663 476.671V423.948L349.323 307.067L515.115 209.879L626.279 277.847H682.813L637.077 415.69L630.09 404.256C621.197 389.646 607.857 374.401 593.247 365.507L513.845 317.231L457.946 350.262V412.514L683.448 551.627Z"/>
           </svg>
         </div>
-        <p class="eyebrow">Free · Open source · Unofficial</p>
+        <p class="eyebrow">Free · Open source</p>
         <h1 class="wordmark" id="hero-title">Slashplayed</h1>
         <p class="tagline">Play the Mac World of Warcraft clients, unmodified, on M2-or-later iPads, iPhone 15 Pro and later, and Apple Vision Pro.</p>
         <div class="cta">
@@ -381,7 +392,7 @@
           <ul class="reqs">
             <li><strong>A Mac with Apple Silicon,</strong> macOS 15 or later, and Xcode.</li>
             <li><strong>An Apple ID in Xcode.</strong><span class="sub">A free Apple ID works: the app is signed again every 7 days. A paid Apple Developer Program membership signs it for a year.</span></li>
-            <li><strong>A supported device, paired with your Mac in Xcode, with Developer Mode on:</strong><span class="sub">an iPad with M2 or later (iPadOS 26), an iPhone 15 Pro or later (iOS 26), or Apple Vision Pro (visionOS 27). Of the iPhones, only the 16 Pro has been tested.</span></li>
+            <li><strong>A supported device, paired with your Mac in Xcode, with Developer Mode on:</strong><span class="sub">an iPad with M2 or later (iPadOS 26), an iPhone 15 Pro or later (iOS 26), or Apple Vision Pro (visionOS 27).</span></li>
             <li><strong>A hardware keyboard</strong> for typing in the game.<span class="sub">The game shows no on-screen keyboard. On an iPhone, turn on AssistiveTouch to use a mouse.</span></li>
             <li><strong>A Battle.net account</strong> with an active World of Warcraft subscription.<span class="sub">You sign in on the device. The game doesn’t need to be installed on the Mac.</span></li>
             <li><strong><a href="https://apps.apple.com/app/id6755608044">LocalDevVPN</a>,</strong> free on the App Store.<span class="sub">It must be on when the game starts. The Mac isn’t needed then.</span></li>
