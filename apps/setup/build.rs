@@ -85,7 +85,9 @@ fn main() {
     cpp.compile("spzsign");
 
     println!("cargo:rustc-link-search=native={}", ssl.lib_dir().display());
-    println!("cargo:rustc-link-lib=static=crypto");
+    // OpenSSL names its static library libcrypto.lib under MSVC, libcrypto.a elsewhere.
+    let msvc = target.contains("msvc");
+    println!("cargo:rustc-link-lib=static={}", if msvc { "libcrypto" } else { "crypto" });
     if windows {
         // libcrypto's own Windows dependencies.
         for l in ["crypt32", "ws2_32", "advapi32", "user32", "bcrypt"] {
