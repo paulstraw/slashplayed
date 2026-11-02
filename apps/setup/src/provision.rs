@@ -415,8 +415,10 @@ mod tests {
         // And the .p12 made from it opens with its password.
         let x = is_ours(&c, &key).unwrap();
         let id = Identity { cert_der: x.to_der().unwrap(), key };
-        let p12 = p12(&id, "pw").unwrap();
-        assert!(p12_keystore::KeyStore::from_pkcs12(&p12, "pw", p12_keystore::Pkcs12ImportPolicy::Strict).is_ok());
-        assert!(p12_keystore::KeyStore::from_pkcs12(&p12, "wrong", p12_keystore::Pkcs12ImportPolicy::Strict).is_err());
+        let password = crate::secret::p12_password();
+        let p12 = p12(&id, &password).unwrap();
+        let strict = p12_keystore::Pkcs12ImportPolicy::Strict;
+        assert!(p12_keystore::KeyStore::from_pkcs12(&p12, &password, strict).is_ok());
+        assert!(p12_keystore::KeyStore::from_pkcs12(&p12, &crate::secret::p12_password(), strict).is_err());
     }
 }
