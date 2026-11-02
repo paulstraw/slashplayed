@@ -455,7 +455,11 @@ It logs `identity: imported …` or why not, then `identity: present, certificat
 `identity: none`: never the certificate's subject or hash, never the password. **Forget Signing
 Identity** in the start screen's Settings deletes it, and any pushed files not yet imported, at the tap. Signing takes the app's own `embedded.mobileprovision`
 for the team, and never puts entitlements in a non-executable's signature (iOS refuses a library or bundle
-with an entitlements blob, even an empty one; zsign writes one unpatched). zsign writes through a shared
+with an entitlements blob, even an empty one; zsign writes one unpatched). Every image it signs gets the
+app's own bundle ID as its signature's identifier, whatever the file is called: a free team's profiles
+are local ones, and for code from outside the app bundle amfid only takes a local profile whose
+application-identifier is `<team>.<identifier>`, so an image signed as `wow-<flavor>` is refused there
+(paid teams' profiles don't check it; [research/isideload](../research/isideload/README.md)). zsign writes through a shared
 writable mapping, and an image loaded from such a file is killed in `dlopen` (CODESIGNING, Invalid
 Page), so `sp_sign` signs a copy, reads it back, writes the bytes into a new file with `write()`, and
 renames that into place; the file zsign wrote is never loaded. An image signed this way loads from

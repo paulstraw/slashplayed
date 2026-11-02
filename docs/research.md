@@ -12,7 +12,7 @@ device harness runs on visionOS (`SP_PLATFORM=xros`, the default) and iOS/iPadOS
 | [`research/loadertest`](../research/loadertest/README.md) | Will the device's dyld load a macOS AppKit program whose load commands point at the shims, and bind every import the client has? | Yes: every import binds, AppKit subclasses work, no debugger needed. |
 | [`research/metaltest`](../research/metaltest/README.md) | Can macOS-built metallibs load and run on the device? | Yes, after clearing one header bit, for container versions v2.2–v2.5; v2.6+ load as they are. |
 | [`research/dlopentest`](../research/dlopentest/README.md) | Can the app load an image it didn't install with, from its data container, and can the device sign one itself? | Yes, when a profile installed on the device lists the signing certificate; ad hoc and unsigned are refused. The device signs with zsign, patched. |
-| [`research/isideload`](../research/isideload/README.md) | Can the isideload crate replace Xcode for provisioning (Apple ID sign-in, teams, device, App IDs for the app and `.helper`, capabilities, certificate, profiles), so a Windows or Linux host can do it? | Yes, on iPhone, with free and paid teams: a zsign-signed app installs, and the JIT helper attaches (a free team's on-device-signed image needs the app's bundle ID as its signing identifier, a launcher fix). It needs Mac-ADI anisette (Android-ADI servers now get `-80045`), its lower-level API (the high-level one can revoke), and a decision on the LGPL signer it links. |
+| [`research/isideload`](../research/isideload/README.md) | Can the isideload crate replace Xcode for provisioning (Apple ID sign-in, teams, device, App IDs for the app and `.helper`, capabilities, certificate, profiles), so a Windows or Linux host can do it? | Yes, on iPhone, with free and paid teams: a zsign-signed app installs, and the JIT helper attaches (a free team's on-device-signed image needs the app's bundle ID as its signing identifier, which the launcher now uses). It needs Mac-ADI anisette (Android-ADI servers now get `-80045`), its lower-level API (the high-level one can revoke), and a decision on the LGPL signer it links. |
 
 ## Executable memory (jittest)
 
@@ -400,8 +400,9 @@ the iPhone. The iPads were never reachable for any of it.
   a few versions old, while plain HTTP still serves them. The device fetches over HTTPS only, so a check
   of such a build says it couldn't tell. In real use the newer build is the current one, which is always
   there.
-- Not tested: a free team's certificate signed on the device, the iPads, and (at the time of writing)
-  the visionOS update end to end.
+- Not tested: the iPads, and (at the time of writing) the visionOS update end to end. A free team's
+  certificate signed on the device was tested later, with isideload (below): it loads once the image is
+  signed as the app's bundle ID.
 
 ## Provisioning without Xcode (isideload, 2026-11-01)
 
@@ -415,8 +416,8 @@ helper attached on both teams. On the paid team the image loaded and the helper 
 Xcode's signing. On the free team dyld refused the image the device signed: a free team's profiles are
 local, and amfid matches a local profile to code from outside the bundle by the signature's identifier
 (`<team>.<identifier>` against the profile's application-identifier). The launcher signs images as
-`wow-<flavor>`, so nothing matches. Signed with the app's bundle ID instead, the image loaded; that
-launcher fix is still to be made.
+`wow-<flavor>`, so nothing matches. Signed with the app's bundle ID instead, the image loaded, and the
+launcher now signs every image that way (checked again on both teams).
 
 - Sign-in needs anisette from a Mac-ADI server: since mid-October 2026 Apple answers `-80045` to the
   Android-ADI servers most tools used.
@@ -424,5 +425,4 @@ launcher fix is still to be made.
 - isideload links an LGPL-2.1 signer; zsign, the one the device already runs, is the one to use.
 - A no-image install into an empty container starts the client with no `.build.info`
   ([#36](https://github.com/paulstraw/slashplayed/issues/36)).
-- Open: how long the stored session lasts (measured daily), and the launcher's signing-identifier fix
-  for free teams.
+- Open: how long the stored session lasts (measured daily).

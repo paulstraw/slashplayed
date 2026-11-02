@@ -160,6 +160,27 @@ final class DeviceSigningTests: XCTestCase {
         // the device a certificate no installed profile lists. apps/client/push-identity.sh tests that there.)
     }
 
+    /// What sp_sign_with_identity signs as: the app's bundle ID, so that <team>.<the signature's identifier>
+    /// is the app's profile's application-identifier. A free team's (local) profile matches an image from
+    /// outside the bundle only that way (research/isideload); the image's own name ("wow-<flavor>") matched
+    /// none, and dyld refused it. The keychain half isn't run here, so this checks the signer keeps the
+    /// identifier it's given, and that the profile's app ID is what one made from the bundle ID looks like.
+    func testSignsAsTheProfilesApplicationIdentifier() throws {
+        let bundleID = "com.strawdynamics.sptest", dest = Self.scratch.appending(path: "signed-appid.bundle")
+        var problem: NSString?
+        XCTAssertTrue(sp_sign(Self.fixture.path, dest.path, bundleID, try Data(contentsOf: Self.p12), Self.password,
+                              try Data(contentsOf: Self.profile), &problem), problem as String? ?? "")
+        let info = try Self.run("/usr/bin/codesign", ["-d", "-vvvv", dest.path])
+        let identifier = try XCTUnwrap(info.split(separator: "\n").first { $0.hasPrefix("Identifier=") }?.dropFirst("Identifier=".count))
+        let team = try XCTUnwrap(info.split(separator: "\n").first { $0.hasPrefix("TeamIdentifier=") }?.dropFirst("TeamIdentifier=".count))
+        let entitlements = try XCTUnwrap(PropertyListSerialization.propertyList(
+            from: Data(contentsOf: Self.scratch.appending(path: "profile.plist")), format: nil) as? [String: Any])["Entitlements"] as? [String: Any]
+        XCTAssertEqual("\(team).\(identifier)", entitlements?["application-identifier"] as? String)
+        // Still no entitlements: the identifier alone is what the local profile matches.
+        let slots = try Self.signatureSlots(Data(contentsOf: dest))
+        XCTAssertFalse(slots.contains(5) || slots.contains(7), "an entitlements blob: \(slots)")
+    }
+
     /// The image the launcher signs carries a signature already (the client's stale one), and an unsigned
     /// one gets the room for one.
     func testSignsAnUnsignedImage() throws {

@@ -6,6 +6,12 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- With a free Apple ID (a Personal Team), a game installed or updated on the device itself (including
+  with Update Games on This Device turned on in the companion) now starts. Before, the device refused the
+  game it had just signed, so it couldn't install or update games on its own.
+
 ## [1.3.0] - 2026-11-01
 
 ### Added

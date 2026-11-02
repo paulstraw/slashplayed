@@ -420,7 +420,7 @@ static NSString *update(NSString *flavor, NSString *product, NSString *region, N
     NSString *stamp = [dir stringByAppendingPathComponent:[@"spbuild-" stringByAppendingString:flavor]];
     [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
     t = now();
-    BOOL ok = sp_sign_with_identity(unsignedImage, signing, name, &problem);
+    BOOL ok = sp_sign_with_identity(unsignedImage, signing, &problem);
     [NSFileManager.defaultManager removeItemAtPath:unsignedImage error:nil];
     if (!ok) {
         *why = [@"its image couldn't be signed: " stringByAppendingString:problem];

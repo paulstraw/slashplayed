@@ -288,8 +288,11 @@ BOOL sp_identity_usable(void) {
     return identity_certificate(&der, &notAfter) && notAfter.timeIntervalSinceNow > 0 && sp_certificates_listed(@[der], sp_listed_certificates());
 }
 
-BOOL sp_sign_with_identity(NSString *source, NSString *dest, NSString *identifier, NSString **problem) {
+BOOL sp_sign_with_identity(NSString *source, NSString *dest, NSString **problem) {
     NSData *p12 = keychain_get(@"p12"), *pass = keychain_get(@"password");
+    // The app's own bundle ID, never the image's name: a free team's local profile matches an image from
+    // outside the bundle by identifier (spsign.h). Still no entitlements: the identifier alone matches it.
+    NSString *identifier = NSBundle.mainBundle.bundleIdentifier;
     // The profile zsign takes the team from: the one this app was installed with.
     NSString *app = app_dir();
     NSData *profile = app ? [NSData dataWithContentsOfFile:[app stringByAppendingPathComponent:@"embedded.mobileprovision"]] : nil;
@@ -299,6 +302,10 @@ BOOL sp_sign_with_identity(NSString *source, NSString *dest, NSString *identifie
     }
     if (!profile) {
         if (problem) *problem = @"the app has no embedded.mobileprovision";
+        return NO;
+    }
+    if (!identifier.length) {
+        if (problem) *problem = @"the app has no bundle identifier";
         return NO;
     }
     return sp_sign(source, dest, identifier, p12, password_string(pass), profile, problem);

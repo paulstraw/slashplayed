@@ -19,9 +19,14 @@ NS_ASSUME_NONNULL_BEGIN
 BOOL sp_sign(NSString *source, NSString *dest, NSString *identifier, NSData *p12, NSString *password, NSData *profile,
              NSString *_Nullable *_Nullable problem);
 
-// The launcher's: sp_sign with the identity in the keychain and the app's own embedded.mobileprovision.
-// NO and *problem when there's no identity or no profile, or it can't sign.
-BOOL sp_sign_with_identity(NSString *source, NSString *dest, NSString *identifier, NSString *_Nullable *_Nullable problem);
+// The launcher's: sp_sign with the identity in the keychain and the app's own embedded.mobileprovision, as
+// the app's own bundle ID. Callers don't choose the identifier, because only that one loads everywhere: a free
+// team's profiles are local ones, and for code from outside the app bundle amfid only takes a local profile
+// whose application-identifier is <team>.<the signature's identifier> (anything else is "non-matching
+// application-identifier", then -415). A paid team's profiles don't look at it, so a wrong one passes there
+// and fails only for free teams (research/isideload). NO and *problem when there's no identity, no profile,
+// or no bundle ID, or it can't sign.
+BOOL sp_sign_with_identity(NSString *source, NSString *dest, NSString *_Nullable *_Nullable problem);
 
 // What the companion pushed into Library/ (spidentity.p12 and spidentity.pass, both 0600), into the keychain
 // (this device only, never synced), after SecPKCS12Import says the password opens it and it holds one

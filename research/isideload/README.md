@@ -11,7 +11,7 @@ installs it, and checks that the on-device JIT helper still starts.
 and identity export are enough for the whole chain. One separate problem turned up on the free team: the
 device's own signature on a game image was refused there, because the launcher signs images with an
 identifier a free team's (local) profile can't match. Signing them with the app's bundle ID makes them
-load. That's a one-line launcher fix, proposed here and not made ([The JIT helper](#the-jit-helper-open-question-1)). Its high-level `Sideloader` is not, and the host should
+load. The launcher now does that ([The JIT helper](#the-jit-helper-open-question-1)). Its high-level `Sideloader` is not, and the host should
 call the lower-level API as this spike does (see [What the host CLI should take](#what-the-host-cli-should-take)).
 Two outside facts also shape the host tool:
 
@@ -96,7 +96,7 @@ To clean up:
 | 7. Profiles (app and helper) | 7 days, `IsFreeProvisioningProfile`. App: IML, no EVA. Helper: no memory entitlements. Both list the device and our certificate | 365 days. App: IML and EVA. Helper: none. Both list the device and our certificate |
 | 8. `.p12` for the push path | Written 0600, pushed, imported by the launcher ("listed in the app's profiles"), deleted. The launcher signed a game image with it, but dyld refused that image (below) | Same. The launcher then installed Classic Era on the device, signing the image with this identity, and it loads |
 | 9. zsign-signed no-image app installs and launches | Yes, after **Trust** in Settings > General > VPN & Device Management (as for any free-team app) | Yes |
-| 9. JIT helper starts (open question 1) | **Yes**: status, then attached 1.66 s after launch. But dyld then refused the game image the device had signed, because of its signing identifier (below; fix proposed) | **Yes**, under both signers (below) |
+| 9. JIT helper starts (open question 1) | **Yes**: status, then attached 1.66 s after launch. But dyld then refused the game image the device had signed, because of its signing identifier (below; fixed since in the launcher) | **Yes**, under both signers (below) |
 
 Details worth keeping:
 
@@ -188,17 +188,15 @@ amfid: …/Library/spgames/wow-classic_era not valid: AppleMobileFileIntegrityEr
      does. That was with the isideload-made certificate.
    - So the A/B against Xcode's free-team identity wasn't needed: the certificate was never the problem.
 
-**Proposed fix (not made here).** The launcher should sign every image it signs on the device with the
-app's own bundle identifier (`NSBundle.mainBundle.bundleIdentifier`) as the code signature's identifier:
-
-- in `sp_sign_with_identity`, or at its callers (`sppatch.m`'s image signing, and `launcher.m`'s
-  library re-sign and `sign_test`);
-- keeping no entitlements blob, as `zsign.patch` requires.
-
-It's a one-line change in each place. It should be checked on a paid team too (expected to load, since
-paid profiles don't look at the identifier), and the companion's `DeviceSigningTests` should check the
-identifier. It belongs in its own PR. Until then, free teams can't install or update games on the
-device, whoever made the identity (the Mac companion's "Update Games on This Device" too).
+**The fix (made after the spike).** The launcher signs every image it signs on the device as the app's
+own bundle ID (`NSBundle.mainBundle.bundleIdentifier`): `sp_sign_with_identity` takes no identifier, so
+no caller (`sppatch.m`'s install and update, `launcher.m`'s re-sign and `SP_SIGN_TEST`) can choose
+another. Still no entitlements blob, as `zsign.patch` requires. The companion's `DeviceSigningTests`
+check that the signer keeps the identifier it's given, and that `<team>.<it>` is the profile's
+application-identifier. Checked on the iPhone with both spike apps, rebuilt with it and their image's
+stamp emptied so the launcher installed and signed Classic Era again: on the free team amfid "selected
+profile" with no "non-matching application-identifier", the image (identifier
+`<free team>.slashplayed.spike`) loaded, and the helper prepared it; on the paid team the same.
 
 Both runs later stopped with the client's `Invalid schema WOWSTATIC_5_5_4_67732 for Table StartupFiles`.
 That's game data, not signing:

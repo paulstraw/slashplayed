@@ -429,7 +429,7 @@ static NSDictionary<NSString *, NSString *> *library_signed(NSString *library, N
     }
     double t = CFAbsoluteTimeGetCurrent();
     NSString *problem = nil;
-    if (!sp_sign_with_identity(library, library, library.lastPathComponent, &problem)) {
+    if (!sp_sign_with_identity(library, library, &problem)) {
         say([NSString stringWithFormat:@"update: %@ is signed with a certificate no profile lists, and signing it again failed (%@): "
                                        @"loading the bundled image", what, problem]);
         return nil;
@@ -526,7 +526,7 @@ static void sign_test(NSString *relative) {
                       [@"spsigned-" stringByAppendingString:relative.lastPathComponent]];
     double t = CFAbsoluteTimeGetCurrent();
     NSString *problem = nil;
-    BOOL ok = sp_sign_with_identity(source, dest, relative.lastPathComponent.stringByDeletingPathExtension, &problem);
+    BOOL ok = sp_sign_with_identity(source, dest, &problem);
     double seconds = CFAbsoluteTimeGetCurrent() - t;
     if (!ok) { say([NSString stringWithFormat:@"sign: %@ not signed: %@", relative, problem]); return; }
     unsigned long long size = [NSFileManager.defaultManager attributesOfItemAtPath:dest error:nil].fileSize;
