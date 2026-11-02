@@ -742,7 +742,7 @@ file checked against a pinned SHA-256. Slashplayed never hosts it. The files go 
   so each archive gets SHA256SUMS lines and a build-provenance attestation.
 - `apps/setup/package.sh` packs each archive with its notices: the crates, the Rust standard library,
   zsign, OpenSSL, and zlib/minizip.
-- `setup-prerelease.yml` makes the same as a GitHub prerelease from any ref (`setup-<version>-pre.<n>`),
+- `setup-prerelease.yml` makes the same as a GitHub prerelease of the branch it runs on (`setup-<version>-pre.<n>`),
   published only after the owner approves the `prerelease` environment.
 - CI's `setup` job tests and builds it on Linux and Windows.
 

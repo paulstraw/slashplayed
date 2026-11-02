@@ -292,7 +292,6 @@ jobs:
       contents: read
     uses: ./.github/workflows/setup-build.yml
     with:
-      ref: ${{ github.sha }}
       kit_sha256: ${{ needs.release.outputs.kit_sha256 }}
       release_tag: ${{ github.ref_name }}
 

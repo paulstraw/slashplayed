@@ -1,5 +1,7 @@
-# A slashplayed-setup prerelease for volunteers on Windows and Linux, from any branch or commit (a PR's,
-# say), started by hand (Actions > Setup prerelease > Run workflow). Owner decision (2026-11-01):
+# A slashplayed-setup prerelease for volunteers on Windows and Linux, from a branch (a PR's, say), started
+# by hand: Actions > Setup prerelease > Run workflow, with that branch under "Use workflow from". It builds
+# the commit the run is on, never one named in an input: the caches the kit job saves (companion-deps) are
+# scoped to the run's branch, so a branch's code can't reach main's caches, which releases restore. Owner decision (2026-11-01):
 # prereleases are published only on the owner's approval, which the `prerelease` environment asks for
 # before the publish job runs; the builds before it hold no secrets and publish nothing.
 #
@@ -12,11 +14,6 @@ name: Setup prerelease
 
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: Branch, tag, or commit to build
-        type: string
-        required: true
 
 permissions: {}
 
@@ -59,7 +56,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
           persist-credentials: false
 
       - name: Name the prerelease
@@ -103,7 +99,6 @@ jobs:
       contents: read
     uses: ./.github/workflows/setup-build.yml
     with:
-      ref: ${{ needs.kit.outputs.sha }}
       kit_sha256: ${{ needs.kit.outputs.kit_sha256 }}
       release_tag: ${{ needs.kit.outputs.tag }}
 
@@ -133,7 +128,7 @@ jobs:
           TAG: ${{ needs.kit.outputs.tag }}
           SHA: ${{ needs.kit.outputs.sha }}
           VERSION: ${{ needs.kit.outputs.version }}
-          REF: ${{ inputs.ref }}
+          REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           (cd assets && sha256sum -- *) > SHA256SUMS

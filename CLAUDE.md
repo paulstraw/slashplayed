@@ -230,7 +230,7 @@ again (over an hour for Retail on the headset). Don't change it casually.
   (`scripts/release/device-kit.sh`, attached as `slashplayed-device-kit.zip`), then `release.yml` builds the
   tool against its hash (`setup-build.yml`) and attaches the Windows and Linux archives, their attestations,
   and their SHA256SUMS lines. `apps/setup/Cargo.toml`'s version must equal `MARKETING_VERSION` (check-tree).
-  Volunteer prereleases: `setup-prerelease.yml` (run by hand on any ref), published only after the owner
+  Volunteer prereleases: `setup-prerelease.yml` (run by hand on a branch, which it builds), published only after the owner
   approves the `prerelease` environment.
 - **Locally**: `scripts/release/release.sh --unsigned` smoke-tests the whole script with no certificate.
   A signed local build (release candidates: `SP_RELEASE_VERSION=X.Y.Z-rc1`) uses `NOTARY_PROFILE` and

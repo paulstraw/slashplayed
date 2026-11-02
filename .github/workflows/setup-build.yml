@@ -8,10 +8,6 @@ name: Build slashplayed-setup
 on:
   workflow_call:
     inputs:
-      ref:
-        description: The commit to build.
-        type: string
-        required: true
       kit_sha256:
         description: The device kit's SHA-256 (scripts/release/device-kit.sh's zip).
         type: string
@@ -68,9 +64,9 @@ jobs:
       - name: Keep line endings
         run: git config --global core.autocrlf false
 
+      # The calling run's own commit, never an input: a caller can't point this at other code.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
           persist-credentials: false
 
       - name: Install rustup
