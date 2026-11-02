@@ -9,8 +9,9 @@ installs it, and checks that the on-device JIT helper still starts.
 
 **Answer: yes, on iPhone, with a free team and a paid team.** isideload's sign-in, developer-services calls,
 and identity export are enough for the whole chain. One separate problem turned up on the free team: the
-device's own signature on a game image was refused there, so free-team users can't install games on the
-device yet. That's a device-side problem, not an isideload one ([The JIT helper](#the-jit-helper-open-question-1)). Its high-level `Sideloader` is not, and the host should
+device's own signature on a game image was refused there, because the launcher signs images with an
+identifier a free team's (local) profile can't match. Signing them with the app's bundle ID makes them
+load. That's a one-line launcher fix, proposed here and not made ([The JIT helper](#the-jit-helper-open-question-1)). Its high-level `Sideloader` is not, and the host should
 call the lower-level API as this spike does (see [What the host CLI should take](#what-the-host-cli-should-take)).
 Two outside facts also shape the host tool:
 
@@ -95,7 +96,7 @@ To clean up:
 | 7. Profiles (app and helper) | 7 days, `IsFreeProvisioningProfile`. App: IML, no EVA. Helper: no memory entitlements. Both list the device and our certificate | 365 days. App: IML and EVA. Helper: none. Both list the device and our certificate |
 | 8. `.p12` for the push path | Written 0600, pushed, imported by the launcher ("listed in the app's profiles"), deleted. The launcher signed a game image with it, but dyld refused that image (below) | Same. The launcher then installed Classic Era on the device, signing the image with this identity, and it loads |
 | 9. zsign-signed no-image app installs and launches | Yes, after **Trust** in Settings > General > VPN & Device Management (as for any free-team app) | Yes |
-| 9. JIT helper starts (open question 1) | **Yes**: status, then attached 1.66 s after launch. But dyld then refused the game image the device had signed: "code signature invalid" (below) | **Yes**, under both signers (below) |
+| 9. JIT helper starts (open question 1) | **Yes**: status, then attached 1.66 s after launch. But dyld then refused the game image the device had signed, because of its signing identifier (below; fix proposed) | **Yes**, under both signers (below) |
 
 Details worth keeping:
 
@@ -146,17 +147,58 @@ certificate listed in the app's profiles. dyld still refused the image:
 `code signature invalid … (errno=1)`. The launcher deleted it, as it does for any image that won't
 load. The paid team's identical chain loads.
 
-So **a game image signed on the device with a free team's certificate doesn't load**, at least for a
-certificate made this way, on iOS 27. That was the untested case in
+So **as the launcher signs it today, a game image signed on the device with a free team's certificate
+doesn't load.** That was the untested case in
 [Loading and signing images on the device](../../docs/research.md#loading-and-signing-images-on-the-device-2026-10-24).
-It matters well beyond this spike: free-team users can't install or update games on the device (#35's
-path, and order step 1's design), whichever host made the identity. Untested causes to rule out next:
+It isn't isideload's doing, and a small launcher change fixes it.
 
-- the free certificate's trust being granted after the app was installed;
-- the second certificate on the team (Xcode's);
-- a free-team policy on code loaded from outside the bundle;
-- the same thing happening with an Xcode-made free-team identity (the companion's "Update Games on This
-  Device" path).
+**Diagnosis.** The iPhone's syslog, relayed with idevice's `syslog_relay` at the repo's pinned commit,
+gives AMFI's reason:
+
+```
+amfid(libmis): Local Profile '<private>' has non-matching application-identifier.   (once per free profile)
+amfid: …/Library/spgames/wow-classic_era not valid: AppleMobileFileIntegrityError -415
+       "The best matching profile does not match the entitlements of this file"
+```
+
+- A free team's profiles are *local* profiles (`LocalProvision`). For a binary from outside the app
+  bundle, amfid only considers a local profile whose application-identifier matches
+  `<team>.<the code signature's identifier>`.
+- The launcher signs the image with the identifier `wow-<flavor>` (`sppatch.m` passes the file's name
+  to `sp_sign_with_identity`), so it matches none of them.
+- A paid team's profiles aren't local. amfid picks one by certificate and device ("was picked for
+  validation", "profile provisions developer certificate"), with no identifier check. That's why the
+  paid team loads the same image.
+
+**The checks, in the free spike app only:**
+
+1. **Trust order.** Reinstalled after the developer was trusted, identity pushed again, image installed
+   and signed again: refused the same way. Ruled out.
+2. **Entitlements in the image** (an experimental zsign, built only in a scratch folder, giving the
+   non-executable an application-identifier):
+   - The kernel refused it: "has entitlements but is not a main binary", as `scripts/zsign.patch`'s
+     comment says.
+   - The local profiles still didn't match.
+   - Ruled out.
+3. **Signing identifier set to the app's bundle ID**, no entitlements, same experimental zsign through
+   an override:
+   - "selected profile", "profile provisions developer certificate", "profile validated the code
+     signature".
+   - **The image loaded** ("loaded the updated (Library/spgames) image"), the same way the paid team's
+     does. That was with the isideload-made certificate.
+   - So the A/B against Xcode's free-team identity wasn't needed: the certificate was never the problem.
+
+**Proposed fix (not made here).** The launcher should sign every image it signs on the device with the
+app's own bundle identifier (`NSBundle.mainBundle.bundleIdentifier`) as the code signature's identifier:
+
+- in `sp_sign_with_identity`, or at its callers (`sppatch.m`'s image signing, and `launcher.m`'s
+  library re-sign and `sign_test`);
+- keeping no entitlements blob, as `zsign.patch` requires.
+
+It's a one-line change in each place. It should be checked on a paid team too (expected to load, since
+paid profiles don't look at the identifier), and the companion's `DeviceSigningTests` should check the
+identifier. It belongs in its own PR. Until then, free teams can't install or update games on the
+device, whoever made the identity (the Mac companion's "Update Games on This Device" too).
 
 Both runs later stopped with the client's `Invalid schema WOWSTATIC_5_5_4_67732 for Table StartupFiles`.
 That's game data, not signing:
