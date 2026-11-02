@@ -304,12 +304,23 @@ both accounts. That's the claim to measure. `check-session` asks two questions:
 
 It appends one line per account per run: outcomes and Apple's error codes, never a token. The LaunchAgent
 runs it daily at 09:17 into `~/Library/Logs/Slashplayed/spike-check-session.jsonl`. On day 0 both answers
-were yes for both accounts.
+were yes for both accounts, about 15 minutes after login.
 
-The result is still open and decides an owner question. If the GS token outlives a week, a device can
-refresh its own free-team profile (order step 4) from the stored session, with no password stored. If it
-doesn't, the owner chooses between storing the password and asking again. Read the log after a week or
-two, record the answer here, and remove the agent (`check-session-agent.sh remove`).
+About 1.2 hours after login, the second answer turned to no on both Apple IDs (free and paid): minting a
+new `xcode.auth` token from the stored GS token fails with GrandSlam -22411, while the token login stored
+still works for `listTeams`. So the GS token's own lifetime is short, whatever the 365 days stated for
+the `xcode.auth` token it mints. `provision` now falls back to the stored token when the mint fails (its
+`session` step says which it used), so the spike can still provision.
+
+A host that holds the login in memory (below) mints within minutes of the login, so this doesn't touch it.
+It answers the question below for the GS token: a device can't count on it to refresh its own profile
+later. What's left open is the stored `xcode.auth` token, whether it really lasts its stated year.
+
+That decides part of an owner question. A device could refresh its own free-team profile (order step 4)
+from a stored session, with no password stored, only on a token that lasts a week: the GS token doesn't, so
+that leaves the stored `xcode.auth` token, or the owner's choice between storing the password and asking
+again. Read the log after a week or two, record the answer here, and remove the agent
+(`check-session-agent.sh remove`).
 
 ## The idevice pin
 

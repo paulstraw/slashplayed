@@ -238,8 +238,23 @@ pub async fn provision(
     opts: &Options,
     log: &mut Log,
 ) -> Result<(), Report> {
-    let (mut session, token) = restored.minted_session().await?;
-    log.step("session", json!({ "minted_xcode_token_expiry": token.expiry, "duration": token.duration }));
+    // A new xcode token from the stored GS token, as a host would mint one each run. About 1.2 h after
+    // login that started failing with GrandSlam -22411 on both Apple IDs, while the token login stored
+    // still worked (README, Token lifetime): then the stored one, so the spike can still provision.
+    let mut session = match restored.minted_session().await {
+        Ok((session, token)) => {
+            log.step("session", json!({ "minted_xcode_token_expiry": token.expiry, "duration": token.duration }));
+            session
+        }
+        Err(e) => {
+            log.step("session", json!({
+                "mint_from_gs_token": crate::safe_error(&e),
+                "using": "the xcode token login stored",
+                "stored_xcode_token_expiry": restored.stored.xcode_token_expiry,
+            }));
+            restored.stored_session()
+        }
+    };
 
     // 2. The team.
     let (teams, teams_json) = teams(&mut session).await?;
