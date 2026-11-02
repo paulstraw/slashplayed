@@ -194,8 +194,9 @@ as `wow-<flavor>` (retyped `MH_BUNDLE`), and its main executable is a small laun
    their order, and Battle.net's arguments for each come from the app's `flavors.plist`
    (`apps/client/flavors.plist`, which `scripts/flavor.sh` and the companion read too). Every launch
    makes sure the game's `Config.wtf` has its region and languages (`portal`, `textLocale`,
-   `audioLocale`), from the game's `.build.info` row (Branch and Tags), adding missing ones and replacing
-   empty ones: started by Battle.net, the client takes them from Battle.net's launch options, which
+   `audioLocale`), from the game's region ([below](#a-games-region)), adding missing ones and replacing
+   empty ones (and, for a game the device decides the region of, replacing all three once Settings has
+   moved it to another region): started by Battle.net, the client takes them from Battle.net's launch options, which
    nothing writes on the device, and with neither it opens a region picker the device can't show, exits,
    and saves the three empty, so every later launch would exit too. On a game's
    first launch on the device, it marks the intro movie as played in that game's `Config.wtf` (the
@@ -227,7 +228,8 @@ reach the device without the other.
 
 Then the patch check (`apps/client/sppatch.m`), before the sign-in and the helper: the launcher fetches
 `https://<region>.version.battle.net/v2/products/<product>/versions` (the same `|`-separated table
-shape, one row per region; the region is the stamp's `Branch`) and compares that region's
+shape, one row per region; the region is the game's, [below](#a-games-region): the stamp's `Branch` for a
+game the app bundles) and compares that region's
 `BuildConfig` with the stamp's `Build Key`. The same means nothing shows. A different one means
 Blizzard has a newer build out than the image, so a screen says so (or offers to update it on the
 device: see [Updating on the device](#updating-on-the-device)), and first finds out whether this
@@ -306,7 +308,9 @@ Settings, a stock dark inset-grouped sheet in SwiftUI (`spsettings.swift`), one 
   scale, under Window, screen and scene tracking).
 - **A section per game**: the build it starts with, shipped with the app, updated on this device, or
   installed on it (`sp_game_build`, by the launcher's own rules; "Not Installed" for a game an app
-  without images hasn't installed yet, [below](#installing-a-game-on-the-device)), **Open in Files**, and **Reset Game Settings**, which deletes the game's
+  without images hasn't installed yet, [below](#installing-a-game-on-the-device)), its **Region** (a picker
+  for a game the device made, the Mac's named for one it bundles: [A game's region](#a-games-region)),
+  **Open in Files**, and **Reset Game Settings**, which deletes the game's
   `WTF/Config.wtf` and `Library/sprenderscale-<flavor>` so the next start seeds them as on a first
   launch (the region and languages too); `WTF/Account/` (keybindings, macros, addons' saved settings) is kept.
 - **About**: the app's version and Acknowledgements, the files in the app's `licenses/`.
@@ -378,8 +382,8 @@ still ships images, and an app with images behaves as before.
   and that the companion's Update Games on This Device sends one), then the patch service's current
   build, the slice and its bind check (asking first on cellular), and the update's configs, assembly,
   signing, and stamp into `Library/spgames/`, plus the game folder's `.flavor.info` if it has none (what
-  the companion sends, `sp_flavor_info`). The region is the product's `.build.info` Branch if the device
-  has a row, else `us`, as the companion's first `Config.wtf` assumes (`sp_install_region`). Any failure
+  the companion sends, `sp_flavor_info`). It installs in the game's region ([below](#a-games-region)),
+  which the screen names ("Installing Classic Era for Europe…"). Any failure
   shows why with **Back**, which returns to the start screen; a launch that named the game
   (`SP_LAUNCH_FLAVOR`) stops on the reason instead. The log has `patch: install: …` lines, versions only.
 - **After it.** The launcher loads the new image and writes `.build.info` once it has loaded, as after
@@ -395,6 +399,35 @@ still ships images, and an app with images behaves as before.
 
 The small identity file login needs from the Mac isn't part of the install: it comes from the host, as
 the companion sends it today. The addons are the app's own (below), so an installed game has them too.
+
+### A game's region
+
+Each game has its own region and languages, as Battle.net does it (`sp_game_region` in `spcdn.m`, read at
+each start by `sp_game_region_now` in `launcher.m`). Who decides depends on where the game came from:
+
+- **A game the app bundles** (the companion installed it, and syncs the Mac's game data): the Mac does.
+  Its `.build.info` row's Branch and Tags, which the companion sends again at every sync, else the image's
+  stamp. Settings names the region and says to change it in Battle.net on the Mac.
+- **A game the device made** (installed or updated here, in an app with no image of it): the device does,
+  from `Library/spregion-<flavor>`, a one-row table of the region, its text and speech locales, and the
+  locales the build ships. The install writes it: by default the device's region in Settings mapped to
+  Blizzard's (`sp_region_for_country`: the Americas and Oceania `us`; Europe, Russia, the Middle East, and
+  Africa `eu`; Korea `kr`; Taiwan, Hong Kong, and Macao `tw`; anything else `us`, never `cn`, `sg`, or `xx`),
+  and the device's first preferred language that region has a locale for (`sp_region_locale`: us enUS esMX
+  ptBR; eu enGB deDE esES frFR itIT ruRU; kr koKR; tw zhTW), else the region's default. Speech follows text.
+  The slice download reads the build's install manifest, so the locale is checked against the tags it lists
+  (`sp_locale_shipped`; no manifest lists enGB, which ships as the enUS data, and Classic's have no itIT).
+  Settings' **Region** picker rewrites the file; nothing else does but an install or Update.
+
+Everything else follows that file at each start, so a change isn't put back by a copy written before it:
+the patch check's region, an Update's kept row (its Branch and Tags, `sp_region_tags`) and stamp, the
+start-time `.build.info` rewrite (which also writes the row again when it's in another region,
+`sp_build_info_for_image`), and `Config.wtf` (`sp_config_with_region`). Before the image is chosen the
+launcher moves the kept row and stamp into the region (`region_sync`, `region:` lines). The stamp's Branch
+stays, but decides nothing for these games. A game made before the region file keeps working from its kept
+row or stamp, as before. Tags are Battle.net's layout without its `acct-` and `geoip-` tags, which no
+install manifest lists. `SP_REGION_COUNTRY` and `SP_REGION_LANGUAGES` (`run.sh`) stand in for the device's
+region and languages in tests, and the Settings drill `region-<flavor>-<region>` picks one.
 
 ### The addons
 
@@ -416,6 +449,7 @@ What the device holds for it, all in the app's container:
 | B's profile | installed device-wide, and a copy in `Library/spprofile.mobileprovision` | the companion | it expires (an expired one lists nothing) |
 | A newer build's slice | `Library/spslice/<flavor>.arm64`, `spbuild-<flavor>` | the patch check | the bundled image catches up |
 | The updated image | `Library/spgames/wow-<flavor>`, `spbuild-<flavor>`, and its `.build.info` row, `spbuildinfo-<flavor>` | Update | the bundled image catches up, or `dlopen` refuses it |
+| A device-made game's region | `Library/spregion-<flavor>` | an install or Update, and Settings' Region | never (it outlives the image, so an install again keeps it) |
 | The build's row and configs | `Documents/.build.info`, `Documents/Data/config/` | Update, after the load, and every start of that image after, when the row isn't its build's | the companion writes a later build's |
 
 Forgetting the identity leaves the images: one already made keeps loading while a profile lists its
@@ -544,7 +578,8 @@ older update's stamp is deleted first). On an iPhone that's under a second from 
 0.2–0.4 s, assembly 0.03–0.07 s, signing 0.2 s). The launcher then loads that image, and only once
 `dlopen` has succeeded, before the client's entry point, writes `Documents/.build.info` with the
 product's row for the new build (`sp_build_info_with`: the line `BlizzardCDN.buildInfoLine` writes, the
-Tags kept from the device's row, the other products' rows kept), so a refused image leaves the old build's
+Tags kept from the device's row, or for a game the device made, its region's: [above](#a-games-region); the
+other products' rows kept), so a refused image leaves the old build's
 row beside the old image. The image the launcher loads: the `Library/spgames` one when its stamp is the
 patch service's current build, or when the service couldn't be asked and its version is later than the
 bundled image's; otherwise the bundled one (`update: image: …`). When `dlopen` refuses the `Library/spgames`

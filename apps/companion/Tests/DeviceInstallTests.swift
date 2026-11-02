@@ -1,10 +1,10 @@
 import XCTest
 
 /// The launcher's install of a game on the device, for an app built with no client images (build.sh's
-/// SP_NO_IMAGES=1): which games the start screen offers and which it installs (sp_games), the region an
-/// install asks the patch service for (sp_install_region), and the game folder's .flavor.info it writes
-/// (sp_flavor_info, against the companion's GameFiles.flavorInfo). The install itself is the update's chain
-/// (spcdn.m, spbind.m, spassemble.m, spsign.m), which their own tests cover. Made-up rows, no Blizzard file.
+/// SP_NO_IMAGES=1): which games the start screen offers and which it installs (sp_games), and the game
+/// folder's .flavor.info it writes (sp_flavor_info, against the companion's GameFiles.flavorInfo). The install
+/// itself is the update's chain (spcdn.m, spbind.m, spassemble.m, spsign.m), which their own tests cover, and
+/// its region is DeviceRegionTests'. Made-up rows, no Blizzard file.
 final class DeviceInstallTests: XCTestCase {
     private let order = Flavor.allCases.map(\.rawValue)
 
@@ -32,18 +32,6 @@ final class DeviceInstallTests: XCTestCase {
         let some = games([], ["retail"])
         XCTAssertEqual(some.games, order)
         XCTAssertEqual(some.installable, Set(order).subtracting(["retail"]))
-    }
-
-    /// The region: the product's .build.info row's Branch (lowercased, as the patch check takes it), else
-    /// "us", the companion's first Config.wtf's.
-    func testInstallRegion() {
-        let header = "Branch!STRING:0|Active!DEC:1|Build Key!HEX:16|Version!STRING:0|Product!STRING:0"
-        let info = [header, "EU|1|aaaa|1.15.9.70003|wow_classic_era", "kr|1|bbbb|11.2.7.1|wow"].map { $0 + "\n" }.joined()
-        XCTAssertEqual(sp_install_region(info, "wow_classic_era"), "eu")
-        XCTAssertEqual(sp_install_region(info, "wow"), "kr")
-        XCTAssertEqual(sp_install_region(info, "wow_anniversary"), "us")
-        XCTAssertEqual(sp_install_region(nil, "wow"), "us")
-        XCTAssertEqual(sp_install_region([header, "|1|cccc|1.0|wow"].map { $0 + "\n" }.joined(), "wow"), "us")
     }
 
     /// The addons the launcher puts in a game's folder (sp_addons_place): SPMovie everywhere, SPHover only on

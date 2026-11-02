@@ -65,8 +65,9 @@ BOOL sp_login_write(NSString *flavor, NSMutableData *bytes);
 UIFont *sp_face(CGFloat size, UIFontTextStyle style, CGFloat maximum, UITraitCollection *traits);  // spstart.m
 NSString *sp_pick_flavor(NSArray<NSString *> *flavors, NSSet<NSString *> *installable, void (^*pump)(double));  // spstart.m
 NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSString *, NSString *> *bundledStamp, NSString *library,
-                         NSDictionary<NSString *, NSString *> *libraryStamp, void (^*pump)(double));  // sppatch.m
-NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (^*pump)(double),
+                         NSDictionary<NSString *, NSString *> *libraryStamp, NSDictionary<NSString *, NSString *> *choice,
+                         void (^*pump)(double));  // sppatch.m
+NSString *sp_patch_install(NSString *flavor, NSDictionary<NSString *, NSString *> *choice, BOOL back, void (^*pump)(double),
                            NSString **problem);
 void sp_patch_refused(NSString *flavor, NSString *version, NSString *bundledVersion, void (^*pump)(double));
 
@@ -177,28 +178,16 @@ static void write_free_space(void) {
 }
 
 // Settings in the game's Config.wtf (`SET name "value"` lines): each of `cvars` ({name, value}) the file
-// doesn't have is added, and with `blank` so is one whose value is "" (it's replaced). A value the game or a
-// person set stays. Makes the file (and WTF/) if there's none. The names it set, empty for none; nil if it
-// couldn't write the file.
-static NSArray<NSString *> *config_seed(NSString *flavor, NSArray<NSArray<NSString *> *> *cvars, BOOL blank) {
+// doesn't have is added. A value the game or a person set stays. Makes the file (and WTF/) if there's none.
+// The names it set, empty for none; nil if it couldn't write the file. (The region's three are
+// sp_config_with_region's: game_region.)
+static NSArray<NSString *> *config_seed(NSString *flavor, NSArray<NSArray<NSString *> *> *cvars) {
     NSString *wtf = [NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Documents/_%@_/WTF", flavor]];
     NSString *config = [wtf stringByAppendingPathComponent:@"Config.wtf"];
     NSString *text = [NSString stringWithContentsOfFile:config encoding:NSUTF8StringEncoding error:nil] ?: @"";
     NSMutableArray<NSString *> *added = [NSMutableArray array];
     for (NSArray<NSString *> *cvar in cvars) {
         NSString *line = [NSString stringWithFormat:@"SET %@ \"%@\"", cvar[0], cvar[1]];
-        if (blank) {
-            NSString *pattern = [NSString stringWithFormat:@"^SET %@ \"\"[ \\t\\r]*$", [NSRegularExpression escapedPatternForString:cvar[0]]];
-            NSRegularExpression *empty = [NSRegularExpression regularExpressionWithPattern:pattern
-                options:NSRegularExpressionCaseInsensitive | NSRegularExpressionAnchorsMatchLines error:nil];
-            NSString *replaced = [empty stringByReplacingMatchesInString:text options:0 range:NSMakeRange(0, text.length)
-                                                            withTemplate:[NSRegularExpression escapedTemplateForString:line]];
-            if (![replaced isEqual:text]) {
-                text = replaced;
-                [added addObject:cvar[0]];
-                continue;
-            }
-        }
         if ([text rangeOfString:[NSString stringWithFormat:@"SET %@ ", cvar[0]] options:NSCaseInsensitiveSearch].location != NSNotFound) continue;
         if (text.length && ![text hasSuffix:@"\n"]) text = [text stringByAppendingString:@"\n"];
         text = [text stringByAppendingFormat:@"%@\n", line];
@@ -260,7 +249,7 @@ static void skip_intro(NSString *flavor) {
     BOOL agent = [NSProcessInfo.processInfo.environment[@"SP_SKIP_INTRO"] isEqual:@"1"];
     NSMutableArray<NSArray<NSString *> *> *cvars = [NSMutableArray arrayWithObject:@[@"playIntroMovie", @"99"]];
     if (agent) [cvars addObjectsFromArray:@[@[@"showScreenNarrationDialog", @"0"], @[@"accessibilityScreenNarrationEnabled", @"0"]]];
-    NSArray<NSString *> *added = config_seed(flavor, cvars, NO);
+    NSArray<NSString *> *added = config_seed(flavor, cvars);
     if (!added) say(@"skip intro: couldn't write Config.wtf");
     else if (added.count)
         say([NSString stringWithFormat:@"skip intro: set %@ in Config.wtf%@", [added componentsJoinedByString:@", "],
@@ -273,40 +262,114 @@ static NSDictionary<NSString *, NSString *> *build_info_row(NSString *path, NSSt
     return sp_table_row([NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil], @"Product", product);
 }
 
-// The region and languages the game plays in, in its Config.wtf, before every launch. Started by Battle.net,
-// the client takes them from Battle.net's launch options in its prefs (net.battle), which nothing writes on the
-// device; without those it falls back on Config.wtf's portal, textLocale, and audioLocale. With neither it
-// opens its region picker, a Mac nib the device doesn't have, so the client exits by itself (code 255), and
-// saves all three as "" on its way out, so every later launch of that game exits the same way. A Config.wtf
-// without them is easy to come by: the one the launcher makes itself for a game's first launch (the render
-// scale and the intro, below), one Reset Game Settings deleted, or those blanks. So every launch adds any
-// that are missing and replaces any that are "", from the game's row in the device's .build.info, as
-// Battle.net installed it: its Branch is the region (the patch check's too, sppatch.m), and its Tags name
-// the language of the text and of the speech (`... enUS speech?:... enUS text?`). us and enUS without one.
-// A value already set stays: a person's own choice, or the game's.
-static void game_region(NSString *flavor) {
-    NSDictionary<NSString *, NSString *> *row = build_info_row(
-        [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/.build.info"], flavor_entry(flavor)[@"product"]);
-    NSString *region = row[@"Branch"].lowercaseString.length ? row[@"Branch"].lowercaseString : @"us";
-    NSString *text = nil, *speech = nil;
-    for (NSString *group in [row[@"Tags"] ?: @"" componentsSeparatedByString:@":"]) {
-        NSString *locale = nil;
-        BOOL isText = NO, isSpeech = NO;
-        for (NSString *tag in [group componentsSeparatedByString:@" "]) {
-            if ([tag isEqual:@"text?"]) isText = YES;
-            else if ([tag isEqual:@"speech?"]) isSpeech = YES;
-            else if ([tag rangeOfString:@"^[a-z]{2}[A-Z]{2}$" options:NSRegularExpressionSearch].location != NSNotFound) locale = tag;
-        }
-        if (isText && locale) text = locale;
-        if (isSpeech && locale) speech = locale;
+// ---- the region a game plays in (issue #34; spcdn.h says how it's decided)
+
+static NSString *home_path(NSString *relative) { return [NSHomeDirectory() stringByAppendingPathComponent:relative]; }
+
+static NSString *read_text(NSString *path) {
+    return [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+}
+
+static NSString *region_path(NSString *flavor) { return home_path([@"Library/spregion-" stringByAppendingString:flavor]); }
+
+static NSString *bundled_image(NSString *flavor);
+
+// The game's region and languages now (sp_game_region), and "Device" "1" when the device decides them (the app
+// has no image of the game, so the device made or makes its own), "0" when the Mac does. Reads the region file,
+// the update's kept row and stamp, the game data's .build.info, and the device's region and languages; logs
+// nothing. $SP_REGION_COUNTRY (an ISO country code) and $SP_REGION_LANGUAGES (BCP 47, comma-separated) stand in
+// for the device's, for tests (run.sh passes them): a test device's own region is the owner's.
+NSArray<NSString *> *sp_device_languages(void) {  // sppatch.m too
+    NSString *test = NSProcessInfo.processInfo.environment[@"SP_REGION_LANGUAGES"];
+    return test.length ? [test componentsSeparatedByString:@","] : NSLocale.preferredLanguages;
+}
+
+NSDictionary<NSString *, NSString *> *sp_game_region_now(NSString *flavor) {
+    NSString *test = NSProcessInfo.processInfo.environment[@"SP_REGION_COUNTRY"];
+    NSString *country = test.length ? test : [NSLocale.currentLocale objectForKey:NSLocaleCountryCode];
+    BOOL device = ![NSFileManager.defaultManager fileExistsAtPath:bundled_image(flavor)];
+    NSString *spgames = home_path(@"Library/spgames");
+    NSMutableDictionary *choice = [sp_game_region(
+        flavor_entry(flavor)[@"product"] ?: @"", device, read_text(region_path(flavor)),
+        read_text([spgames stringByAppendingPathComponent:[@"spbuildinfo-" stringByAppendingString:flavor]]),
+        read_text([(device ? spgames : NSBundle.mainBundle.bundlePath) stringByAppendingPathComponent:
+                   [@"spbuild-" stringByAppendingString:flavor]]),
+        read_text(home_path(@"Documents/.build.info")), country, sp_device_languages()) mutableCopy];
+    choice[@"Device"] = device ? @"1" : @"0";
+    return choice;
+}
+
+// Library/spregion-<flavor> from `choice` (sppatch.m's install and Update, and Settings). nil, or why not.
+NSString *sp_game_region_write(NSString *flavor, NSDictionary<NSString *, NSString *> *choice) {
+    NSString *product = flavor_entry(flavor)[@"product"];
+    if (!product.length) return @"the app doesn't know the game's product";
+    NSError *e = nil;
+    if (![sp_region_file(product, choice) writeToFile:region_path(flavor) atomically:YES encoding:NSUTF8StringEncoding error:&e])
+        return [NSString stringWithFormat:@"couldn't write Library/spregion-%@ (%@ %ld)", flavor, e.domain, (long)e.code];
+    return nil;
+}
+
+// Settings' Region for a game the device decides it for: the region file now has `region`, with the
+// device's languages for it that the build ships (as far as the last install or Update read them). The next
+// start does the rest (region_sync, game_region, build_info_for_image), and so does every start after, so
+// nothing written before puts the old region back. A line for the log.
+NSString *sp_game_set_region(NSString *flavor, NSString *region) {
+    NSDictionary<NSString *, NSString *> *now = sp_game_region_now(flavor);
+    if (![now[@"Device"] isEqual:@"1"]) return [NSString stringWithFormat:@"region %@: the Mac decides it (Battle.net)", flavor];
+    if (![sp_regions() containsObject:region]) return [NSString stringWithFormat:@"region %@: %@ isn't a region", flavor, region];
+    NSArray<NSString *> *shipped = now[@"Shipped"].length ? [now[@"Shipped"] componentsSeparatedByString:@" "] : nil;
+    NSString *text = [region isEqual:now[@"Region"]] ? now[@"Text"] : sp_region_locale(region, sp_device_languages(), shipped);
+    NSMutableDictionary *choice = [@{@"Region": region, @"Text": text, @"Speech": text} mutableCopy];
+    if (shipped) choice[@"Shipped"] = now[@"Shipped"];
+    NSString *problem = sp_game_region_write(flavor, choice);
+    return problem ? [NSString stringWithFormat:@"region %@: %@", flavor, problem]
+                   : [NSString stringWithFormat:@"region %@ (Settings): %@ (%@), text %@, speech %@; was %@ from %@", flavor, region,
+                                                sp_region_name(region), text, text, now[@"Region"], now[@"Source"]];
+}
+
+// For a game whose region the device decides, from its region file: the row kept beside its Library/spgames
+// image (its Branch and Tags) and the image's stamp (its Branch) in that region, if a Settings change since the
+// last start left them in another. Nothing decides the region from them any more, but they say it, and the
+// companion pulls the stamps. Before the image is chosen, so the patch check, the load, and the start-time
+// .build.info rewrite (build_info_for_image) all see one region. region: lines.
+static void region_sync(NSString *flavor, NSDictionary<NSString *, NSString *> *choice) {
+    if (![choice[@"Device"] isEqual:@"1"] || ![choice[@"Source"] isEqual:@"chosen"]) return;
+    NSString *product = flavor_entry(flavor)[@"product"], *spgames = home_path(@"Library/spgames");
+    NSString *tags = sp_region_tags(choice[@"Region"], choice[@"Text"], choice[@"Speech"]);
+    for (NSArray *file in @[@[@"spbuildinfo-", @{@"Branch": choice[@"Region"], @"Tags": tags}],
+                            @[@"spbuild-", @{@"Branch": choice[@"Region"]}]]) {
+        NSString *path = [spgames stringByAppendingPathComponent:[file[0] stringByAppendingString:flavor]];
+        NSString *text = sp_table_with(read_text(path), product, file[1]);
+        if (!text) continue;
+        say([text writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil]
+                ? [NSString stringWithFormat:@"region: Library/spgames/%@%@ is in %@ now", file[0], flavor, choice[@"Region"]]
+                : [NSString stringWithFormat:@"region: couldn't write Library/spgames/%@%@", file[0], flavor]);
     }
-    text = text ?: speech ?: @"enUS";
-    speech = speech ?: text;
-    NSArray<NSString *> *set = config_seed(flavor, @[@[@"portal", region], @[@"textLocale", text], @[@"audioLocale", speech]], YES);
-    if (!set) say(@"region: couldn't write Config.wtf; the game may ask for a region it can't show, and exit");
-    else if (set.count)
-        say([NSString stringWithFormat:@"region: set %@ in Config.wtf (%@, text %@, speech %@)",
-                                       [set componentsJoinedByString:@", "], region, text, speech]);
+}
+
+// The region and languages the game plays in, in its Config.wtf, before every launch (sp_config_with_region).
+// Started by Battle.net, the client takes them from Battle.net's launch options in its prefs (net.battle),
+// which nothing writes on the device; without those it falls back on Config.wtf's portal, textLocale, and
+// audioLocale. With neither it opens its region picker, a Mac nib the device doesn't have, so the client exits
+// by itself (code 255), and saves all three as "" on its way out, so every later launch of that game exits the
+// same way. A Config.wtf without them is easy to come by: the one the launcher makes itself for a game's first
+// launch (the render scale and the intro, below), one Reset Game Settings deleted, or those blanks. So every
+// launch adds any that are missing and replaces any that are "", from the game's region (`choice`). A value
+// already set stays (a person's own choice in the game, or the game's), except that a game whose region the
+// device decides and that Settings moved to another region gets all three replaced.
+static void game_region(NSString *flavor, NSDictionary<NSString *, NSString *> *choice) {
+    NSString *wtf = home_path([NSString stringWithFormat:@"Documents/_%@_/WTF", flavor]);
+    NSString *config = [wtf stringByAppendingPathComponent:@"Config.wtf"];
+    NSArray<NSString *> *set = nil;
+    NSString *text = sp_config_with_region(read_text(config), choice, [choice[@"Device"] isEqual:@"1"], &set);
+    if (!set.count) return;
+    [NSFileManager.defaultManager createDirectoryAtPath:wtf withIntermediateDirectories:YES attributes:nil error:nil];
+    if (![text writeToFile:config atomically:YES encoding:NSUTF8StringEncoding error:nil])
+        say(@"region: couldn't write Config.wtf; the game may ask for a region it can't show, and exit");
+    else
+        say([NSString stringWithFormat:@"region: set %@ in Config.wtf (%@, text %@, speech %@, from %@)",
+                                       [set componentsJoinedByString:@", "], choice[@"Region"], choice[@"Text"], choice[@"Speech"],
+                                       choice[@"Source"]]);
 }
 
 // The stamp beside a client image (spbuild-<flavor>), its product's row; nil without one or without its Build Key.
@@ -377,21 +440,28 @@ static NSDictionary<NSString *, NSString *> *updated_build(NSString *image, NSSt
 // one: one that made it may have stopped before the client loaded, and the game data may have been emptied
 // under it. Without the row, an install in an empty container streams with nothing naming its build, and the
 // client stops with #134, "Invalid schema … for Table StartupFiles" (issue #36). The bundled image's row is
-// the companion's, as it copied the game data. Versions only.
-static void build_info_for_image(NSString *flavor, NSString *image, NSDictionary<NSString *, NSString *> *stamp) {
+// the companion's, as it copied the game data. For a game whose region the device decides (`choice` from its
+// region file), the row is in that region too, and is written again when a Settings change left it in another,
+// so the old row's region doesn't come back. Versions only.
+static void build_info_for_image(NSString *flavor, NSString *image, NSDictionary<NSString *, NSString *> *stamp,
+                                 NSDictionary<NSString *, NSString *> *choice) {
     NSString *product = flavor_entry(flavor)[@"product"], *dir = image.stringByDeletingLastPathComponent;
     NSString *info = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/.build.info"], *why = nil;
+    NSDictionary<NSString *, NSString *> *region = nil;
+    if ([choice[@"Device"] isEqual:@"1"] && [choice[@"Source"] isEqual:@"chosen"])
+        region = @{@"Branch": choice[@"Region"], @"Tags": sp_region_tags(choice[@"Region"], choice[@"Text"], choice[@"Speech"])};
     NSString *text = sp_build_info_for_image(
         [NSString stringWithContentsOfFile:info encoding:NSUTF8StringEncoding error:nil], product,
         [NSString stringWithContentsOfFile:[dir stringByAppendingPathComponent:[@"spbuildinfo-" stringByAppendingString:flavor]]
                                   encoding:NSUTF8StringEncoding error:nil],
         [NSString stringWithContentsOfFile:[dir stringByAppendingPathComponent:[@"spbuild-" stringByAppendingString:flavor]]
-                                  encoding:NSUTF8StringEncoding error:nil], &why);
+                                  encoding:NSUTF8StringEncoding error:nil], region, &why);
     if (why) say([NSString stringWithFormat:@"update: .build.info's %@ row isn't the image's %@, and %@: the game may not start",
                                             product, stamp[@"Version"], why]);
     if (!text) return;
     say([text writeToFile:info atomically:YES encoding:NSUTF8StringEncoding error:nil]
-            ? [NSString stringWithFormat:@"update: .build.info's %@ row is %@ now", product, stamp[@"Version"]]
+            ? [NSString stringWithFormat:@"update: .build.info's %@ row is %@ now%@", product, stamp[@"Version"],
+                                         region ? [@" in " stringByAppendingString:region[@"Branch"]] : @""]
             : @"update: couldn't write .build.info");
 }
 
@@ -688,13 +758,10 @@ int main(int argc, char **argv) {
         retire_caught_up(flavor, bundledStamp);
         libraryStamp = library_signed(library, flavor, updated_build(library, flavor));
         if (bundled || libraryStamp) break;
-        // Nothing to load: the device installs the game itself, from Blizzard's CDN, in the region of the
-        // game data's .build.info row if it has one (sppatch.m).
-        NSString *product = flavor_entry(flavor)[@"product"] ?: @"";
-        NSString *info = [NSString stringWithContentsOfFile:[NSHomeDirectory() stringByAppendingPathComponent:@"Documents/.build.info"]
-                                                   encoding:NSUTF8StringEncoding error:nil];
+        // Nothing to load: the device installs the game itself, from Blizzard's CDN, in the game's region (its
+        // region file, chosen in Settings or by an earlier install, else the device's region: sp_game_region).
         NSString *problem = nil;
-        path = sp_patch_install(flavor, sp_install_region(info, product), picked, &pump, &problem);
+        path = sp_patch_install(flavor, sp_game_region_now(flavor), picked, &pump, &problem);
         if (path) {
             libraryStamp = image_build(path, flavor);
             break;
@@ -703,7 +770,12 @@ int main(int argc, char **argv) {
         say(@"install: back to the start screen");
     }
     [flavor writeToFile:saved atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    game_region(flavor);
+    // The game's region, once, for the rest of the start (an install just now wrote its region file).
+    NSDictionary<NSString *, NSString *> *choice = sp_game_region_now(flavor);
+    say([NSString stringWithFormat:@"region: %@ plays in %@ (%@), text %@, speech %@, from %@", flavor, choice[@"Region"],
+                                   sp_region_name(choice[@"Region"]), choice[@"Text"], choice[@"Speech"], choice[@"Source"]]);
+    region_sync(flavor, choice);
+    game_region(flavor, choice);
     default_render_scale(flavor);
     skip_intro(flavor);
     // The addons the app carries, into the game's folder before the client loads (sp_addons_place): SPMovie
@@ -720,7 +792,7 @@ int main(int argc, char **argv) {
     // be told, and before the helper attaches. It never stops the launch. Not after an install just now:
     // that image is the current build.
     if (!path) {
-        path = sp_patch_check(flavor, bundled, bundledStamp, library, libraryStamp, &pump);
+        path = sp_patch_check(flavor, bundled, bundledStamp, library, libraryStamp, choice, &pump);
         if ([path isEqual:library]) libraryStamp = image_build(library, flavor);
     }
     // A Battle.net launcher token the companion relayed (Play with My Mac's Battle.net) and the client
@@ -792,7 +864,8 @@ int main(int argc, char **argv) {
     say([NSString stringWithFormat:@"update: loaded the %@ image (%.1f s, the prepare included)",
                                    [path isEqual:library] ? @"updated (Library/spgames)" : @"bundled", CFAbsoluteTimeGetCurrent() - t]);
     // The game data's row for the build that just loaded, before the client reads it.
-    if ([path isEqual:library]) build_info_for_image(flavor, library, libraryStamp);
+    // An Update just now may have settled the region file's languages against its build (sppatch.m): read again.
+    if ([path isEqual:library]) build_info_for_image(flavor, library, libraryStamp, sp_game_region_now(flavor));
     // The client's header (an executable exports it), and from it the entry point.
     const struct mach_header_64 *mh = dlsym(h, "_mh_execute_header");
     if (!mh) { say(@"the client exports no __mh_execute_header"); return 1; }

@@ -140,6 +140,7 @@ typedef struct {
 @property (nonatomic, copy) SPFetch fetch;
 @property (nonatomic, copy) NSString *problem;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSData *> *headers;
+@property (nonatomic, copy) NSArray<NSString *> *tags;  // the install manifest's tag names, once it's read
 @end
 
 @implementation SPCDN
@@ -364,9 +365,11 @@ typedef struct {
         return s ?: @"";
     };
     NSUInteger osx = NSNotFound, regional = NSNotFound;
+    NSMutableArray<NSString *> *names = [NSMutableArray array];
     for (NSUInteger t = 0; t < tagCount; t++) {
         NSString *name = string();
         if (!name) return [self fail:unreadable];
+        [names addObject:name];
         at += 2;  // the tag's type
         if (at + maskLen > d.length) return [self fail:unreadable];
         if ([name isEqual:@"OSX"]) osx = at;
@@ -386,6 +389,7 @@ typedef struct {
         }
         at += keyLen + 4;
     }
+    self.tags = names;
     NSSet<NSData *> *keys = inRegion.count ? inRegion : mac;
     if (keys.count != 1)
         return [self fail:keys.count ? @"the build's install manifest has more than one Mac client for the region"
@@ -491,7 +495,8 @@ typedef struct {
 @end
 
 BOOL sp_cdn_slice(NSArray<NSURL *> *servers, NSString *buildConfig, NSString *cdnConfig, NSString *executable,
-                  NSString *region, SPFetch fetch, NSString *output, NSString **problem) {
+                  NSString *region, SPFetch fetch, NSString *output, NSArray<NSString *> **tags, NSString **problem) {
+    if (tags) *tags = nil;
     SPCDN *cdn = [SPCDN new];
     cdn.servers = servers;
     cdn.fetch = fetch;
@@ -501,6 +506,7 @@ BOOL sp_cdn_slice(NSArray<NSURL *> *servers, NSString *buildConfig, NSString *cd
         return NO;
     }
     NSData *slice = [cdn sliceOf:executable region:region build:buildConfig cdn:cdnConfig];
+    if (tags) *tags = cdn.tags;
     if (!slice) {
         *problem = cdn.problem ?: @"no slice";
         return NO;
@@ -628,8 +634,11 @@ static NSArray<NSString *> *build_info_columns(void) {
 
 // `existing` with `mine` as the product's row (by .build.info's column names), its Tags kept from the
 // product's row in `existing` when that has some, else mine's, else Flavor.tags' default (a US English Mac
-// install's). sp_build_info_with's and sp_build_info_for_image's layout.
-static NSString *build_info_merged(NSString *existing, NSString *product, NSDictionary<NSString *, NSString *> *given) {
+// install's). With `mineWins`, mine's Tags (a game the device decides the region of: sp_game_region), so a
+// region changed in Settings isn't put back by the old row's. sp_build_info_with's and
+// sp_build_info_for_image's layout.
+static NSString *build_info_merged(NSString *existing, NSString *product, NSDictionary<NSString *, NSString *> *given,
+                                   BOOL mineWins) {
     NSMutableArray<NSString *> *names = [NSMutableArray array];
     for (NSString *c in build_info_columns()) [names addObject:[c componentsSeparatedByString:@"!"][0]];
     NSString * (^line)(NSDictionary *) = ^NSString *(NSDictionary *row) {
@@ -653,7 +662,7 @@ static NSString *build_info_merged(NSString *existing, NSString *product, NSDict
     // The product's last row is its row (sp_table_row, GameStore.BuildInfo.byProduct).
     NSString *tags = nil;
     for (NSDictionary *row in rows)
-        if ([row[@"Product"] isEqual:product] && [row[@"Tags"] length]) tags = row[@"Tags"];
+        if (!(mineWins && given[@"Tags"].length) && [row[@"Product"] isEqual:product] && [row[@"Tags"] length]) tags = row[@"Tags"];
     NSMutableDictionary *withTags = [given mutableCopy];
     withTags[@"Tags"] = tags ?: (given[@"Tags"].length ? given[@"Tags"]
                                                      : @"OSX x86_64 US? acct-USA? geoip-US? enUS speech?:OSX x86_64 US? acct-USA? geoip-US? enUS text?");
@@ -672,26 +681,235 @@ static NSString *build_info_merged(NSString *existing, NSString *product, NSDict
     return out;
 }
 
-NSString *sp_build_info_with(NSString *existing, NSString *product, NSString *region,
+NSString *sp_build_info_with(NSString *existing, NSString *product, NSString *region, NSString *tags,
                              NSDictionary<NSString *, NSString *> *version, NSDictionary<NSString *, NSString *> *cdns) {
     // BlizzardCDN.buildInfoLine.
-    return build_info_merged(existing, product, @{
+    NSMutableDictionary *row = [@{
         @"Branch": region, @"Active": @"1", @"Build Key": version[@"BuildConfig"] ?: @"", @"CDN Key": version[@"CDNConfig"] ?: @"",
         @"CDN Path": cdns[@"Path"] ?: @"", @"CDN Hosts": cdns[@"Hosts"] ?: @"", @"CDN Servers": cdns[@"Servers"] ?: @"",
         @"Version": version[@"VersionsName"] ?: @"", @"KeyRing": version[@"KeyRing"] ?: @"",
-    });
+    } mutableCopy];
+    if (tags.length) row[@"Tags"] = tags;
+    return build_info_merged(existing, product, row, tags.length > 0);
 }
 
-NSString *sp_build_info_for_image(NSString *existing, NSString *product, NSString *kept, NSString *stamp, NSString **why) {
+NSString *sp_build_info_for_image(NSString *existing, NSString *product, NSString *kept, NSString *stamp,
+                                  NSDictionary<NSString *, NSString *> *region, NSString **why) {
     *why = nil;
     NSString *build = sp_table_row(stamp, @"Product", product)[@"Build Key"];
-    if (!build.length || [sp_table_row(existing, @"Product", product)[@"Build Key"] isEqual:build]) return nil;
+    if (!build.length) return nil;
+    NSDictionary<NSString *, NSString *> *have = sp_table_row(existing, @"Product", product);
+    // With the device's region: its row also has to be in it (a Settings change since the last start).
+    BOOL inRegion = !region || ([have[@"Branch"] isEqual:region[@"Branch"]] && [have[@"Tags"] isEqual:region[@"Tags"]]);
+    if ([have[@"Build Key"] isEqual:build] && inRegion) return nil;
     NSDictionary<NSString *, NSString *> *row = sp_table_row(kept, @"Product", product);
     if (![row[@"Build Key"] isEqual:build] || !row[@"CDN Key"].length) {
         *why = row ? @"the row kept beside the image is another build's" : @"no row is kept beside the image";
         return nil;
     }
-    return build_info_merged(existing, product, row);
+    if (region) {
+        NSMutableDictionary *mine = [row mutableCopy];
+        mine[@"Branch"] = region[@"Branch"];
+        mine[@"Tags"] = region[@"Tags"];
+        row = mine;
+    }
+    return build_info_merged(existing, product, row, region != nil);
+}
+
+// ---- the region a game plays in (issue #34)
+
+NSArray<NSString *> *sp_regions(void) { return @[@"us", @"eu", @"kr", @"tw"]; }
+
+NSString *sp_region_for_country(NSString *country) {
+    NSString *c = country.uppercaseString;
+    if (!c.length) return @"us";
+    if ([c isEqual:@"KR"]) return @"kr";
+    if ([@[@"TW", @"HK", @"MO"] containsObject:c]) return @"tw";
+    // Europe (Russia, the Caucasus, and Cyprus included), the Middle East, and Africa: Battle.net's Europe.
+    // Everything else, the Americas and Oceania and every country not listed (China, Japan, Southeast
+    // Asia, Central Asia), is the Americas: Slashplayed never offers China (cn), Southeast Asia (sg), or
+    // the test region (xx).
+    static NSSet<NSString *> *europe;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        europe = [NSSet setWithArray:[@"AD AL AT AX BA BE BG BY CH CY CZ DE DK EE ES FI FO FR GB GG GI GR HR HU IE IM IS IT JE "
+                                      @"LI LT LU LV MC MD ME MK MT NL NO PL PT RO RS RU SE SI SJ SK SM UA VA XK "
+                                      @"AM AZ GE "
+                                      @"AE BH IL IQ IR JO KW LB OM PS QA SA SY TR YE "
+                                      @"AO BF BI BJ BW CD CF CG CI CM CV DJ DZ EG EH ER ET GA GH GM GN GQ GW KE KM LR LS LY "
+                                      @"MA MG ML MR MU MW MZ NA NE NG RE RW SC SD SH SL SN SO SS ST SZ TD TG TN TZ UG YT ZA "
+                                      @"ZM ZW" componentsSeparatedByString:@" "]];
+    });
+    return [europe containsObject:c] ? @"eu" : @"us";
+}
+
+NSString *sp_region_name(NSString *region) {
+    NSDictionary<NSString *, NSString *> *names = @{@"us": @"Americas", @"eu": @"Europe", @"kr": @"Korea", @"tw": @"Taiwan"};
+    return names[region.lowercaseString] ?: region.uppercaseString;
+}
+
+NSArray<NSString *> *sp_region_locales(NSString *region) {
+    NSDictionary<NSString *, NSArray<NSString *> *> *locales = @{
+        @"us": @[@"enUS", @"esMX", @"ptBR"],
+        @"eu": @[@"enGB", @"deDE", @"esES", @"frFR", @"itIT", @"ruRU"],
+        @"kr": @[@"koKR"],
+        @"tw": @[@"zhTW"],
+    };
+    return locales[region.lowercaseString] ?: @[];
+}
+
+BOOL sp_locale_shipped(NSString *locale, NSArray<NSString *> *shipped) {
+    if (!shipped) return YES;
+    // Blizzard ships Europe's English as the US English data: no install manifest lists an enGB tag.
+    return [shipped containsObject:locale] || ([locale isEqual:@"enGB"] && [shipped containsObject:@"enUS"]);
+}
+
+NSString *sp_region_locale(NSString *region, NSArray<NSString *> *preferred, NSArray<NSString *> *shipped) {
+    NSArray<NSString *> *locales = sp_region_locales(region);
+    if (!locales.count) return @"enUS";
+    for (NSString *tag in preferred) {
+        // BCP 47 (en-GB, es-419, zh-Hant-TW): the language decides, since each region has one locale per language.
+        NSString *language = [tag componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"-_"]]
+                                 .firstObject.lowercaseString;
+        for (NSString *locale in locales)
+            if ([[locale substringToIndex:2] isEqual:language] && sp_locale_shipped(locale, shipped)) return locale;
+    }
+    return locales.firstObject;
+}
+
+NSString *sp_region_tags(NSString *region, NSString *text, NSString *speech) {
+    // Flavor.tags' layout: the speech group, then the text group. Battle.net's acct- and geoip- tags are left
+    // out: no install manifest lists them (the client fetches by platform, region, and locale), and the
+    // device has no account country to give.
+    NSString *r = region.uppercaseString;
+    return [NSString stringWithFormat:@"OSX x86_64 %@? %@ speech?:OSX x86_64 %@? %@ text?", r, speech, r, text];
+}
+
+void sp_tags_locales(NSString *tags, NSString **text, NSString **speech) {
+    *text = *speech = nil;
+    for (NSString *group in [tags ?: @"" componentsSeparatedByString:@":"]) {
+        NSString *locale = nil;
+        BOOL isText = NO, isSpeech = NO;
+        for (NSString *tag in [group componentsSeparatedByString:@" "]) {
+            if ([tag isEqual:@"text?"]) isText = YES;
+            else if ([tag isEqual:@"speech?"]) isSpeech = YES;
+            else if ([tag rangeOfString:@"^[a-z]{2}[A-Z]{2}$" options:NSRegularExpressionSearch].location != NSNotFound) locale = tag;
+        }
+        if (isText && locale) *text = locale;
+        if (isSpeech && locale) *speech = locale;
+    }
+}
+
+static BOOL is_region(NSString *r) {
+    NSCharacterSet *notRegion = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz"].invertedSet;
+    return r.length && [r rangeOfCharacterFromSet:notRegion].location == NSNotFound;
+}
+
+static NSString *const region_header = @"Product!STRING:0|Region!STRING:0|Text!STRING:0|Speech!STRING:0|Shipped!STRING:0";
+
+NSString *sp_region_file(NSString *product, NSDictionary<NSString *, NSString *> *choice) {
+    return [NSString stringWithFormat:@"%@\n%@|%@|%@|%@|%@\n", region_header, product, choice[@"Region"], choice[@"Text"],
+                                      choice[@"Speech"], choice[@"Shipped"] ?: @""];
+}
+
+NSDictionary<NSString *, NSString *> *sp_game_region(NSString *product, BOOL device, NSString *regionFile, NSString *kept,
+                                                     NSString *stamp, NSString *buildInfo, NSString *country,
+                                                     NSArray<NSString *> *preferred) {
+    NSDictionary<NSString *, NSString *> *info = sp_table_row(buildInfo, @"Product", product);
+    NSDictionary<NSString *, NSString *> *stamped = sp_table_row(stamp, @"Product", product);
+    // A region from a row, its languages from the row's Tags (or `tagsFrom`'s), else the device's for that region.
+    NSDictionary * (^from)(NSString *, NSString *, NSString *) = ^NSDictionary *(NSString *region, NSString *tags, NSString *source) {
+        NSString *text = nil, *speech = nil;
+        sp_tags_locales(tags, &text, &speech);
+        text = text ?: speech ?: (device ? sp_region_locale(region, preferred, nil) : sp_region_locales(region).firstObject ?: @"enUS");
+        return @{@"Region": region, @"Text": text, @"Speech": speech ?: text, @"Source": source};
+    };
+    NSString *infoBranch = info[@"Branch"].lowercaseString, *stampBranch = stamped[@"Branch"].lowercaseString;
+    if (!device) {
+        // The Mac's: its .build.info row (the companion sends it again at every sync), else the image's stamp.
+        if (is_region(infoBranch)) return from(infoBranch, info[@"Tags"], @"mac");
+        return from(is_region(stampBranch) ? stampBranch : @"us", nil, @"mac");
+    }
+    NSDictionary<NSString *, NSString *> *chosen = sp_table_row(regionFile, @"Product", product);
+    if ([sp_regions() containsObject:chosen[@"Region"]] && chosen[@"Text"].length) {
+        NSMutableDictionary *out = [@{@"Region": chosen[@"Region"], @"Text": chosen[@"Text"],
+                                      @"Speech": chosen[@"Speech"].length ? chosen[@"Speech"] : chosen[@"Text"], @"Source": @"chosen"}
+                                    mutableCopy];
+        if (chosen[@"Shipped"].length) out[@"Shipped"] = chosen[@"Shipped"];
+        return out;
+    }
+    // A game the device made before the region file: its kept row, else its stamp, as before.
+    NSDictionary<NSString *, NSString *> *keptRow = sp_table_row(kept, @"Product", product);
+    if (is_region(keptRow[@"Branch"].lowercaseString)) return from(keptRow[@"Branch"].lowercaseString, keptRow[@"Tags"], @"kept row");
+    if (is_region(stampBranch))
+        return from(stampBranch, [infoBranch isEqual:stampBranch] ? info[@"Tags"] : nil, @"stamp");
+    // Game data with a row and no image (an image the device made was refused and deleted): its region.
+    if (is_region(infoBranch)) return from(infoBranch, info[@"Tags"], @"build.info");
+    NSString *region = sp_region_for_country(country);
+    NSString *text = sp_region_locale(region, preferred, nil);
+    return @{@"Region": region, @"Text": text, @"Speech": text, @"Source": @"device"};
+}
+
+NSString *sp_table_with(NSString *text, NSString *product, NSDictionary<NSString *, NSString *> *values) {
+    NSMutableArray<NSString *> *lines = [[text ?: @"" componentsSeparatedByString:@"\n"] mutableCopy];
+    if (lines.count < 2) return nil;
+    NSMutableArray<NSString *> *columns = [NSMutableArray array];
+    for (NSString *c in [lines[0] componentsSeparatedByString:@"|"]) [columns addObject:[c componentsSeparatedByString:@"!"][0]];
+    NSUInteger productAt = [columns indexOfObject:@"Product"];
+    if (productAt == NSNotFound) return nil;
+    BOOL changed = NO;
+    for (NSUInteger i = 1; i < lines.count; i++) {
+        if ([lines[i] hasPrefix:@"#"]) continue;
+        NSMutableArray<NSString *> *v = [[lines[i] componentsSeparatedByString:@"|"] mutableCopy];
+        if (v.count <= productAt || ![v[productAt] isEqual:product]) continue;
+        for (NSString *name in values) {
+            NSUInteger at = [columns indexOfObject:name];
+            if (at == NSNotFound || at >= v.count || [v[at] isEqual:values[name]]) continue;
+            v[at] = values[name];
+            changed = YES;
+        }
+        lines[i] = [v componentsJoinedByString:@"|"];
+    }
+    return changed ? [lines componentsJoinedByString:@"\n"] : nil;
+}
+
+NSString *sp_config_with_region(NSString *config, NSDictionary<NSString *, NSString *> *choice, BOOL follow,
+                                NSArray<NSString *> **set) {
+    NSString *text = config ?: @"";
+    NSArray<NSArray<NSString *> *> *cvars = @[@[@"portal", choice[@"Region"]], @[@"textLocale", choice[@"Text"]],
+                                              @[@"audioLocale", choice[@"Speech"]]];
+    // Each cvar's value now (the last line of it, as the game reads it), nil without one.
+    NSString * (^value)(NSString *) = ^NSString *(NSString *name) {
+        NSString *pattern = [NSString stringWithFormat:@"^SET %@ \"([^\"]*)\"[ \\t\\r]*$", [NSRegularExpression escapedPatternForString:name]];
+        NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:pattern
+            options:NSRegularExpressionCaseInsensitive | NSRegularExpressionAnchorsMatchLines error:nil];
+        NSTextCheckingResult *last = [re matchesInString:text options:0 range:NSMakeRange(0, text.length)].lastObject;
+        return last ? [text substringWithRange:[last rangeAtIndex:1]] : nil;
+    };
+    // The device's region moved (Settings) since the game last ran: the portal and both languages go with
+    // it, since the old languages are the old region's. Otherwise a value set stays (a language picked in
+    // the game's own options, or the Mac's), and only a missing or empty one is filled.
+    NSString *portal = value(@"portal");
+    BOOL moved = follow && portal.length && ![portal.lowercaseString isEqual:choice[@"Region"]];
+    NSMutableArray<NSString *> *names = [NSMutableArray array];
+    for (NSArray<NSString *> *cvar in cvars) {
+        NSString *now = value(cvar[0]), *line = [NSString stringWithFormat:@"SET %@ \"%@\"", cvar[0], cvar[1]];
+        if (now.length && !moved) continue;
+        if ([now isEqual:cvar[1]]) continue;
+        if (now) {
+            NSString *pattern = [NSString stringWithFormat:@"^SET %@ \"[^\"]*\"[ \\t\\r]*$", [NSRegularExpression escapedPatternForString:cvar[0]]];
+            NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:pattern
+                options:NSRegularExpressionCaseInsensitive | NSRegularExpressionAnchorsMatchLines error:nil];
+            text = [re stringByReplacingMatchesInString:text options:0 range:NSMakeRange(0, text.length)
+                                           withTemplate:[NSRegularExpression escapedTemplateForString:line]];
+        } else {
+            if (text.length && ![text hasSuffix:@"\n"]) text = [text stringByAppendingString:@"\n"];
+            text = [text stringByAppendingFormat:@"%@\n", line];
+        }
+        [names addObject:cvar[0]];
+    }
+    *set = names;
+    return text;
 }
 
 // ---- installing a game on the device (launcher.m, sppatch.m)
@@ -710,11 +928,6 @@ NSArray<NSString *> *sp_games(NSArray<NSString *> *order, NSArray<NSString *> *b
         NSUInteger ia = [order indexOfObject:a], ib = [order indexOfObject:b];
         return ia < ib ? NSOrderedAscending : ia > ib ? NSOrderedDescending : [a compare:b];
     }];
-}
-
-NSString *sp_install_region(NSString *buildInfo, NSString *product) {
-    NSString *branch = sp_table_row(buildInfo, @"Product", product)[@"Branch"].lowercaseString;
-    return branch.length ? branch : @"us";
 }
 
 NSString *sp_flavor_info(NSString *product) {

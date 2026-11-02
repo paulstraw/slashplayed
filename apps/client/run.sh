@@ -18,6 +18,8 @@
 # SP_PATCH_DRILL is the patch drill (sppatch.m): `binds` shows the newer-build screen for the current
 # build, as one that binds; a symbol (_NSApp) is withheld from the check, so it says the patch needs a
 # Slashplayed update.
+# SP_REGION_COUNTRY=<ISO country> and SP_REGION_LANGUAGES=<BCP 47,...> stand in for the device's region and
+# preferred languages, which decide a game the device installs (launcher.m's sp_game_region_now).
 # SP_LOADING_DRILL=loading or a percent 0-100 keeps the loading screen up over the game (the AppKit shim's
 # sploading.m), showing "Loading…" or the data setup's progress at that percent, for screenshots.
 # SP_SCENE_CONNECT_LATE=1 holds the scene's connect until the client has set its layer (the AppKit shim's
@@ -59,6 +61,8 @@ fi
 [ -n "$SP_PATCH_CELLULAR" ] && export DEVICECTL_CHILD_SP_PATCH_CELLULAR=$SP_PATCH_CELLULAR
 [ -n "$SP_PATCH_CHOOSE" ] && export DEVICECTL_CHILD_SP_PATCH_CHOOSE=$SP_PATCH_CHOOSE
 [ -n "$SP_PATCH_DRILL" ] && export DEVICECTL_CHILD_SP_PATCH_DRILL=$SP_PATCH_DRILL
+[ -n "$SP_REGION_COUNTRY" ] && export DEVICECTL_CHILD_SP_REGION_COUNTRY=$SP_REGION_COUNTRY
+[ -n "$SP_REGION_LANGUAGES" ] && export DEVICECTL_CHILD_SP_REGION_LANGUAGES=$SP_REGION_LANGUAGES
 [ -n "$SP_LOADING_DRILL" ] && export DEVICECTL_CHILD_SP_LOADING_DRILL=$SP_LOADING_DRILL
 [ -n "$SP_SKIP_INTRO" ] && export DEVICECTL_CHILD_SP_SKIP_INTRO=$SP_SKIP_INTRO
 [ -n "$SP_SCENE_CONNECT_LATE" ] && export DEVICECTL_CHILD_SP_SCENE_CONNECT_LATE=$SP_SCENE_CONNECT_LATE

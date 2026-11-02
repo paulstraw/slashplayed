@@ -12,7 +12,8 @@
 // Updates: the signing identity's state (dates only) and Forget Signing Identity. Both forgets act at the
 // tap, after an alert whose default is Cancel. Display: the backing scale (sp_scale). Then a section per game
 // (the start screen's, in its order): the build it starts with (shipped with the app, or updated on this
-// device), Open in Files, and Reset Game Settings (after its alert). About: the app's version and
+// device), its region (a picker for a game the device decides it for, sp_game_set_region; the Mac's, named,
+// for a game the companion installed), Open in Files, and Reset Game Settings (after its alert). About: the app's version and
 // Acknowledgements, the licenses of what the app ships.
 import SwiftUI
 import UIKit
@@ -85,7 +86,11 @@ enum Confirmation: Identifiable {
 struct Snapshot {
     // `installed`: it has an image to start (sp_game_has_image); `shipped`: the app has one (an app built
     // without images has none, and the device installs each game itself).
-    struct Game { let flavor: String, name: String, version: String?, updated: Bool, installed: Bool, shipped: Bool }
+    // `region`: its code (sp_game_region_now); `regionHere`: the device decides it, so Settings can change it.
+    struct Game {
+        let flavor: String, name: String, version: String?, updated: Bool, installed: Bool, shipped: Bool
+        let region: String, regionHere: Bool
+    }
     var saved = false
     var identity: SPIdentityReading?
     var scale = 0
@@ -131,14 +136,21 @@ final class Settings: ObservableObject {
             var updated: ObjCBool = false
             let version = sp_game_build(flavor, &updated)?["Version"]
             let shipped = FileManager.default.fileExists(atPath: Bundle.main.bundleURL.appending(path: "wow-" + flavor).path)
+            let region = sp_game_region_now(flavor)
             return .init(flavor: flavor, name: sp_flavor_name(flavor), version: version, updated: updated.boolValue,
-                         installed: sp_game_has_image(flavor), shipped: shipped)
+                         installed: sp_game_has_image(flavor), shipped: shipped, region: region["Region"] ?? "us",
+                         regionHere: region["Device"] == "1")
         }
         s.version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         now = s
     }
 
     // ---- the actions
+
+    func setRegion(_ flavor: String, _ region: String) {
+        say(sp_game_set_region(flavor, region))
+        reload()
+    }
 
     // Read here, at the tap, and kept only while it shows. Never logged.
     func showEmail() { email = sp_login_email() }
@@ -199,7 +211,8 @@ final class Settings: ObservableObject {
     // be tapped, if anything). `reset-<flavor>` is Reset's Reset tapped: it resets that game's settings with
     // no alert, so a test can check what it deletes and the next start's seeding. `scale-<0|1|2>` picks that
     // Display > Scale (0 is Automatic), so a test can set it without taps; it's saved, as a tap's is.
-    // `files-<flavor>` is that game's Open in Files tapped. Once, when the sheet has appeared.
+    // `files-<flavor>` is that game's Open in Files tapped. `region-<flavor>-<us|eu|kr|tw>` picks that game's
+    // Region, saved as a pick is (one the Mac decides logs that it can't). Once, when the sheet has appeared.
     private func presentDrill(_ screen: UIViewController) {
         screen.modalPresentationStyle = .fullScreen
         host?.present(screen, animated: false)
@@ -235,6 +248,10 @@ final class Settings: ObservableObject {
             open = { say(sp_game_reset(f)); self.reload(); self.scrollTo?("game-" + f) }
         }
         if open == nil, let f = suffix("files-"), flavors.contains(f) { open = { self.openInFiles(f) } }
+        if open == nil, let rest = suffix("region-"), let dash = rest.lastIndex(of: "-"), flavors.contains(String(rest[..<dash])) {
+            let f = String(rest[..<dash]), r = String(rest[rest.index(after: dash)...])
+            open = { self.setRegion(f, r); self.scrollTo?("game-" + f) }
+        }
         if open == nil, let i = ["scale-0", "scale-1", "scale-2"].firstIndex(of: state) {
             open = { setScale(i); self.reload(); self.scrollTo?("display") }
         }
@@ -425,7 +442,7 @@ struct SettingsView: View {
     #endif
 
     private func game(_ g: Snapshot.Game) -> some View {
-        Section(g.name) {
+        Section {
             VStack(alignment: .leading, spacing: 2) {
                 if g.installed {
                     Text(g.version.map { "Build " + $0 } ?? "Build Unknown")
@@ -437,8 +454,25 @@ struct SettingsView: View {
                 }
             }
             .id("game-" + g.flavor)
+            if g.regionHere {
+                LabeledContent("Region") {
+                    Picker("Region", selection: Binding(get: { g.region }, set: { settings.setRegion(g.flavor, $0) })) {
+                        ForEach(sp_regions(), id: \.self) { Text(sp_region_name($0)).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()  // LabeledContent's is the label
+                }
+            } else {
+                LabeledContent("Region", value: sp_region_name(g.region))
+            }
             Button("Open in Files") { settings.openInFiles(g.flavor) }
             Button("Reset Game Settings", role: .destructive) { settings.confirmation = .reset(g.flavor) }
+        } header: {
+            Text(g.name)
+        } footer: {
+            Text(g.regionHere
+                 ? "Region is where your realms are. The game’s language follows this \(sp_device_noun())’s. A change applies the next time the game starts."
+                 : "\(g.name) came from your Mac. To change its region, change it in Battle.net on your Mac, then press Play in Slashplayed Companion.")
         }
     }
 

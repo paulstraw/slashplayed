@@ -15,7 +15,8 @@
 // later launch doesn't fetch it again (and an update builds from it).
 //
 // The service is https://<region>.version.battle.net/v2/products/<product>/versions: a table shaped like
-// .build.info, one row per region. The region is the stamp's Branch (the install's), and its row's
+// .build.info, one row per region. The region is the game's (sp_game_region in spcdn.m): the stamp's Branch for
+// a game the app bundles (the Mac's), Library/spregion-<flavor> for one the device made. Its row's
 // BuildConfig is the build's identity, the stamp's Build Key; VersionsName is the version to show. Its
 // sibling /cdns names the region's CDN servers. $SP_PATCH_SERVICE replaces the base (everything before
 // /<product>/versions) for tests: a URL, or a path relative to the app's home directory, read as files
@@ -46,6 +47,8 @@ NSDictionary *sp_flavor_entry(NSString *flavor);  // launcher.m
 void sp_launch_build_version(uint32_t *platform, uint32_t *minOS);  // launcher.m
 UIViewController *sp_scene_root(void);  // spvpn.m
 NSString *sp_device_noun(void);  // spjit.m
+NSString *sp_game_region_write(NSString *flavor, NSDictionary<NSString *, NSString *> *choice);  // launcher.m
+NSArray<NSString *> *sp_device_languages(void);  // launcher.m: NSLocale.preferredLanguages, or the test's
 
 static void say(NSString *s) { sp_launch_say([@"patch: " stringByAppendingString:s]); }
 // The update's own lines, and the image chosen: "update: ", as the launcher's after the load.
@@ -240,9 +243,11 @@ static NSString *stamp_text(NSString *product, NSString *region, NSDictionary<NS
 // The newer build's arm64 slice in Library/spslice/ (<flavor>.arm64 and its stamp, spbuild-<flavor>):
 // kept from an earlier launch if it's this build, else fetched, asking first on a costly network. nil and
 // *why if there's none.
+// *shipped: the build's install manifest's tag names when this fetched the slice (nil for a kept one).
 static NSString *new_slice(NSString *flavor, NSString *product, NSString *region, NSDictionary<NSString *, NSString *> *row,
                            double megabytes, SPPatchController *screen, NSString *heading, NSString *note, void (^pump)(double),
-                           NSString **why) {
+                           NSArray<NSString *> **shipped, NSString **why) {
+    *shipped = nil;
     NSString *dir = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/spslice"];
     NSString *slice = [dir stringByAppendingPathComponent:[flavor stringByAppendingString:@".arm64"]];
     NSString *stamp = [dir stringByAppendingPathComponent:[@"spbuild-" stringByAppendingString:flavor]];
@@ -303,7 +308,7 @@ static NSString *new_slice(NSString *flavor, NSString *product, NSString *region
         requests++;
         return d;
     };
-    if (!sp_cdn_slice(servers, row[@"BuildConfig"], row[@"CDNConfig"], client, region, counted, slice, &problem)) {
+    if (!sp_cdn_slice(servers, row[@"BuildConfig"], row[@"CDNConfig"], client, region, counted, slice, shipped, &problem)) {
         *why = [@"the download failed: " stringByAppendingString:problem];
         say([NSString stringWithFormat:@"slice: %@ %@ failed after %.1f MB in %u requests, %.1f s", product,
                                        row[@"VersionsName"], bytes / 1e6, requests, now() - t]);
@@ -319,7 +324,8 @@ static NSString *new_slice(NSString *flavor, NSString *product, NSString *region
 // Whether the newer build binds against the app's shims, with the screen up meanwhile. *why for unknown.
 static verdict check_new_build(NSString *flavor, NSString *image, NSString *product, NSString *region,
                                NSDictionary<NSString *, NSString *> *row, SPPatchController *screen, NSString *heading,
-                               NSString *note, void (^pump)(double), NSString **why) {
+                               NSString *note, void (^pump)(double), NSArray<NSString *> **shipped, NSString **why) {
+    *shipped = nil;
     NSString *exports = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"exports.json"];
     NSData *manifest = [NSData dataWithContentsOfFile:exports options:NSDataReadingMappedIfSafe error:nil];
     if (!manifest) {
@@ -329,7 +335,7 @@ static verdict check_new_build(NSString *flavor, NSString *image, NSString *prod
     // The new slice is about the size of this image (also thinned to arm64).
     // No image yet (an install, sp_patch_install): new_slice's 50.
     double megabytes = image ? [NSFileManager.defaultManager attributesOfItemAtPath:image error:nil].fileSize / 1e6 : 0;
-    NSString *slice = new_slice(flavor, product, region, row, megabytes ?: 50, screen, heading, note, pump, why);
+    NSString *slice = new_slice(flavor, product, region, row, megabytes ?: 50, screen, heading, note, pump, shipped, why);
     if (!slice) return unknown;
     double t = now();
     NSUInteger total = 0;
@@ -364,10 +370,11 @@ static verdict check_new_build(NSString *flavor, NSString *image, NSString *prod
 // and every later one whose row isn't the image's build (sp_build_info_for_image). So an image dlopen refuses
 // leaves the old build's row beside the old image, and a launch that stops before the client loads (at the
 // sign-in, say, or the JIT helper), or game data emptied under the image, doesn't leave the client streaming
-// with no row for its build (#134, "Invalid schema … StartupFiles", issue #36). The new image's path, or nil
-// and *why.
-static NSString *update(NSString *flavor, NSString *product, NSString *region, NSDictionary<NSString *, NSString *> *row,
-                        void (^pump)(double), NSString **why) {
+// with no row for its build (#134, "Invalid schema … StartupFiles", issue #36). `tags`: the kept row's Tags for a
+// game whose region the device decides (sp_region_tags), nil for the Mac's (its own row's are kept). The new
+// image's path, or nil and *why.
+static NSString *update(NSString *flavor, NSString *product, NSString *region, NSString *tags,
+                        NSDictionary<NSString *, NSString *> *row, void (^pump)(double), NSString **why) {
     NSString *home = NSHomeDirectory(), *name = [@"wow-" stringByAppendingString:flavor];
     NSData *slice = [NSData dataWithContentsOfFile:[home stringByAppendingPathComponent:
                                                     [NSString stringWithFormat:@"Library/spslice/%@.arm64", flavor]]
@@ -435,7 +442,7 @@ static NSString *update(NSString *flavor, NSString *product, NSString *region, N
     // Into place: an older update's stamp goes first, and this one's comes last, after the row it keeps.
     [NSFileManager.defaultManager removeItemAtPath:stamp error:nil];
     NSString *keptRow = [dir stringByAppendingPathComponent:[@"spbuildinfo-" stringByAppendingString:flavor]];
-    if (![sp_build_info_with(nil, product, region, row, cdnsRow) writeToFile:keptRow atomically:YES encoding:NSUTF8StringEncoding
+    if (![sp_build_info_with(nil, product, region, tags, row, cdnsRow) writeToFile:keptRow atomically:YES encoding:NSUTF8StringEncoding
                                                                        error:nil]) {
         [NSFileManager.defaultManager removeItemAtPath:signing error:nil];
         *why = @"its .build.info row couldn't be kept";
@@ -508,6 +515,29 @@ static NSString *sentence(NSString *why) {
     return [NSString stringWithFormat:@"%@%@.", [why substringToIndex:1].uppercaseString, [why substringFromIndex:1]];
 }
 
+// A device-decided region (sp_game_region) once the build's install manifest has been read (`shipped`, its tag
+// names; nil when this start didn't read one): its languages checked against what the build ships, the
+// device's next one for the region (sp_region_locale) if it doesn't ship the chosen one, and what it ships kept
+// in the region file for a later change in Settings. Written to Library/spregion-<flavor>.
+static NSDictionary<NSString *, NSString *> *settle_region(NSString *flavor, NSDictionary<NSString *, NSString *> *choice,
+                                                           NSArray<NSString *> *shipped) {
+    NSMutableDictionary<NSString *, NSString *> *out = [choice mutableCopy];
+    if (shipped) {
+        NSMutableArray<NSString *> *locales = [NSMutableArray array];
+        for (NSString *t in shipped)
+            if ([t rangeOfString:@"^[a-z]{2}[A-Z]{2}$" options:NSRegularExpressionSearch].location != NSNotFound) [locales addObject:t];
+        out[@"Shipped"] = [locales componentsJoinedByString:@" "];
+        if (!sp_locale_shipped(choice[@"Text"], locales)) {
+            NSString *text = sp_region_locale(choice[@"Region"], sp_device_languages(), locales);
+            say([NSString stringWithFormat:@"region: this build doesn't ship %@: %@ instead", choice[@"Text"], text]);
+            out[@"Text"] = out[@"Speech"] = text;
+        }
+    }
+    NSString *problem = sp_game_region_write(flavor, out);
+    if (problem) say([@"region: " stringByAppendingString:problem]);
+    return out;
+}
+
 // The patch service's versions row for `product` in `region`, or nil and *why.
 static NSDictionary<NSString *, NSString *> *current_row(NSString *product, NSString *region, void (^pump)(double), NSString **why) {
     double t = now();
@@ -524,20 +554,27 @@ static NSDictionary<NSString *, NSString *> *current_row(NSString *product, NSSt
 }
 
 // Installs a game the device has no image of (an app built without them: sp_games' installable ones), with
-// the update's chain from nothing: the patch service's current build in `region` (sp_install_region), its
+// the update's chain from nothing: the patch service's current build in the game's region (`choice`,
+// sp_game_region: the region file, else the device's region and languages), its
 // slice fetched (asking first on a costly network) and its imports checked (check_new_build), then its configs,
 // image, and stamp made and signed here (update), and the game's .flavor.info if its folder has none. Its
 // screen says each step; there's no Play Anyway, as there's nothing else to play. A signing identity is checked
-// first, before anything is downloaded: without one it says what's missing (no_identity).
+// first, before anything is downloaded: without one it says what's missing (no_identity). The screen names the
+// region ("Installing Classic Era for Europe"), and once the build is checked the region and its languages,
+// checked against the locales the build ships, go into Library/spregion-<flavor> (settle_region), which the
+// game follows from then on until Settings changes it.
 //
 // Returns the new image (Library/spgames/wow-<flavor>), its .build.info row kept beside it for the launcher
 // to write once it has loaded, as after Update. nil and *problem when it can't: with `back`, the screen has
 // said why and waited for Back (the launcher shows the start screen again); without (a launch that named the
 // game), it's dismissed and the launcher shows *problem. install: lines, versions only.
-NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (^*pump)(double), NSString **problem) {
+NSString *sp_patch_install(NSString *flavor, NSDictionary<NSString *, NSString *> *choice, BOOL back, void (^*pump)(double),
+                           NSString **problem) {
     *problem = nil;
     NSString *product = sp_flavor_entry(flavor)[@"product"], *game = sp_flavor_name(flavor), *noun = sp_device_noun();
-    say([NSString stringWithFormat:@"install: %@ has no image on this %@: installing it in %@", product ?: flavor, noun, region]);
+    NSString *region = choice[@"Region"], *where = sp_region_name(region ?: @"");
+    say([NSString stringWithFormat:@"install: %@ has no image on this %@: installing it in %@ (%@, text %@, speech %@, from %@)",
+                                   product ?: flavor, noun, region, where, choice[@"Text"], choice[@"Speech"], choice[@"Source"]]);
     NSCharacterSet *notRegion = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz"].invertedSet;
     if (!product.length || !region.length || [region rangeOfCharacterFromSet:notRegion].location != NSNotFound) {
         *problem = [NSString stringWithFormat:@"%@ can't be installed: the app doesn't know its product or region.", game];
@@ -550,7 +587,7 @@ NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (
         return nil;
     }
     void (^ui)(double) = *pump;  // UIKit's, now (present)
-    NSString *heading = [NSString stringWithFormat:@"Installing %@…", game];
+    NSString *heading = [NSString stringWithFormat:@"Installing %@ for %@…", game, where];
     // A failure: on the screen with Back, or handed to the launcher to show. What the launcher shows.
     NSString * (^failed)(NSString *, NSString *, NSString *) = ^NSString *(NSString *title, NSString *body, NSString *note) {
         if (back) {
@@ -578,8 +615,9 @@ NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (
         return nil;
     }
     NSString *version = row[@"VersionsName"].length ? row[@"VersionsName"] : @"(no version)";
-    heading = [NSString stringWithFormat:@"Installing %@ %@…", game, version];
-    verdict v = check_new_build(flavor, nil, product, region, row, screen, heading, nil, ui, &why);
+    heading = [NSString stringWithFormat:@"Installing %@ %@ for %@…", game, version, where];
+    NSArray<NSString *> *shipped = nil;
+    verdict v = check_new_build(flavor, nil, product, region, row, screen, heading, nil, ui, &shipped, &why);
     if (v == needs_update) {
         say([NSString stringWithFormat:@"install: message: needs a Slashplayed update: %@ %@ doesn't bind", product, version]);
         *problem = failed(cant, [NSString stringWithFormat:@"This version of Slashplayed can't run %@ %@ yet. Once there's a "
@@ -593,7 +631,9 @@ NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (
     }
     [screen setHeading:heading body:[NSString stringWithFormat:@"Making it and signing it on this %@.", noun] note:nil buttons:@[]];
     double t = now();
-    NSString *image = update(flavor, product, region, row, ui, &why);
+    // The languages checked against the build's before its row is kept with them.
+    NSDictionary<NSString *, NSString *> *settled = settle_region(flavor, choice, shipped);
+    NSString *image = update(flavor, product, region, sp_region_tags(region, settled[@"Text"], settled[@"Speech"]), row, ui, &why);
     if (!image) {
         say([NSString stringWithFormat:@"install: failed after %.1f s: %@", now() - t, why]);
         *problem = failed(cant, @"Try again later.", sentence(why));
@@ -607,8 +647,9 @@ NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (
         if (![sp_flavor_info(product) writeToFile:info atomically:YES encoding:NSUTF8StringEncoding error:nil])
             say(@"install: couldn't write the game's .flavor.info");
     }
-    say([NSString stringWithFormat:@"install: %@ %@ is Library/spgames/%@, %.1f s in all", product, version, image.lastPathComponent,
-                                   now() - t]);
+    say([NSString stringWithFormat:@"install: %@ %@ is Library/spgames/%@, %.1f s in all; %@ (%@), text %@, speech %@",
+                                   product, version, image.lastPathComponent, now() - t, region, where, settled[@"Text"],
+                                   settled[@"Speech"]]);
     dismiss(screen, ui);
     drop_slice(flavor);
     say_update([NSString stringWithFormat:@"image: Library/spgames %@ %@ (just installed)", product, version]);
@@ -621,7 +662,9 @@ NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (
 // Play Anyway or Update. `bundled` is the app's image and `bundledStamp` its build (nil without one: nothing
 // to compare); `library` is the image an update on the device made (Library/spgames/wow-<flavor>) and
 // `libraryStamp` its build, nil when there's none. `bundled` is nil when the app has no image of the game
-// (it was installed on the device, sp_patch_install): the updated image is then the one compared and played.
+// (it was installed on the device, sp_patch_install): the updated image is then the one compared and played,
+// in the region the device decides (`choice`, sp_game_region; nil for a game the app bundles, whose stamp's
+// Branch is the Mac's), and an Update keeps its row in that region.
 //
 // Which image: the updated one when its build is the patch service's current one, or when the service
 // couldn't be asked and it's a later version than the bundled one; otherwise the bundled one. A newer build
@@ -633,11 +676,15 @@ NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (
 // One line of log for the outcome, one for the message shown, and one for the image chosen (update: image:),
 // versions only. Sets *pump to UIKit's when it shows its screen.
 NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSString *, NSString *> *bundledStamp, NSString *library,
-                         NSDictionary<NSString *, NSString *> *libraryStamp, void (^*pump)(double)) {
+                         NSDictionary<NSString *, NSString *> *libraryStamp, NSDictionary<NSString *, NSString *> *choice,
+                         void (^*pump)(double)) {
     // What's compared and what Play Anyway plays: the bundled image, or with none the one made here.
     NSString *base = bundled ?: library;
     NSDictionary<NSString *, NSString *> *stamp = bundled ? bundledStamp : libraryStamp;
-    NSString *product = stamp[@"Product"], *region = stamp[@"Branch"].lowercaseString;
+    // The stamp's Branch stays, but decides the region only for the Mac's games (and a device's made before
+    // the region file, through sp_game_region).
+    BOOL device = !bundled && choice[@"Region"].length;
+    NSString *product = stamp[@"Product"], *region = device ? choice[@"Region"] : stamp[@"Branch"].lowercaseString;
     NSString * (^use)(NSString *, NSString *) = ^NSString *(NSString *image, NSString *why) {
         BOOL updated = image == library;
         say_update([NSString stringWithFormat:@"image: %@ %@ %@ (%@)", updated ? @"Library/spgames" : @"bundled", product,
@@ -692,7 +739,8 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
     // Under every state's words: the build this device has, against the news in the heading.
     NSString *has = [NSString stringWithFormat:@"This %@ has %@ %@.", noun, game, stamp[@"Version"]];
     NSString *why = nil;
-    verdict v = check_new_build(flavor, base, product, region, row, screen, heading, has, *pump, &why);
+    NSArray<NSString *> *shipped = nil;
+    verdict v = check_new_build(flavor, base, product, region, row, screen, heading, has, *pump, &shipped, &why);
     BOOL here = v == binds && sp_identity_usable();
     if (v == needs_update) {
         say([NSString stringWithFormat:@"message: needs a Slashplayed update: %@ %@ doesn't bind, the image is %@", product,
@@ -738,7 +786,9 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
                       note:nil
                    buttons:@[]];
         t = now();
-        NSString *image = update(flavor, product, region, row, *pump, &why);
+        NSDictionary<NSString *, NSString *> *settled = device ? settle_region(flavor, choice, shipped) : nil;
+        NSString *image = update(flavor, product, region, device ? sp_region_tags(region, settled[@"Text"], settled[@"Speech"]) : nil,
+                                 row, *pump, &why);
         if (image) {
             say_update([NSString stringWithFormat:@"%@ %@ is Library/spgames/%@, %.1f s in all", product, version,
                                            image.lastPathComponent, now() - t]);

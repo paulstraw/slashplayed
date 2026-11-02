@@ -6,7 +6,20 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Games can be installed on the iPad or iPhone itself, with no game files from a Mac: tap
+  Install on the start screen, and the device downloads the game from Blizzard and sets it up.
+- Each game installed on the device has a Region in Settings (Americas, Europe, Korea, or Taiwan),
+  next to its build. A game installed from your Mac shows the region it plays in there; change that one
+  in Battle.net on your Mac.
+
 ### Fixed
+
+- A game installed on the device now plays in your region, taken from the device's region in
+  Settings, with the game's text and speech in your device's language when the game has it. Before, it
+  always played in the Americas in US English, so players elsewhere couldn't reach their realms. The
+  install screen says which region it's installing for.
 
 - With a free Apple ID (a Personal Team), a game installed or updated on the device itself (including
   with Update Games on This Device turned on in the companion) now starts. Before, the device refused the

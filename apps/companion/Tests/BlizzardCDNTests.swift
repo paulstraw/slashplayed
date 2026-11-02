@@ -385,15 +385,17 @@ final class BlizzardCDNTests: XCTestCase {
 
     /// The launcher's port on `cdn`: the servers it takes from the cdns table, and the slice it writes or
     /// why it couldn't.
-    private func launcherSlice(_ cdn: FakeCDN, _ product: String, _ build: Build) throws -> (servers: [URL], slice: Data?, problem: String?) {
+    private func launcherSlice(_ cdn: FakeCDN, _ product: String, _ build: Build) throws
+        -> (servers: [URL], slice: Data?, problem: String?, tags: [String]?) {
         let cdns = String(decoding: try XCTUnwrap(cdn["service.test/\(product)/cdns"]), as: UTF8.self)
         let servers = sp_cdn_servers(try XCTUnwrap(sp_table_row(cdns, "Name", "us")))
         let out = FileManager.default.temporaryDirectory.appending(path: "sp-cdn-port-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: out) }
         var problem: NSString?
+        var tags: NSArray?
         let ok = sp_cdn_slice(servers, build.buildConfig, build.cdnConfig, Self.exePath, "us", Self.launcherFetch(cdn.fetch),
-                              out.path, &problem)
-        return (servers, ok ? try Data(contentsOf: out) : nil, problem as String?)
+                              out.path, &tags, &problem)
+        return (servers, ok ? try Data(contentsOf: out) : nil, problem as String?, tags as? [String])
     }
 
     func testLauncherPortFetchesTheSameSlice() async throws {
@@ -406,6 +408,8 @@ final class BlizzardCDNTests: XCTestCase {
         let port = try launcherSlice(cdn, "wow_test", loose)
         XCTAssertEqual(port.servers, expected)
         XCTAssertEqual(port.slice, loose.arm64, port.problem ?? "")
+        // The install manifest's tag names come back, for the launcher's check of the locales a build ships.
+        XCTAssertEqual(port.tags, ["OSX", "Windows", "US", "CN"])
         // In part, as the companion's: not the x86 half.
         XCTAssertLessThan(cdn.bytes("cdn.test/tpr/wow/" + BlizzardCDN.path("data", loose.exeKey)), 100_000)
         let inArchive = try launcherSlice(cdn, "wow_archived", archived)
@@ -495,7 +499,7 @@ final class BlizzardCDNTests: XCTestCase {
                           "BuildId": "1", "VersionsName": new.versionsName, "ProductConfig": ""]
         let cdnsRow = ["Name": "us", "Path": cdns.path, "Hosts": cdns.hosts, "Servers": cdns.servers, "ConfigPath": "tpr/configs/data"]
         func device(_ existing: String?) -> String {
-            sp_build_info_with(existing, "wow_classic_era", "us", versionRow, cdnsRow)
+            sp_build_info_with(existing, "wow_classic_era", "us", nil, versionRow, cdnsRow)
         }
         XCTAssertEqual(device(GameStore.buildInfoText([old])), expected)
         // Another product's row stays where it was; the result is the companion's for both builds.
@@ -535,23 +539,23 @@ final class BlizzardCDNTests: XCTestCase {
         let new = version("b")
         let versionRow = ["Region": "us", "BuildConfig": new.buildConfig, "CDNConfig": new.cdnConfig, "KeyRing": new.keyRing,
                           "VersionsName": new.versionsName]
-        let kept = sp_build_info_with(nil, "wow_classic_era", "us", versionRow, cdnsRow)
+        let kept = sp_build_info_with(nil, "wow_classic_era", "us", nil, versionRow, cdnsRow)
         let stamp = "Product!STRING:0|Branch!STRING:0|Build Key!HEX:16|Version!STRING:0\n"
             + "wow_classic_era|us|\(new.buildConfig)|\(new.versionsName)\n"
         func heal(_ existing: String?, kept: String? = kept, stamp: String = stamp) -> (String?, String?) {
             var why: NSString?
-            let text = sp_build_info_for_image(existing, "wow_classic_era", kept, stamp, &why)
+            let text = sp_build_info_for_image(existing, "wow_classic_era", kept, stamp, nil, &why)
             return (text, why as String?)
         }
         // No .build.info at all (an install into an empty container): the row the update would have written.
-        XCTAssertEqual(heal(nil).0, sp_build_info_with(nil, "wow_classic_era", "us", versionRow, cdnsRow))
+        XCTAssertEqual(heal(nil).0, sp_build_info_with(nil, "wow_classic_era", "us", nil, versionRow, cdnsRow))
         XCTAssertNil(heal(nil).1)
         // Another build's row, another product beside it, and the device's own Tags: as the update writes it.
         let tags = "OSX arm64 EU? enGB speech?:OSX arm64 EU? enGB text?"
         let retail = BlizzardCDN.buildInfoLine(product: "wow", version: version("e"), cdns: cdns, tags: tags)
         let old = GameStore.buildInfoText([retail, BlizzardCDN.buildInfoLine(product: "wow_classic_era", version: version("a"),
                                                                              cdns: cdns, tags: tags)])
-        XCTAssertEqual(heal(old).0, sp_build_info_with(old, "wow_classic_era", "us", versionRow, cdnsRow))
+        XCTAssertEqual(heal(old).0, sp_build_info_with(old, "wow_classic_era", "us", nil, versionRow, cdnsRow))
         // Already the image's build: nothing to write, nothing to say.
         let current = try XCTUnwrap(heal(old).0)
         XCTAssertNil(heal(current).0)
@@ -559,7 +563,7 @@ final class BlizzardCDNTests: XCTestCase {
         // Nothing kept, or another build's row kept: nothing written, and the log says why.
         XCTAssertNil(heal(nil, kept: nil).0)
         XCTAssertNotNil(heal(nil, kept: nil).1)
-        let other = sp_build_info_with(nil, "wow_classic_era", "us", ["BuildConfig": version("a").buildConfig, "CDNConfig": "c"], cdnsRow)
+        let other = sp_build_info_with(nil, "wow_classic_era", "us", nil, ["BuildConfig": version("a").buildConfig, "CDNConfig": "c"], cdnsRow)
         XCTAssertNil(heal(nil, kept: other).0)
         XCTAssertNotNil(heal(nil, kept: other).1)
     }
@@ -621,7 +625,7 @@ final class BlizzardCDNTests: XCTestCase {
             Thread {
                 var problem: NSString?
                 let fetch = sp_cdn_session({ CFRunLoopRunInMode(.defaultMode, $0, true) }, 20, nil)
-                let ok = sp_cdn_slice(servers, buildKey, cdnKey, flavor.clientPath, region, fetch, port.path, &problem)
+                let ok = sp_cdn_slice(servers, buildKey, cdnKey, flavor.clientPath, region, fetch, port.path, nil, &problem)
                 done.resume(returning: ok ? nil : (problem as String? ?? "failed"))
             }.start()
         }

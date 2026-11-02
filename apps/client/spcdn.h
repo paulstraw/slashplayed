@@ -24,9 +24,12 @@ NSArray<NSURL *> *sp_cdn_servers(NSDictionary<NSString *, NSString *> *cdnsRow);
 // Writes the arm64 slice of `executable` (the client's path in its game's folder, flavors.plist's) in the
 // build `buildConfig` / `cdnConfig` (the version row's) for `region` to `output`, byte-identical to
 // `lipo -thin arm64` of the installed executable. Fetches only what it needs, each piece checked against
-// the key that names it. NO and *problem on failure.
+// the key that names it. *tags (when given) gets the build's install manifest's tag names once it's read
+// (the platforms, regions, and locales it ships: sp_locale_shipped), nil if it wasn't. NO and *problem on
+// failure.
 BOOL sp_cdn_slice(NSArray<NSURL *> *servers, NSString *buildConfig, NSString *cdnConfig, NSString *executable,
-                  NSString *region, SPFetch fetch, NSString *output, NSString *_Nullable *_Nonnull problem);
+                  NSString *region, SPFetch fetch, NSString *output, NSArray<NSString *> *_Nullable *_Nullable tags,
+                  NSString *_Nullable *_Nonnull problem);
 
 // The device's fetch: URLSession, waiting with `pump` (so the scene keeps running), `timeout` seconds
 // without data at most per request. `progress`, if given, is called while it waits with the bytes this
@@ -62,21 +65,95 @@ NSString *sp_patch_needs_update_body(NSString *news);
 
 // The device's .build.info once `product` is on the build the patch service's `version` row names in
 // `region` (`cdns` is the region's row of its cdns table): Battle.net's header, and for the product the row
-// the companion writes for that build (BlizzardCDN.buildInfoLine), its Tags kept from the product's row in
-// `existing`. The other products' rows of `existing` are kept, in their order, laid out by name in the same
-// columns; a product with no row gets one at the end.
-NSString *sp_build_info_with(NSString *_Nullable existing, NSString *product, NSString *region,
+// the companion writes for that build (BlizzardCDN.buildInfoLine). Its Tags are `tags` when given (a game
+// the device decides the region of: sp_game_region, sp_region_tags), else kept from the product's row in
+// `existing`, else a US English Mac install's. The other products' rows of `existing` are kept, in their
+// order, laid out by name in the same columns; a product with no row gets one at the end.
+NSString *sp_build_info_with(NSString *_Nullable existing, NSString *product, NSString *region, NSString *_Nullable tags,
                              NSDictionary<NSString *, NSString *> *version, NSDictionary<NSString *, NSString *> *cdns);
 
 // The device's .build.info once `product`'s row is the one for the build an image made on the device is
 // (Library/spgames/wow-<flavor>), so the client streams that build's data: `kept` is the .build.info
 // text update wrote beside the image when it made it (spgames/spbuildinfo-<flavor>, sp_build_info_with's
 // for its build with no existing rows), `stamp` the image's stamp. Laid out as sp_build_info_with lays it,
-// the Tags kept from `existing`'s row. nil when `existing`'s row is already that build's (*why nil), or
-// when it isn't and `kept` has no row for that build to write (*why says so, for the log: an image made
-// before the row was kept beside it).
+// the Tags kept from `existing`'s row. With `region` (Branch and Tags: a game whose region the device decides,
+// sp_game_region), the row is in that region instead, with those Tags, and is written again when `existing`'s
+// has another Branch or Tags too, so a region changed in Settings isn't put back. nil when `existing`'s row is
+// already that build's (and in `region`) (*why nil), or when it isn't and `kept` has no row for that build to
+// write (*why says so, for the log: an image made before the row was kept beside it).
 NSString *_Nullable sp_build_info_for_image(NSString *_Nullable existing, NSString *product, NSString *_Nullable kept,
-                                            NSString *_Nullable stamp, NSString *_Nullable *_Nonnull why);
+                                            NSString *_Nullable stamp, NSDictionary<NSString *, NSString *> *_Nullable region,
+                                            NSString *_Nullable *_Nonnull why);
+
+// ---- The region a game plays in (issue #34)
+//
+// Each game has its own, as Battle.net does it. A game the companion installed (the app bundles its image,
+// and the Mac's game data comes with it) plays in the Mac's: its .build.info row, which the companion sends
+// again at every sync, so the device never decides it. A game the device made (installed or updated here, in
+// an app with no image of it) plays in the one in Library/spregion-<flavor> (sp_region_file): the device's
+// region by default (sp_region_for_country), and its languages, from the device's (sp_region_locale), until
+// Settings changes it. Everything else follows that file at each start: the patch check's region, an Update's
+// kept row and stamp, the start-time .build.info rewrite, and Config.wtf.
+
+// The regions a person can pick, in Settings' order: us, eu, kr, tw.
+NSArray<NSString *> *sp_regions(void);
+
+// Blizzard's region for a country (ISO 3166-1 alpha-2: the device's region in Settings): kr for South Korea;
+// tw for Taiwan, Hong Kong, and Macao; eu for Europe, Russia, the Middle East, and Africa; else us (the
+// Americas, Oceania, and every country not mapped). Never cn, sg, or xx.
+NSString *sp_region_for_country(NSString *_Nullable country);
+
+// What a person reads for a region: Americas, Europe, Korea, Taiwan (the code in capitals for another).
+NSString *sp_region_name(NSString *region);
+
+// The game's locales in a region, its default first: us enUS esMX ptBR; eu enGB deDE esES frFR itIT ruRU;
+// kr koKR; tw zhTW. Empty for another region.
+NSArray<NSString *> *sp_region_locales(NSString *region);
+
+// Whether a build ships `locale`, by its install manifest's tag names (`shipped`; nil when not known: YES).
+// enGB is shipped with enUS: Blizzard's EU English is the US English data, and no manifest lists enGB.
+BOOL sp_locale_shipped(NSString *locale, NSArray<NSString *> *_Nullable shipped);
+
+// The text language a game in `region` gets: the first of `preferred` (BCP 47: the device's preferred
+// languages, in order) whose language is one of the region's locales' and that the build ships (`shipped`,
+// sp_locale_shipped), else the region's default (us enUS, eu enGB, kr koKR, tw zhTW). Speech follows it.
+NSString *sp_region_locale(NSString *region, NSArray<NSString *> *preferred, NSArray<NSString *> *_Nullable shipped);
+
+// .build.info's Tags for a game in `region` with those languages, in Flavor.tags' layout (the speech group,
+// then the text group): "OSX x86_64 EU? enGB speech?:OSX x86_64 EU? enGB text?".
+NSString *sp_region_tags(NSString *region, NSString *text, NSString *speech);
+
+// The text and speech locales a Tags value names (nil for one it doesn't).
+void sp_tags_locales(NSString *_Nullable tags, NSString *_Nullable *_Nonnull text, NSString *_Nullable *_Nonnull speech);
+
+// Library/spregion-<flavor>: a one-row table (the stamp's shape) of the product, the region, its text and
+// speech locales, and the locales the build ships (space-separated; empty when not known) from `choice`.
+NSString *sp_region_file(NSString *product, NSDictionary<NSString *, NSString *> *choice);
+
+// The region a game plays in, as Region, Text, Speech (locales), Source (for the log and Settings), and
+// Shipped when the region file knows it. `device`: the device decides it (the app has no image of the game);
+// else the Mac does ("mac": `buildInfo`'s row, else the image's stamp, else us). The device's, in order: the
+// region file (`regionFile`, "chosen"); for a game made before it, the row kept beside its image (`kept`,
+// "kept row") or its stamp's Branch ("stamp"), as before; game data's .build.info row ("build.info"); else the
+// device's region and languages (`country`, `preferred`: "device"). Languages a row's Tags don't name are the
+// device's for that region.
+NSDictionary<NSString *, NSString *> *sp_game_region(NSString *product, BOOL device, NSString *_Nullable regionFile,
+                                                     NSString *_Nullable kept, NSString *_Nullable stamp,
+                                                     NSString *_Nullable buildInfo, NSString *_Nullable country,
+                                                     NSArray<NSString *> *preferred);
+
+// A |-separated table (a stamp, a kept .build.info) with `values` (by column name) set in `product`'s rows, its
+// own header and column order kept. nil when nothing changes (or there's no such row or column).
+NSString *_Nullable sp_table_with(NSString *_Nullable text, NSString *product, NSDictionary<NSString *, NSString *> *values);
+
+// Config.wtf with the game's region and languages (`choice`: sp_game_region) as portal, textLocale, and
+// audioLocale. Started by Battle.net the client takes them from its launch options, which nothing writes on
+// the device, and with neither it opens a region picker the device can't show and exits. A missing or empty
+// one is always set. With `follow` (the device decides the region) and a portal that isn't the region, the
+// region was changed in Settings: all three are replaced. Otherwise a value set stays (a language picked in
+// the game's options, or the Mac's). *set: the names set (empty for none).
+NSString *sp_config_with_region(NSString *_Nullable config, NSDictionary<NSString *, NSString *> *choice, BOOL follow,
+                                NSArray<NSString *> *_Nullable *_Nonnull set);
 
 // ---- Installing a game on the device, with no image in the app (launcher.m, sppatch.m)
 
@@ -88,11 +165,6 @@ NSString *_Nullable sp_build_info_for_image(NSString *_Nullable existing, NSStri
 // Library/spgames), which it installs itself (sp_patch_install).
 NSArray<NSString *> *sp_games(NSArray<NSString *> *order, NSArray<NSString *> *bundled, NSArray<NSString *> *made,
                               NSSet<NSString *> *_Nullable *_Nonnull installable);
-
-// The region a game is installed in on the device: the Branch of its product's row in the device's
-// .build.info (`buildInfo`'s text: a game installed before, or game data a Mac copied), else "us", the region
-// the companion's first Config.wtf and sp_build_info_with's Tags already assume.
-NSString *sp_install_region(NSString *_Nullable buildInfo, NSString *product);
 
 // The game's .flavor.info, as Battle.net writes it in the game's folder and the companion sends it
 // (GameFiles.flavorInfo): its product, as a one-column table.
