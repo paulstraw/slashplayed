@@ -72,9 +72,19 @@ fn main() {
         cpp.file(src.join(format!("{f}.cpp")));
     }
     if windows {
-        let win = zsign.join("build/windows/vs2022/zsign/src");
-        // common_win32.h links zsign's prebuilt OpenSSL (#pragma comment(lib, "../lib/openssl/…")), which
-        // isn't there and mustn't be used: a copy without those lines, found first, takes its place.
+        // zsign's Windows helpers (iconv.cpp, getopt, common_win32.h). common_win32.h links zsign's prebuilt
+        // OpenSSL (#pragma comment(lib, "../lib/openssl/…")), which isn't there and mustn't be used, so the
+        // folder is copied and that header's OpenSSL lines dropped: MSVC looks beside the including file
+        // first (iconv.cpp is beside it), so a copy elsewhere on the include path wouldn't take its place.
+        let original = zsign.join("build/windows/vs2022/zsign/src");
+        let win = PathBuf::from(env::var("OUT_DIR").unwrap()).join("zsign-win");
+        std::fs::create_dir_all(&win).unwrap();
+        for e in std::fs::read_dir(&original).expect("zsign's Windows sources") {
+            let path = e.unwrap().path();
+            if path.is_file() {
+                std::fs::copy(&path, win.join(path.file_name().unwrap())).unwrap();
+            }
+        }
         let header = std::fs::read_to_string(win.join("common_win32.h")).expect("zsign's common_win32.h");
         let patched: String = header
             .lines()
@@ -82,10 +92,7 @@ fn main() {
             .map(|l| format!("{l}\n"))
             .collect();
         assert!(!patched.contains("lib/openssl"), "zsign's common_win32.h still names its OpenSSL");
-        let shadow = PathBuf::from(env::var("OUT_DIR").unwrap()).join("zsign-win");
-        std::fs::create_dir_all(&shadow).unwrap();
-        std::fs::write(shadow.join("common_win32.h"), patched).unwrap();
-        cpp.include(&shadow);
+        std::fs::write(win.join("common_win32.h"), patched).unwrap();
         cpp.include(&win)
             .file(win.join("iconv.cpp"))
             .define("WIN32", None)
