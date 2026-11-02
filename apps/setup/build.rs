@@ -73,6 +73,19 @@ fn main() {
     }
     if windows {
         let win = zsign.join("build/windows/vs2022/zsign/src");
+        // common_win32.h links zsign's prebuilt OpenSSL (#pragma comment(lib, "../lib/openssl/…")), which
+        // isn't there and mustn't be used: a copy without those lines, found first, takes its place.
+        let header = std::fs::read_to_string(win.join("common_win32.h")).expect("zsign's common_win32.h");
+        let patched: String = header
+            .lines()
+            .filter(|l| !(l.contains("#pragma comment(lib") && l.contains("openssl")))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        assert!(!patched.contains("lib/openssl"), "zsign's common_win32.h still names its OpenSSL");
+        let shadow = PathBuf::from(env::var("OUT_DIR").unwrap()).join("zsign-win");
+        std::fs::create_dir_all(&shadow).unwrap();
+        std::fs::write(shadow.join("common_win32.h"), patched).unwrap();
+        cpp.include(&shadow);
         cpp.include(&win)
             .file(win.join("iconv.cpp"))
             .define("WIN32", None)
