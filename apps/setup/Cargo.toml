@@ -1,0 +1,67 @@
+# slashplayed-setup: the host tool that sets up Slashplayed on an iPad or iPhone from Windows, Linux, or a
+# Mac without Xcode (docs/setup-without-a-mac.md; how it works: docs/architecture.md, "The host tool").
+# Built with the Rust that rust-toolchain.toml pins, and --locked: Cargo.lock is committed. build.rs
+# compiles zsign (scripts/build-zsign.sh source, with scripts/zsign.patch) into it.
+[package]
+name = "slashplayed-setup"
+version = "1.3.0"
+edition = "2024"
+publish = false
+license = "MIT"
+build = "build.rs"
+
+# Its own workspace: nothing above it is a Cargo project, and cargo shouldn't go looking.
+[workspace]
+
+[dependencies]
+# Vendored at the spike's pinned commit (vendor/isideload/VENDORED.md), with its LGPL signer behind a
+# feature this crate leaves off: only what the build needs (install: lib.rs names idevice's error type
+# whatever is enabled; tokio-mt: anisette's provisioning websocket). keyring-storage off: nothing of the
+# login is stored.
+isideload = { path = "vendor/isideload", default-features = false, features = ["install", "tokio-mt"] }
+# usbmuxd, lockdown and its pairing, installation_proxy over AFC, house_arrest, amfi, and the RemotePairing
+# record. Patched below to the repo's pinned idevice (scripts/build-idevice.sh pins the same commit).
+idevice = { version = "0.1.68", default-features = false, features = [
+  "ring", "usbmuxd", "pair", "afc", "house_arrest", "installation_proxy", "amfi", "remote_pairing",
+] }
+tokio = { version = "1.49", features = ["rt-multi-thread", "macros", "fs"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+reqwest = { version = "0.13.2", default-features = false, features = ["rustls-no-provider", "http2"] }
+plist = "1.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rsa = "0.9.10"
+rcgen = { version = "0.14.7", default-features = false, features = ["ring", "pem"] }
+x509-cert = "0.2.5"
+p12-keystore = { version = "0.3.0-rc4", package = "isideload-p12-keystore" }
+sha2 = "0.11.0"
+sha1 = "0.11.0"
+hex = "0.4.3"
+rand = "0.8.5"
+http = "1.4"
+rootcause = "0.12.1"
+rpassword = "7.4"
+zeroize = "1.8"
+zip = { version = "8.3", default-features = false, features = ["deflate"] }
+# The development certificate's key between runs (docs: "The signing key"), in the OS's own store:
+# Keychain, Credential Manager, or the Secret Service over D-Bus (zbus, pure Rust: no libdbus to link).
+keyring = { version = "3.6.3", default-features = false, features = [
+  "apple-native", "windows-native", "async-secret-service", "tokio", "crypto-rust",
+] }
+
+[build-dependencies]
+cc = "1.2"
+# zsign's OpenSSL, built from source and linked statically: openssl-src's 3.5 line, the release
+# scripts/build-zsign.sh pins for the device (docs/architecture.md, "The host tool").
+openssl-src = "=300.5.5"
+
+[dev-dependencies]
+tempfile = "3"
+
+[patch.crates-io]
+idevice = { git = "https://github.com/jkcoxson/idevice", rev = "d32c8189c51c2789496b0768039419c3705498c3" }
+
+[profile.release]
+debug = false
+strip = true
+lto = "thin"

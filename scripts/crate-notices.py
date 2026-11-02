@@ -2,7 +2,13 @@
 """The license texts of every Rust crate a static library links, from the pinned source.
 
     scripts/crate-notices.py --toolchain <ver> --manifest-dir <crate> --features "<f...>" \
-        --target <triple> [--target <triple>...] --title <text> --out <notices.txt>
+        --target <triple> [--target <triple>...] --title <text> --out <notices.txt> \
+        [--own <crate>] [--deny-copyleft]
+
+--own names the crate being built when it's this repository's own (apps/setup's slashplayed-setup): it's
+MIT under the repository's LICENSE, so it's listed without a text of its own. --deny-copyleft fails when a
+linked crate can only be had under a GPL-family license (GPL, LGPL, AGPL): the host tool links statically,
+so one would bind the whole binary (apps/setup/vendor/isideload/VENDORED.md says why its signer is left out).
 
 scripts/build-idevice.sh runs it for each platform after the build, with the same toolchain, crate,
 features, and targets as the build, so the list is what cargo actually linked: `cargo tree` with normal
@@ -62,6 +68,12 @@ def license_files(directory):
     return found
 
 
+def copyleft_only(spdx):
+    """Whether every alternative of an SPDX expression (or the old "A/B" form) is GPL-family."""
+    alternatives = [x for x in re.split(r"\s+OR\s+|/", spdx.replace("(", " ").replace(")", " ")) if x.strip()]
+    return bool(alternatives) and all(re.search(r"\b(A|L)?GPL", x) for x in alternatives)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--toolchain", required=True)
@@ -70,6 +82,8 @@ def main():
     ap.add_argument("--target", action="append", required=True)
     ap.add_argument("--title", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--own")
+    ap.add_argument("--deny-copyleft", action="store_true")
     a = ap.parse_args()
     flags = ["--locked", "--no-default-features", "--features", a.features]
 
@@ -92,11 +106,16 @@ def main():
     for p in meta["packages"]:
         packages.setdefault((p["name"], p["version"]), p)
 
-    crates, texts, missing = [], {}, []
+    crates, texts, missing, copyleft = [], {}, [], []
     for name, version in sorted(linked):
         p = packages.get((name, version))
         if p is None:
             die(f"cargo tree lists {name} {version}, which cargo metadata doesn't have")
+        if a.deny_copyleft and copyleft_only(p.get("license") or ""):
+            copyleft.append(f"{name} {version} ({p.get('license')})")
+        if a.own and name == a.own and p["source"] is None:
+            crates.append((f"{name} {version}", "MIT (this repository's LICENSE)", "https://github.com/paulstraw/slashplayed"))
+            continue
         directory = os.path.dirname(p["manifest_path"])
         files = license_files(directory)
         if p.get("license_file"):
@@ -107,6 +126,15 @@ def main():
             while not files and os.path.commonpath([d, root]) == root:
                 files = license_files(d)
                 if d == root:
+                    break
+                d = os.path.dirname(d)
+        # So is one from a git checkout (idevice, patched in by commit for apps/setup): up to the checkout's
+        # root, which cargo marks with .cargo-ok.
+        elif p["source"].startswith("git+"):
+            d = directory
+            while not files:
+                files = license_files(d)
+                if os.path.exists(os.path.join(d, ".cargo-ok")) or d == os.path.dirname(d):
                     break
                 d = os.path.dirname(d)
         extra = os.path.join(EXTRA, f"{name}-{version}.txt")
@@ -131,6 +159,8 @@ def main():
         crates.append((label, spdx, repo))
         for body in bodies:
             texts.setdefault(hashlib.sha256(body.encode()).hexdigest(), (body, []))[1].append(f"{name} {version}")
+    if copyleft:
+        die("these linked crates are available only under a GPL-family license: " + ", ".join(copyleft))
     if missing:
         die("no license text in the source of: " + ", ".join(missing) +
             "\n  (a shipped crate needs one: find it in the crate's repository, or if it has none, write\n"

@@ -4,7 +4,10 @@
 # OpenSSL it needs (Apache-2.0), from source at a pinned release. Never a prebuilt archive.
 #
 #   scripts/build-zsign.sh [ios|xros|macos]...     (default: all three)
+#   scripts/build-zsign.sh source                  zsign's patched source only, nothing built
 #
+# source is the host tool's (apps/setup/build.rs compiles zsign itself, on Windows and Linux too, so this
+# needs only git: no xcrun, no perl, no OpenSSL clone).
 # ios and xros are the launcher's (apps/client/build-launcher.sh links them); macos is the companion's unit
 # tests' (they sign a fixture of our own with spsign.m on the Mac), arm64 only, like the test run.
 #
@@ -41,8 +44,10 @@ PLATFORMS=${*:-ios xros macos}
 
 die() { echo "build-zsign: $*" >&2; exit 1; }
 command -v git >/dev/null || die "git isn't installed"
-command -v xcrun >/dev/null || die "xcrun isn't available: install Xcode and select it (xcode-select -p)"
-command -v perl >/dev/null || die "perl isn't installed (OpenSSL's Configure needs it)"
+if [ "$PLATFORMS" != source ]; then
+  command -v xcrun >/dev/null || die "xcrun isn't available: install Xcode and select it (xcode-select -p)"
+  command -v perl >/dev/null || die "perl isn't installed (OpenSSL's Configure needs it)"
+fi
 
 # Source at exactly the pinned commit: a moved tag is an error, not a silent update.
 mkdir -p "$OUT/src"
@@ -54,6 +59,10 @@ git -C "$OUT/src/zsign" cat-file -e "$ZSIGN_COMMIT^{commit}" 2>/dev/null ||
 git -C "$OUT/src/zsign" -c advice.detachedHead=false checkout --quiet --force "$ZSIGN_COMMIT" ||
   die "$ZSIGN_REPO has no commit $ZSIGN_COMMIT"
 git -C "$OUT/src/zsign" apply "$PATCH" || die "zsign.patch doesn't apply at $ZSIGN_COMMIT"
+if [ "$PLATFORMS" = source ]; then
+  echo "zsign $ZSIGN_COMMIT, patched, in ${OUT#"$ROOT"/}/src/zsign" >&2
+  exit 0
+fi
 
 if [ ! -d "$OUT/src/openssl/.git" ]; then
   git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$OPENSSL_TAG" "$OPENSSL_REPO" "$OUT/src/openssl" ||

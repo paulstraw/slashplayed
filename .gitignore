@@ -10,3 +10,4 @@ apps/companion/Generated/
 config/local.env
 build/
 .claude
+apps/setup/target/

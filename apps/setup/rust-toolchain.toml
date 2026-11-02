@@ -1,0 +1,5 @@
+# The Rust the repo pins everywhere (scripts/build-idevice.sh, research/isideload/build.sh); rustup picks it
+# up for any cargo run in this folder, so CI and a volunteer's build use the same compiler.
+[toolchain]
+channel = "1.99.0"
+profile = "minimal"

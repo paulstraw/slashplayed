@@ -1,0 +1,122 @@
+diff -ruN a/isideload/Cargo.toml b/isideload/Cargo.toml
+--- a/isideload/Cargo.toml
++++ b/isideload/Cargo.toml
+@@ -8,10 +8,12 @@
+ repository = "https://github.com/nab138/isideload"
+ documentation = "https://docs.rs/isideload"
+ keywords = ["ios", "sideload"]
+-readme = "../README.md"
+ 
+ [features]
+-default = ["install", "keyring-storage", "tokio-mt"]
++# Slashplayed: sideload is the high-level Sideloader and its signer, apple-codesign-quick (LGPL-2.1-or-later),
++# made optional so a binary that only uses the auth and developer-services API links no LGPL code.
++default = ["install", "keyring-storage", "tokio-mt", "sideload"]
++sideload = ["dep:apple-codesign-quick"]
+ # default = ["wasm"]
+ tokio-mt = ["tokio/rt-multi-thread", "dep:tokio-tungstenite"]
+ install = ["dep:idevice"]
+@@ -62,7 +64,7 @@
+ ws_stream_wasm = { version = "0.7.5", optional = true}
+ web-time = "1"
+ x509-cert = "0.2.5"
+-apple-codesign-quick = "0.1.0"
++apple-codesign-quick = { version = "0.1.0", optional = true }
+ 
+ 
+ # There is a bug in rustls-platform-verifier that causes an invalid certificate error with apple's root cert.
+diff -ruN a/isideload/src/auth/grandslam.rs b/isideload/src/auth/grandslam.rs
+--- a/isideload/src/auth/grandslam.rs
++++ b/isideload/src/auth/grandslam.rs
+@@ -14,7 +14,7 @@
+ use tracing::warn;
+ 
+ #[cfg(not(feature = "wasm"))]
+-use crate::sideload::cert_identity::APPLE_ROOT;
++use crate::certs::APPLE_ROOT;
+ use crate::{SideloadError, anisette::AnisetteClientInfo, util::plist::PlistDataExtract};
+ 
+ const URL_BAG: &str = "https://gsa.apple.com/grandslam/GsService2/lookup";
+diff -ruN a/isideload/src/certs.rs b/isideload/src/certs.rs
+--- a/isideload/src/certs.rs
++++ b/isideload/src/certs.rs
+@@ -0,0 +1,4 @@
++// Slashplayed: Apple's root and WWDR G3 certificates, moved here from sideload::cert_identity (which still
++// re-exports them) so the GrandSlam client, which pins APPLE_ROOT, builds without the sideload feature.
++pub const APPLE_ROOT: &[u8] = include_bytes!("assets/apple_root.cer");
++pub const APPLE_WWDR_G3_CERTIFICATE_DER: &[u8] = include_bytes!("assets/AppleWWDRCAG3.cer");
+diff -ruN a/isideload/src/lib.rs b/isideload/src/lib.rs
+--- a/isideload/src/lib.rs
++++ b/isideload/src/lib.rs
+@@ -6,7 +6,9 @@
+ 
+ pub mod anisette;
+ pub mod auth;
++pub mod certs;
+ pub mod dev;
++#[cfg(feature = "sideload")]
+ pub mod sideload;
+ pub mod util;
+ 
+diff -ruN a/isideload/src/sideload/cert_identity.rs b/isideload/src/sideload/cert_identity.rs
+--- a/isideload/src/sideload/cert_identity.rs
++++ b/isideload/src/sideload/cert_identity.rs
+@@ -27,8 +27,7 @@
+     util::{callbacks::MaxCertsCallback, storage::SideloadingStorage},
+ };
+ 
+-pub const APPLE_ROOT: &[u8] = include_bytes!("../assets/apple_root.cer");
+-pub const APPLE_WWDR_G3_CERTIFICATE_DER: &[u8] = include_bytes!("../assets/AppleWWDRCAG3.cer");
++pub use crate::certs::{APPLE_ROOT, APPLE_WWDR_G3_CERTIFICATE_DER};
+ 
+ pub struct CertificateIdentity {
+     pub machine_id: String,
+diff -ruN a/isideload/src/util/callbacks.rs b/isideload/src/util/callbacks.rs
+--- a/isideload/src/util/callbacks.rs
++++ b/isideload/src/util/callbacks.rs
+@@ -1,9 +1,10 @@
+ use std::pin::Pin;
+ 
++#[cfg(feature = "sideload")]
++use crate::sideload::{builder::ExtensionsBehavior, bundle::Bundle};
+ use crate::{
+     auth::apple_account::{TwoFactorCallbackParams, TwoFactorCallbackResponse},
+     dev::certificates::DevelopmentCertificate,
+-    sideload::{builder::ExtensionsBehavior, bundle::Bundle},
+ };
+ use rootcause::prelude::*;
+ 
+@@ -44,10 +45,12 @@
+     type Future = Fut;
+ }
+ 
++#[cfg(feature = "sideload")]
+ pub trait ExtensionsBehaviorCallback: Fn(&[Bundle]) -> Self::Future + Send + Sync {
+     type Future: Future<Output = Result<ExtensionsBehavior, Report>> + MaybeSend;
+ }
+ 
++#[cfg(feature = "sideload")]
+ impl<C, Fut> ExtensionsBehaviorCallback for C
+ where
+     C: Fn(&[Bundle]) -> Fut + Send + Sync,
+@@ -66,11 +69,11 @@
+     Pin<Box<dyn Future<Output = Result<Option<Vec<String>>, Report>> + 'static>>;
+ 
+ // annoyingly, we can't use MaybeSend here because it isn't an auto trait, so we have to do it manually
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(all(feature = "sideload", not(target_arch = "wasm32")))]
+ pub type ExtensionsBehaviorCallbackFuture =
+     Pin<Box<dyn Future<Output = Result<ExtensionsBehavior, Report>> + Send + 'static>>;
+ 
+-#[cfg(target_arch = "wasm32")]
++#[cfg(all(feature = "sideload", target_arch = "wasm32"))]
+ pub type ExtensionsBehaviorCallbackFuture =
+     Pin<Box<dyn Future<Output = Result<ExtensionsBehavior, Report>> + 'static>>;
+ 
+@@ -78,5 +81,6 @@
+ pub type MaxCertsCallbackBox =
+     Box<dyn Fn(Vec<DevelopmentCertificate>) -> MaxCertsCallbackFuture + Send + Sync + 'static>;
+ 
++#[cfg(feature = "sideload")]
+ pub type ExtensionsBehaviorCallbackBox =
+     Box<dyn Fn(&[Bundle]) -> ExtensionsBehaviorCallbackFuture + Send + Sync + 'static>;
