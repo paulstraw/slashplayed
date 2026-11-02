@@ -79,7 +79,10 @@ jobs:
           RUSTUP_SHA: ${{ matrix.rustup_sha256 }}
         run: |
           set -euo pipefail
-          init="$RUNNER_TEMP/rustup-init$([[ $RUNNER_OS == Windows ]] && echo .exe)"
+          # An if, not `[[ … ]] && echo`: under set -e a false test there ends the step.
+          ext=
+          if [[ $RUNNER_OS == Windows ]]; then ext=.exe; fi
+          init="$RUNNER_TEMP/rustup-init$ext"
           curl -fsSL -o "$init" "https://static.rust-lang.org/rustup/archive/$RUSTUP_VERSION/$RUSTUP_URL"
           echo "$RUSTUP_SHA  $init" | sha256sum -c -
           chmod +x "$init"
