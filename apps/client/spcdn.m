@@ -626,8 +626,10 @@ static NSArray<NSString *> *build_info_columns(void) {
              @"Armadillo!STRING:0", @"Last Activated!STRING:0", @"Version!STRING:0", @"KeyRing!HEX:16", @"Product!STRING:0"];
 }
 
-NSString *sp_build_info_with(NSString *existing, NSString *product, NSString *region,
-                             NSDictionary<NSString *, NSString *> *version, NSDictionary<NSString *, NSString *> *cdns) {
+// `existing` with `mine` as the product's row (by .build.info's column names), its Tags kept from the
+// product's row in `existing` when that has some, else mine's, else Flavor.tags' default (a US English Mac
+// install's). sp_build_info_with's and sp_build_info_for_image's layout.
+static NSString *build_info_merged(NSString *existing, NSString *product, NSDictionary<NSString *, NSString *> *given) {
     NSMutableArray<NSString *> *names = [NSMutableArray array];
     for (NSString *c in build_info_columns()) [names addObject:[c componentsSeparatedByString:@"!"][0]];
     NSString * (^line)(NSDictionary *) = ^NSString *(NSDictionary *row) {
@@ -652,14 +654,11 @@ NSString *sp_build_info_with(NSString *existing, NSString *product, NSString *re
     NSString *tags = nil;
     for (NSDictionary *row in rows)
         if ([row[@"Product"] isEqual:product] && [row[@"Tags"] length]) tags = row[@"Tags"];
-    // BlizzardCDN.buildInfoLine. Without a row to take the Tags from, Flavor.tags' default (a US English
-    // Mac install's).
-    NSString *mine = line(@{
-        @"Branch": region, @"Active": @"1", @"Build Key": version[@"BuildConfig"] ?: @"", @"CDN Key": version[@"CDNConfig"] ?: @"",
-        @"CDN Path": cdns[@"Path"] ?: @"", @"CDN Hosts": cdns[@"Hosts"] ?: @"", @"CDN Servers": cdns[@"Servers"] ?: @"",
-        @"Tags": tags ?: @"OSX x86_64 US? acct-USA? geoip-US? enUS speech?:OSX x86_64 US? acct-USA? geoip-US? enUS text?",
-        @"Version": version[@"VersionsName"] ?: @"", @"KeyRing": version[@"KeyRing"] ?: @"", @"Product": product,
-    });
+    NSMutableDictionary *withTags = [given mutableCopy];
+    withTags[@"Tags"] = tags ?: (given[@"Tags"].length ? given[@"Tags"]
+                                                     : @"OSX x86_64 US? acct-USA? geoip-US? enUS speech?:OSX x86_64 US? acct-USA? geoip-US? enUS text?");
+    withTags[@"Product"] = product;
+    NSString *mine = line(withTags);
     NSMutableString *out = [NSMutableString stringWithFormat:@"%@\n", [build_info_columns() componentsJoinedByString:@"|"]];
     BOOL placed = NO;
     for (NSDictionary *row in rows) {
@@ -671,6 +670,28 @@ NSString *sp_build_info_with(NSString *existing, NSString *product, NSString *re
     }
     if (!placed) [out appendFormat:@"%@\n", mine];
     return out;
+}
+
+NSString *sp_build_info_with(NSString *existing, NSString *product, NSString *region,
+                             NSDictionary<NSString *, NSString *> *version, NSDictionary<NSString *, NSString *> *cdns) {
+    // BlizzardCDN.buildInfoLine.
+    return build_info_merged(existing, product, @{
+        @"Branch": region, @"Active": @"1", @"Build Key": version[@"BuildConfig"] ?: @"", @"CDN Key": version[@"CDNConfig"] ?: @"",
+        @"CDN Path": cdns[@"Path"] ?: @"", @"CDN Hosts": cdns[@"Hosts"] ?: @"", @"CDN Servers": cdns[@"Servers"] ?: @"",
+        @"Version": version[@"VersionsName"] ?: @"", @"KeyRing": version[@"KeyRing"] ?: @"",
+    });
+}
+
+NSString *sp_build_info_for_image(NSString *existing, NSString *product, NSString *kept, NSString *stamp, NSString **why) {
+    *why = nil;
+    NSString *build = sp_table_row(stamp, @"Product", product)[@"Build Key"];
+    if (!build.length || [sp_table_row(existing, @"Product", product)[@"Build Key"] isEqual:build]) return nil;
+    NSDictionary<NSString *, NSString *> *row = sp_table_row(kept, @"Product", product);
+    if (![row[@"Build Key"] isEqual:build] || !row[@"CDN Key"].length) {
+        *why = row ? @"the row kept beside the image is another build's" : @"no row is kept beside the image";
+        return nil;
+    }
+    return build_info_merged(existing, product, row);
 }
 
 // ---- installing a game on the device (launcher.m, sppatch.m)

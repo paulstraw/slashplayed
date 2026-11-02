@@ -11,6 +11,10 @@ All notable changes to Slashplayed are documented here. The format is based on
 - With a free Apple ID (a Personal Team), a game installed or updated on the device itself (including
   with Update Games on This Device turned on in the companion) now starts. Before, the device refused the
   game it had just signed, so it couldn't install or update games on its own.
+- A game installed or updated on the device itself no longer stops with error #134 ("Invalid schema …
+  for Table StartupFiles") a few minutes after it starts. This happened when the start that installed or
+  updated it ended before the game opened (at the sign-in, say), or when the game's data was removed
+  afterwards. The device now records which version of the game it has every time it starts one.
 
 ## [1.3.0] - 2026-11-01
 

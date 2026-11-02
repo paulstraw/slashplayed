@@ -521,6 +521,49 @@ final class BlizzardCDNTests: XCTestCase {
         XCTAssertEqual(device(reordered), mac)
     }
 
+    /// The row an image made on the device keeps beside it (update's sp_build_info_with with no existing
+    /// rows) goes into the game data's .build.info on any launch whose row isn't the image's build: what
+    /// the update itself would have written, with the device's Tags and other products' rows kept (#36: a
+    /// launch that stopped before the client loaded, or game data emptied under the image).
+    func testLauncherPortWritesAnImagesKeptRow() throws {
+        func version(_ n: String) -> BlizzardCDN.Version {
+            BlizzardCDN.Version(region: "us", buildConfig: String(repeating: n, count: 32), cdnConfig: String(repeating: "c", count: 32),
+                                keyRing: "", buildID: "1", versionsName: "1.15.9.\(n == "a" ? "69722" : "70003")", productConfig: "")
+        }
+        let cdns = BlizzardCDN.CDNs(path: "tpr/wow", hosts: "h1.example", servers: "http://h1.example/?x=1")
+        let cdnsRow = ["Name": "us", "Path": cdns.path, "Hosts": cdns.hosts, "Servers": cdns.servers]
+        let new = version("b")
+        let versionRow = ["Region": "us", "BuildConfig": new.buildConfig, "CDNConfig": new.cdnConfig, "KeyRing": new.keyRing,
+                          "VersionsName": new.versionsName]
+        let kept = sp_build_info_with(nil, "wow_classic_era", "us", versionRow, cdnsRow)
+        let stamp = "Product!STRING:0|Branch!STRING:0|Build Key!HEX:16|Version!STRING:0\n"
+            + "wow_classic_era|us|\(new.buildConfig)|\(new.versionsName)\n"
+        func heal(_ existing: String?, kept: String? = kept, stamp: String = stamp) -> (String?, String?) {
+            var why: NSString?
+            let text = sp_build_info_for_image(existing, "wow_classic_era", kept, stamp, &why)
+            return (text, why as String?)
+        }
+        // No .build.info at all (an install into an empty container): the row the update would have written.
+        XCTAssertEqual(heal(nil).0, sp_build_info_with(nil, "wow_classic_era", "us", versionRow, cdnsRow))
+        XCTAssertNil(heal(nil).1)
+        // Another build's row, another product beside it, and the device's own Tags: as the update writes it.
+        let tags = "OSX arm64 EU? enGB speech?:OSX arm64 EU? enGB text?"
+        let retail = BlizzardCDN.buildInfoLine(product: "wow", version: version("e"), cdns: cdns, tags: tags)
+        let old = GameStore.buildInfoText([retail, BlizzardCDN.buildInfoLine(product: "wow_classic_era", version: version("a"),
+                                                                             cdns: cdns, tags: tags)])
+        XCTAssertEqual(heal(old).0, sp_build_info_with(old, "wow_classic_era", "us", versionRow, cdnsRow))
+        // Already the image's build: nothing to write, nothing to say.
+        let current = try XCTUnwrap(heal(old).0)
+        XCTAssertNil(heal(current).0)
+        XCTAssertNil(heal(current).1)
+        // Nothing kept, or another build's row kept: nothing written, and the log says why.
+        XCTAssertNil(heal(nil, kept: nil).0)
+        XCTAssertNotNil(heal(nil, kept: nil).1)
+        let other = sp_build_info_with(nil, "wow_classic_era", "us", ["BuildConfig": version("a").buildConfig, "CDNConfig": "c"], cdnsRow)
+        XCTAssertNil(heal(nil, kept: other).0)
+        XCTAssertNotNil(heal(nil, kept: other).1)
+    }
+
     func testLauncherPortComparesVersionsAsTheCompanion() {
         let pairs = [("1.15.9.70003", "1.15.9.69722"), ("1.15.9.69722", "1.15.9.70003"), ("1.15.9", "1.15.9.0"), ("1.15.10.1", "1.15.9.9"),
                      ("12.0.1.1", "1.15.9.70003"), ("1.15.9.70003", "1.15.9.70003"), ("1.15.x", "1.15.9"), ("", "1.0"), ("2", "1.9")]

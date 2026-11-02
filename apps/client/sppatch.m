@@ -358,11 +358,16 @@ static verdict check_new_build(NSString *flavor, NSString *image, NSString *prod
 // gives), then the image assembled (spassemble.m) and signed with the device's identity (spsign.m) into
 // Library/spgames/wow-<flavor>, its stamp beside it last (spgames/spbuild-<flavor>, the slice's stamp's
 // layout), so a stamp is only ever beside a whole image of its build. Configs first: they're named by their
-// content, so they're harmless to the old build, and a failure leaves no image. The new .build.info
-// (*buildInfo) isn't written here: the launcher writes it once the image has loaded, so an image dlopen
-// refuses leaves the old build's row beside the old image. The new image's path, or nil and *why.
+// content, so they're harmless to the old build, and a failure leaves no image. The game data's .build.info
+// row for the new build isn't written here: it's kept beside the image (spgames/spbuildinfo-<flavor>, before
+// the stamp), and the launcher writes it into Documents/.build.info once the image has loaded, on that launch
+// and every later one whose row isn't the image's build (sp_build_info_for_image). So an image dlopen refuses
+// leaves the old build's row beside the old image, and a launch that stops before the client loads (at the
+// sign-in, say, or the JIT helper), or game data emptied under the image, doesn't leave the client streaming
+// with no row for its build (#134, "Invalid schema … StartupFiles", issue #36). The new image's path, or nil
+// and *why.
 static NSString *update(NSString *flavor, NSString *product, NSString *region, NSDictionary<NSString *, NSString *> *row,
-                        void (^pump)(double), NSString **buildInfo, NSString **why) {
+                        void (^pump)(double), NSString **why) {
     NSString *home = NSHomeDirectory(), *name = [@"wow-" stringByAppendingString:flavor];
     NSData *slice = [NSData dataWithContentsOfFile:[home stringByAppendingPathComponent:
                                                     [NSString stringWithFormat:@"Library/spslice/%@.arm64", flavor]]
@@ -427,8 +432,15 @@ static NSString *update(NSString *flavor, NSString *product, NSString *region, N
         return nil;
     }
     say_update([NSString stringWithFormat:@"signed in %.3f s", now() - t]);
-    // Into place: an older update's stamp goes first, and this one's comes last.
+    // Into place: an older update's stamp goes first, and this one's comes last, after the row it keeps.
     [NSFileManager.defaultManager removeItemAtPath:stamp error:nil];
+    NSString *keptRow = [dir stringByAppendingPathComponent:[@"spbuildinfo-" stringByAppendingString:flavor]];
+    if (![sp_build_info_with(nil, product, region, row, cdnsRow) writeToFile:keptRow atomically:YES encoding:NSUTF8StringEncoding
+                                                                       error:nil]) {
+        [NSFileManager.defaultManager removeItemAtPath:signing error:nil];
+        *why = @"its .build.info row couldn't be kept";
+        return nil;
+    }
     if (rename(signing.fileSystemRepresentation, dest.fileSystemRepresentation)) {
         [NSFileManager.defaultManager removeItemAtPath:signing error:nil];
         *why = [NSString stringWithFormat:@"its image couldn't be put in place (errno %d)", errno];
@@ -439,9 +451,6 @@ static NSString *update(NSString *flavor, NSString *product, NSString *region, N
         *why = @"its stamp couldn't be written";
         return nil;
     }
-    NSString *existing = [NSString stringWithContentsOfFile:[home stringByAppendingPathComponent:@"Documents/.build.info"]
-                                                   encoding:NSUTF8StringEncoding error:nil];
-    *buildInfo = sp_build_info_with(existing, product, region, row, cdnsRow);
     return dest;
 }
 
@@ -521,13 +530,11 @@ static NSDictionary<NSString *, NSString *> *current_row(NSString *product, NSSt
 // screen says each step; there's no Play Anyway, as there's nothing else to play. A signing identity is checked
 // first, before anything is downloaded: without one it says what's missing (no_identity).
 //
-// Returns the new image (Library/spgames/wow-<flavor>), with *buildInfo the .build.info text the launcher
-// writes once it has loaded, as after Update. nil and *problem when it can't: with `back`, the screen has
+// Returns the new image (Library/spgames/wow-<flavor>), its .build.info row kept beside it for the launcher
+// to write once it has loaded, as after Update. nil and *problem when it can't: with `back`, the screen has
 // said why and waited for Back (the launcher shows the start screen again); without (a launch that named the
 // game), it's dismissed and the launcher shows *problem. install: lines, versions only.
-NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (^*pump)(double), NSString **buildInfo,
-                           NSString **problem) {
-    *buildInfo = nil;
+NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (^*pump)(double), NSString **problem) {
     *problem = nil;
     NSString *product = sp_flavor_entry(flavor)[@"product"], *game = sp_flavor_name(flavor), *noun = sp_device_noun();
     say([NSString stringWithFormat:@"install: %@ has no image on this %@: installing it in %@", product ?: flavor, noun, region]);
@@ -586,7 +593,7 @@ NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (
     }
     [screen setHeading:heading body:[NSString stringWithFormat:@"Making it and signing it on this %@.", noun] note:nil buttons:@[]];
     double t = now();
-    NSString *image = update(flavor, product, region, row, ui, buildInfo, &why);
+    NSString *image = update(flavor, product, region, row, ui, &why);
     if (!image) {
         say([NSString stringWithFormat:@"install: failed after %.1f s: %@", now() - t, why]);
         *problem = failed(cant, @"Try again later.", sentence(why));
@@ -620,14 +627,13 @@ NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (
 // couldn't be asked and it's a later version than the bundled one; otherwise the bundled one. A newer build
 // out than the one that would load shows the screen. When the new build binds and the device has a signing
 // identity (sp_identity_usable), the screen offers Update: the new image is made and signed here (update)
-// and is the one returned, with *buildInfo the .build.info text the launcher writes once it has loaded.
+// and is the one returned, its .build.info row kept beside it for the launcher to write once it has loaded.
 // Without an identity, 6.1's screen: the companion brings the new version.
 //
 // One line of log for the outcome, one for the message shown, and one for the image chosen (update: image:),
 // versions only. Sets *pump to UIKit's when it shows its screen.
 NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSString *, NSString *> *bundledStamp, NSString *library,
-                         NSDictionary<NSString *, NSString *> *libraryStamp, void (^*pump)(double), NSString **buildInfo) {
-    *buildInfo = nil;
+                         NSDictionary<NSString *, NSString *> *libraryStamp, void (^*pump)(double)) {
     // What's compared and what Play Anyway plays: the bundled image, or with none the one made here.
     NSString *base = bundled ?: library;
     NSDictionary<NSString *, NSString *> *stamp = bundled ? bundledStamp : libraryStamp;
@@ -732,7 +738,7 @@ NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSStr
                       note:nil
                    buttons:@[]];
         t = now();
-        NSString *image = update(flavor, product, region, row, *pump, buildInfo, &why);
+        NSString *image = update(flavor, product, region, row, *pump, &why);
         if (image) {
             say_update([NSString stringWithFormat:@"%@ %@ is Library/spgames/%@, %.1f s in all", product, version,
                                            image.lastPathComponent, now() - t]);

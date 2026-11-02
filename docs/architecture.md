@@ -383,7 +383,12 @@ still ships images, and an app with images behaves as before.
   shows why with **Back**, which returns to the start screen; a launch that named the game
   (`SP_LAUNCH_FLAVOR`) stops on the reason instead. The log has `patch: install: …` lines, versions only.
 - **After it.** The launcher loads the new image and writes `.build.info` once it has loaded, as after
-  Update; the client then sets up its empty store and streams. Later starts treat the `Library/spgames`
+  Update; the client then sets up its empty store and streams. The row comes from the copy Update keeps
+  beside the image (`Library/spgames/spbuildinfo-<flavor>`), and the launcher writes it on every start
+  of a device-made image whose `.build.info` row isn't that build's (`sp_build_info_for_image`), not
+  just the start that made it. Without that, a start that ended before the client loaded (at the
+  sign-in, say), or game data emptied under the image, left the client streaming with no row for its
+  build, and it stopped with #134, "Invalid schema … for Table StartupFiles" (issue #36). Later starts treat the `Library/spgames`
   image as the game's only image: the patch check compares it, Update replaces it, and Play Anyway
   plays it. With no bundled image to fall back on, an image `dlopen` refuses is deleted and the launch
   stops on the reason; the next start offers Install again.
@@ -410,8 +415,8 @@ What the device holds for it, all in the app's container:
 | What it holds | `Library/spidentity.txt` (`present <day>`, `expired`, `none`, `forgotten`) | the launcher, every start | rewritten every start |
 | B's profile | installed device-wide, and a copy in `Library/spprofile.mobileprovision` | the companion | it expires (an expired one lists nothing) |
 | A newer build's slice | `Library/spslice/<flavor>.arm64`, `spbuild-<flavor>` | the patch check | the bundled image catches up |
-| The updated image | `Library/spgames/wow-<flavor>`, `spbuild-<flavor>` | Update | the bundled image catches up, or `dlopen` refuses it |
-| The build's row and configs | `Documents/.build.info`, `Documents/Data/config/` | Update, after the load | the companion writes a later build's |
+| The updated image | `Library/spgames/wow-<flavor>`, `spbuild-<flavor>`, and its `.build.info` row, `spbuildinfo-<flavor>` | Update | the bundled image catches up, or `dlopen` refuses it |
+| The build's row and configs | `Documents/.build.info`, `Documents/Data/config/` | Update, after the load, and every start of that image after, when the row isn't its build's | the companion writes a later build's |
 
 Forgetting the identity leaves the images: one already made keeps loading while a profile lists its
 signer, and the next newer build shows "Update on your Mac" again, with no Update button. Deleting the

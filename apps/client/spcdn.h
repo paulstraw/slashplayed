@@ -68,6 +68,16 @@ NSString *sp_patch_needs_update_body(NSString *news);
 NSString *sp_build_info_with(NSString *_Nullable existing, NSString *product, NSString *region,
                              NSDictionary<NSString *, NSString *> *version, NSDictionary<NSString *, NSString *> *cdns);
 
+// The device's .build.info once `product`'s row is the one for the build an image made on the device is
+// (Library/spgames/wow-<flavor>), so the client streams that build's data: `kept` is the .build.info
+// text update wrote beside the image when it made it (spgames/spbuildinfo-<flavor>, sp_build_info_with's
+// for its build with no existing rows), `stamp` the image's stamp. Laid out as sp_build_info_with lays it,
+// the Tags kept from `existing`'s row. nil when `existing`'s row is already that build's (*why nil), or
+// when it isn't and `kept` has no row for that build to write (*why says so, for the log: an image made
+// before the row was kept beside it).
+NSString *_Nullable sp_build_info_for_image(NSString *_Nullable existing, NSString *product, NSString *_Nullable kept,
+                                            NSString *_Nullable stamp, NSString *_Nullable *_Nonnull why);
+
 // ---- Installing a game on the device, with no image in the app (launcher.m, sppatch.m)
 
 // The games the start screen offers, in flavors.plist's order (`order`, its ids; any other last, by name).

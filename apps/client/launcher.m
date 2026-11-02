@@ -49,7 +49,7 @@
 #include <string.h>
 #include <CommonCrypto/CommonDigest.h>
 #import "spassemble.h"
-#import "spcdn.h"  // sp_table_row
+#import "spcdn.h"  // sp_table_row, sp_build_info_for_image
 #import "spsign.h"
 
 static void say(NSString *s) {
@@ -65,8 +65,8 @@ BOOL sp_login_write(NSString *flavor, NSMutableData *bytes);
 UIFont *sp_face(CGFloat size, UIFontTextStyle style, CGFloat maximum, UITraitCollection *traits);  // spstart.m
 NSString *sp_pick_flavor(NSArray<NSString *> *flavors, NSSet<NSString *> *installable, void (^*pump)(double));  // spstart.m
 NSString *sp_patch_check(NSString *flavor, NSString *bundled, NSDictionary<NSString *, NSString *> *bundledStamp, NSString *library,
-                         NSDictionary<NSString *, NSString *> *libraryStamp, void (^*pump)(double), NSString **buildInfo);  // sppatch.m
-NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (^*pump)(double), NSString **buildInfo,
+                         NSDictionary<NSString *, NSString *> *libraryStamp, void (^*pump)(double));  // sppatch.m
+NSString *sp_patch_install(NSString *flavor, NSString *region, BOOL back, void (^*pump)(double),
                            NSString **problem);
 void sp_patch_refused(NSString *flavor, NSString *version, NSString *bundledVersion, void (^*pump)(double));
 
@@ -371,6 +371,30 @@ static NSDictionary<NSString *, NSString *> *updated_build(NSString *image, NSSt
     return stamp_beside(image, flavor);
 }
 
+// The game data's .build.info row for an image made on the device (Library/spgames/wow-<flavor>), once it
+// has loaded and before the client reads it: the row update kept beside it (spgames/spbuildinfo-<flavor>,
+// sppatch.m) when Documents/.build.info's isn't that build's. On the launch that made it, and on any later
+// one: one that made it may have stopped before the client loaded, and the game data may have been emptied
+// under it. Without the row, an install in an empty container streams with nothing naming its build, and the
+// client stops with #134, "Invalid schema … for Table StartupFiles" (issue #36). The bundled image's row is
+// the companion's, as it copied the game data. Versions only.
+static void build_info_for_image(NSString *flavor, NSString *image, NSDictionary<NSString *, NSString *> *stamp) {
+    NSString *product = flavor_entry(flavor)[@"product"], *dir = image.stringByDeletingLastPathComponent;
+    NSString *info = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/.build.info"], *why = nil;
+    NSString *text = sp_build_info_for_image(
+        [NSString stringWithContentsOfFile:info encoding:NSUTF8StringEncoding error:nil], product,
+        [NSString stringWithContentsOfFile:[dir stringByAppendingPathComponent:[@"spbuildinfo-" stringByAppendingString:flavor]]
+                                  encoding:NSUTF8StringEncoding error:nil],
+        [NSString stringWithContentsOfFile:[dir stringByAppendingPathComponent:[@"spbuild-" stringByAppendingString:flavor]]
+                                  encoding:NSUTF8StringEncoding error:nil], &why);
+    if (why) say([NSString stringWithFormat:@"update: .build.info's %@ row isn't the image's %@, and %@: the game may not start",
+                                            product, stamp[@"Version"], why]);
+    if (!text) return;
+    say([text writeToFile:info atomically:YES encoding:NSUTF8StringEncoding error:nil]
+            ? [NSString stringWithFormat:@"update: .build.info's %@ row is %@ now", product, stamp[@"Version"]]
+            : @"update: couldn't write .build.info");
+}
+
 // The bundled image catching up: the companion installs Blizzard's current build, so once the bundled image's
 // build equals or passes an update the device made (sp_update_caught_up), that update is deleted, and with it
 // a kept newer build's slice (Library/spslice/, sppatch.m) that the bundled image has caught up with too.
@@ -391,9 +415,12 @@ static void retire_caught_up(NSString *flavor, NSDictionary<NSString *, NSString
         NSString *file = [home stringByAppendingPathComponent:[dir hasSuffix:@"spgames"] ? [@"wow-" stringByAppendingString:flavor]
                                                                                        : [flavor stringByAppendingString:@".arm64"]];
         unsigned long long size = [NSFileManager.defaultManager attributesOfItemAtPath:file error:nil].fileSize;
-        // The stamp first, so a file left behind is never taken for its build.
+        // The stamp first, so a file left behind is never taken for its build; then the image's kept
+        // .build.info row (spgames only), which nothing reads without the stamp.
         [NSFileManager.defaultManager removeItemAtPath:stamp error:nil];
         [NSFileManager.defaultManager removeItemAtPath:file error:nil];
+        [NSFileManager.defaultManager removeItemAtPath:[home stringByAppendingPathComponent:[@"spbuildinfo-" stringByAppendingString:flavor]]
+                                                 error:nil];
         say([NSString stringWithFormat:@"update: retired %@ %@ %@ (%.1f MB): the bundled image is %@", dir, product, kept[@"Version"],
                                        size / 1e6, bundledStamp[@"Version"]]);
     }
@@ -641,7 +668,7 @@ int main(int argc, char **argv) {
     if (ui) pump = ui;
 #endif
     NSString *saved = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/splaunch-flavor"];
-    NSString *flavor, *bundled, *library, *buildInfo = nil, *path = nil;
+    NSString *flavor, *bundled, *library, *path = nil;
     NSDictionary<NSString *, NSString *> *bundledStamp, *libraryStamp;
     // Until a game with an image to load is picked: a pick of one the device has to install (an app built
     // without images) installs it first, and one that can't be installed goes back to the start screen
@@ -667,7 +694,7 @@ int main(int argc, char **argv) {
         NSString *info = [NSString stringWithContentsOfFile:[NSHomeDirectory() stringByAppendingPathComponent:@"Documents/.build.info"]
                                                    encoding:NSUTF8StringEncoding error:nil];
         NSString *problem = nil;
-        path = sp_patch_install(flavor, sp_install_region(info, product), picked, &pump, &buildInfo, &problem);
+        path = sp_patch_install(flavor, sp_install_region(info, product), picked, &pump, &problem);
         if (path) {
             libraryStamp = image_build(path, flavor);
             break;
@@ -688,12 +715,12 @@ int main(int argc, char **argv) {
     say(addons);
     launch_arguments(flavor, &argc, &argv);
     // Whether a newer build is out than the image's (sppatch.m), which also picks the image: the bundled one
-    // or the one an update on the device made, maybe just now (then `buildInfo` is the game data's
-    // .build.info for its build, written once it has loaded). Before the sign-in, so nobody signs in to then
+    // or the one an update on the device made, maybe just now (its .build.info row is written once it has
+    // loaded: build_info_for_image). Before the sign-in, so nobody signs in to then
     // be told, and before the helper attaches. It never stops the launch. Not after an install just now:
     // that image is the current build.
     if (!path) {
-        path = sp_patch_check(flavor, bundled, bundledStamp, library, libraryStamp, &pump, &buildInfo);
+        path = sp_patch_check(flavor, bundled, bundledStamp, library, libraryStamp, &pump);
         if ([path isEqual:library]) libraryStamp = image_build(library, flavor);
     }
     // A Battle.net launcher token the companion relayed (Play with My Mac's Battle.net) and the client
@@ -744,12 +771,13 @@ int main(int argc, char **argv) {
         [NSFileManager.defaultManager removeItemAtPath:[library.stringByDeletingLastPathComponent stringByAppendingPathComponent:
                                                         [@"spbuild-" stringByAppendingString:flavor]] error:nil];
         [NSFileManager.defaultManager removeItemAtPath:library error:nil];
+        [NSFileManager.defaultManager removeItemAtPath:[library.stringByDeletingLastPathComponent stringByAppendingPathComponent:
+                                                        [@"spbuildinfo-" stringByAppendingString:flavor]] error:nil];
         if (!bundled)
             fail_launch([NSString stringWithFormat:@"%@ %@, made on this %@, couldn't be loaded, so it's deleted.\n\nOpen "
                                                    @"Slashplayed again to install it again.", sp_flavor_name(flavor),
                                                    libraryStamp[@"Version"], sp_device_noun()]);
         sp_patch_refused(flavor, libraryStamp[@"Version"], bundledStamp[@"Version"], &pump);
-        buildInfo = nil;
         path = bundled;
         t = CFAbsoluteTimeGetCurrent();
         h = dlopen(path.fileSystemRepresentation, RTLD_NOW);
@@ -764,12 +792,7 @@ int main(int argc, char **argv) {
     say([NSString stringWithFormat:@"update: loaded the %@ image (%.1f s, the prepare included)",
                                    [path isEqual:library] ? @"updated (Library/spgames)" : @"bundled", CFAbsoluteTimeGetCurrent() - t]);
     // The game data's row for the build that just loaded, before the client reads it.
-    if (buildInfo) {
-        NSString *info = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/.build.info"];
-        say([buildInfo writeToFile:info atomically:YES encoding:NSUTF8StringEncoding error:nil]
-                ? [NSString stringWithFormat:@"update: .build.info's %@ row is %@ now", libraryStamp[@"Product"], libraryStamp[@"Version"]]
-                : @"update: couldn't write .build.info");
-    }
+    if ([path isEqual:library]) build_info_for_image(flavor, library, libraryStamp);
     // The client's header (an executable exports it), and from it the entry point.
     const struct mach_header_64 *mh = dlsym(h, "_mh_execute_header");
     if (!mh) { say(@"the client exports no __mh_execute_header"); return 1; }
