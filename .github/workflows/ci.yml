@@ -189,3 +189,80 @@ jobs:
 
       - name: Test the companion
         run: apps/companion/test.sh
+
+  # The host tool, slashplayed-setup (apps/setup), on the two systems it's for: its unit tests and a
+  # release build, from source as a volunteer would build it. zsign's patched source comes from
+  # scripts/build-zsign.sh source (git only); build.rs compiles it with OpenSSL from openssl-src. On
+  # Linux, the crates' notices too, which fail on a GPL-family crate (the binary links statically:
+  # apps/setup/vendor/isideload/VENDORED.md). Gated like the companion jobs.
+  setup:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            rustup_url: x86_64-unknown-linux-gnu/rustup-init
+            rustup_sha256: 5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4
+            perl: perl
+            python: python3
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rustup_url: x86_64-pc-windows-msvc/rustup-init.exe
+            rustup_sha256: 00f139da614dced87d3c3d4121c43eebdac3c1bf8a5ee86b9d80dfd71c8d70fd
+            # OpenSSL's Configure needs a native Perl on Windows (Git Bash's MSYS one fails); the runner
+            # image carries Strawberry Perl. And its Python is python, not python3.
+            perl: C:\Strawberry\perl\bin\perl.exe
+            python: python
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      OPENSSL_SRC_PERL: ${{ matrix.perl }}
+      PYTHON: ${{ matrix.python }}
+    steps:
+      # Line endings as committed, before anything is cloned: Git for Windows turns LF into CRLF by
+      # default, and then scripts/zsign.patch no longer applies to zsign's LF sources.
+      - name: Keep line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # rustup, pinned and checked as for the companion; apps/setup/rust-toolchain.toml then picks Rust.
+      - name: Install rustup
+        env:
+          RUSTUP_URL: ${{ matrix.rustup_url }}
+          RUSTUP_SHA: ${{ matrix.rustup_sha256 }}
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/rustup-init$([[ $RUNNER_OS == Windows ]] && echo .exe)" \
+            "https://static.rust-lang.org/rustup/archive/$RUSTUP_VERSION/$RUSTUP_URL"
+          init="$RUNNER_TEMP/rustup-init$([[ $RUNNER_OS == Windows ]] && echo .exe)"
+          echo "$RUSTUP_SHA  $init" | sha256sum -c -
+          chmod +x "$init"
+          "$init" -y --profile minimal --default-toolchain none --no-modify-path
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch zsign's source
+        run: scripts/build-zsign.sh source
+
+      - name: Test slashplayed-setup
+        working-directory: apps/setup
+        run: cargo test --locked
+
+      - name: Build slashplayed-setup
+        working-directory: apps/setup
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo build --release --locked --target "$TARGET"
+
+      - name: Package it, with its notices
+        env:
+          TARGET: ${{ matrix.target }}
+        run: apps/setup/package.sh "$TARGET" "$RUNNER_TEMP/setup"

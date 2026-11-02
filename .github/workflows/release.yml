@@ -1,5 +1,8 @@
 # Signed, notarized release on a v* tag: build with scripts/release/release.sh, publish the GitHub
-# release, then put the new item into the appcast on the Pages site.
+# release, then put the new item into the appcast on the Pages site. The release also carries the device
+# kit (scripts/release/device-kit.sh) and, once setup-build.yml has built them against that kit,
+# slashplayed-setup for Windows and Linux: unsigned (owner decision), with SHA256SUMS and build-provenance
+# attestations (gh attestation verify <file> -R paulstraw/slashplayed).
 #
 # The job runs in the `release` environment, which holds every signing secret; the owner approves each
 # run there before any step (and so any secret) runs. Only the owner pushes tags. Never add a
@@ -44,9 +47,12 @@ jobs:
     environment: release
     timeout-minutes: 120
     permissions:
-      contents: write  # gh release create
-      pages: write     # deploy-pages
-      id-token: write  # deploy-pages' OIDC check
+      contents: write      # gh release create
+      pages: write         # deploy-pages
+      id-token: write      # deploy-pages' OIDC check, and the kit's attestation
+      attestations: write  # the kit's attestation
+    outputs:
+      kit_sha256: ${{ steps.kit.outputs.sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -217,6 +223,15 @@ jobs:
           done
           RELEASE_TAG="$GITHUB_REF_NAME" scripts/release/release.sh
 
+      # slashplayed-setup compiles this hash in (setup-build.yml) and installs only this kit.
+      - name: Note the device kit's hash
+        id: kit
+        run: echo "sha256=$(shasum -a 256 build/release/slashplayed-device-kit.zip | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: build/release/slashplayed-device-kit.zip
+
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -224,6 +239,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --verify-tag \
             --title "Slashplayed $VERSION" --notes-file build/release/notes.md \
             "build/release/Slashplayed-Companion-$VERSION.dmg" \
+            build/release/slashplayed-device-kit.zip \
             build/release/SHA256SUMS
 
       # The live feed is the source of truth for past items, not site/: site/'s copy is only the empty
@@ -267,3 +283,47 @@ jobs:
             security delete-keychain "$RELEASE_KEYCHAIN" || true
           fi
           rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/asc-api-key.p8"
+
+  # slashplayed-setup, built against the kit the release now carries. No secrets, no environment: the
+  # build is setup-build.yml, the same one prereleases use.
+  setup-build:
+    needs: release
+    permissions:
+      contents: read
+    uses: ./.github/workflows/setup-build.yml
+    with:
+      ref: ${{ github.sha }}
+      kit_sha256: ${{ needs.release.outputs.kit_sha256 }}
+      release_tag: ${{ github.ref_name }}
+
+  # Onto the release: each archive, its build-provenance attestation, and SHA256SUMS with their lines
+  # added to the DMG's and the kit's.
+  setup-publish:
+    needs: setup-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write      # gh release upload
+      id-token: write      # the attestations
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: setup-*
+          path: setup
+          merge-multiple: true
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: setup/*
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" -p SHA256SUMS -D "$RUNNER_TEMP"
+          (cd setup && sha256sum -- *) >> "$RUNNER_TEMP/SHA256SUMS"
+          cat "$RUNNER_TEMP/SHA256SUMS"
+          gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" setup/*
+          gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --clobber "$RUNNER_TEMP/SHA256SUMS"

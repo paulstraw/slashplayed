@@ -1,0 +1,112 @@
+# Builds slashplayed-setup (apps/setup) for each system it ships for, packaged with its notices
+# (apps/setup/package.sh), as artifacts named setup-<target>. Called by release.yml (a v* release) and
+# setup-prerelease.yml (a volunteer prerelease, on the owner's approval); it publishes nothing itself and
+# holds no secrets. The caller passes the device kit's SHA-256, which the build compiles in (apps/setup/build.rs)
+# so the tool installs only that kit, downloaded from the release named by release_tag.
+name: Build slashplayed-setup
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit to build.
+        type: string
+        required: true
+      kit_sha256:
+        description: The device kit's SHA-256 (scripts/release/device-kit.sh's zip).
+        type: string
+        required: true
+      release_tag:
+        description: The release the kit is attached to, which the tool downloads it from.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  # rustup-init, pinned by version and checksum (static.rust-lang.org's rustup-init.sha256), as in ci.yml.
+  RUSTUP_VERSION: 1.29.2
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            rustup_url: x86_64-unknown-linux-gnu/rustup-init
+            rustup_sha256: 5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4
+            perl: perl
+            python: python3
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            rustup_url: aarch64-unknown-linux-gnu/rustup-init
+            rustup_sha256: a9c168dbea81a84671c6b7a5c1795cb0eb699020110d107ddfca427bd797e697
+            perl: perl
+            python: python3
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rustup_url: x86_64-pc-windows-msvc/rustup-init.exe
+            rustup_sha256: 00f139da614dced87d3c3d4121c43eebdac3c1bf8a5ee86b9d80dfd71c8d70fd
+            # A native Perl for OpenSSL's Configure (the runner's Strawberry Perl), and Windows' Python name.
+            perl: C:\Strawberry\perl\bin\perl.exe
+            python: python
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      OPENSSL_SRC_PERL: ${{ matrix.perl }}
+      PYTHON: ${{ matrix.python }}
+      SP_KIT_SHA256: ${{ inputs.kit_sha256 }}
+      SP_RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      # Line endings as committed (ci.yml says why).
+      - name: Keep line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Install rustup
+        env:
+          RUSTUP_URL: ${{ matrix.rustup_url }}
+          RUSTUP_SHA: ${{ matrix.rustup_sha256 }}
+        run: |
+          set -euo pipefail
+          init="$RUNNER_TEMP/rustup-init$([[ $RUNNER_OS == Windows ]] && echo .exe)"
+          curl -fsSL -o "$init" "https://static.rust-lang.org/rustup/archive/$RUSTUP_VERSION/$RUSTUP_URL"
+          echo "$RUSTUP_SHA  $init" | sha256sum -c -
+          chmod +x "$init"
+          "$init" -y --profile minimal --default-toolchain none --no-modify-path
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch zsign's source
+        run: scripts/build-zsign.sh source
+
+      - name: Test
+        working-directory: apps/setup
+        run: cargo test --locked
+
+      - name: Build
+        working-directory: apps/setup
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo build --release --locked --target "$TARGET"
+
+      - name: Package
+        env:
+          TARGET: ${{ matrix.target }}
+        run: apps/setup/package.sh "$TARGET" "$RUNNER_TEMP/setup"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: setup-${{ matrix.target }}
+          path: ${{ runner.temp }}/setup/*
+          if-no-files-found: error
+          retention-days: 7

@@ -28,7 +28,8 @@
 #   Slashplayed-Companion-<version>.dmg   signed, notarized and stapled; the app plus an /Applications link
 #   notes.md                              this version's CHANGELOG.md section (the GitHub release notes)
 #   appcast-item.xml                      one Sparkle <item>; appcast-merge.sh prepends it to the live feed
-#   SHA256SUMS                            for the DMG
+#   slashplayed-device-kit.zip            the device app, unsigned, for slashplayed-setup (device-kit.sh)
+#   SHA256SUMS                            for the DMG and the kit
 #
 # What it does, in order: checks the version, the changelog and (signed) every credential it will need,
 # so nothing fails after a long build and a notarization round trip; builds the companion (Release) with
@@ -36,7 +37,8 @@
 # refuses the placeholder Sparkle key); bundles its resources with bundle-resources.sh, which builds the
 # shims and the launcher for both device platforms; signs it as update-test.sh proved works through a
 # Sparkle update (Sparkle's helpers inside out, then the app, Developer ID, hardened runtime, plus a
-# secure timestamp here); asserts no Blizzard bytes went in; notarizes and staples the app (so a copy
+# secure timestamp here); asserts no Blizzard bytes went in, and makes the device kit from the app's bundled
+# resources (scripts/release/device-kit.sh), checked the same way; notarizes and staples the app (so a copy
 # dragged out of the DMG carries its own ticket), then the DMG; signs the DMG for Sparkle.
 #
 # --unsigned skips Developer ID signing, notarization and the EdDSA signature (the app is sealed ad hoc
@@ -174,7 +176,8 @@ fi
 
 # --- Build ---------------------------------------------------------------------------------------------
 # Clear everything a previous run left, so nothing stale can be uploaded with this run's output.
-rm -rf "$STAGE" "$OUT/notarize" "$OUT"/Slashplayed-Companion-*.dmg "$OUT/appcast-item.xml" "$OUT/SHA256SUMS"
+rm -rf "$STAGE" "$OUT/notarize" "$OUT"/Slashplayed-Companion-*.dmg "$OUT/appcast-item.xml" "$OUT/SHA256SUMS" \
+  "$OUT/slashplayed-device-kit.zip" "$OUT/device-kit"
 BUILD="$(date +%s)"
 echo "Building Slashplayed Companion $VERSION ($BUILD), $([[ "$SIGNED" == yes ]] && echo "Developer ID" || echo "unsigned")"
 
@@ -348,6 +351,12 @@ check_no_blizzard_bytes() {
   (( bad == 0 )) || { echo "error: $dir holds Blizzard-derived files; refusing to package" >&2; exit 1; }
 }
 check_no_blizzard_bytes "$STAGE"
+# The device kit slashplayed-setup installs (apps/setup): the app's own bundled resources, assembled into the
+# unsigned device app. Unpacked and checked like the app before it ships.
+scripts/release/device-kit.sh "$APP/Contents/Resources" "$OUT/slashplayed-device-kit.zip"
+mkdir -p "$OUT/device-kit" && (cd "$OUT/device-kit" && unzip -q "$OUT/slashplayed-device-kit.zip")
+check_no_blizzard_bytes "$OUT/device-kit"
+rm -rf "$OUT/device-kit"
 if (( refs == 0 )); then
   echo "No game clients on this machine to compare against; checked sizes and names only."
 else
@@ -491,7 +500,7 @@ ITEM
 ITEM
 } > "$OUT/appcast-item.xml"
 
-(cd "$OUT" && shasum -a 256 "$DMG_NAME" > SHA256SUMS)
+(cd "$OUT" && shasum -a 256 "$DMG_NAME" slashplayed-device-kit.zip > SHA256SUMS)
 rm -f "$REF_UUIDS" "$REF_SIZES"
 
 echo
@@ -501,4 +510,4 @@ else
   echo "Unsigned release $VERSION ($BUILD): Developer ID signing, notarization and Sparkle skipped."
 fi
 echo "Artifacts in build/release:"
-for f in "$DMG_NAME" notes.md appcast-item.xml SHA256SUMS; do echo "  $f"; done
+for f in "$DMG_NAME" slashplayed-device-kit.zip notes.md appcast-item.xml SHA256SUMS; do echo "  $f"; done
