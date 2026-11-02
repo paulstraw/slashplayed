@@ -3,7 +3,8 @@
 The experiments behind [architecture.md](architecture.md). Each harness in `research/` is a small
 app built from our own code only; none of them contains or reads game files, except `loadertest`,
 which reads the list of import names from the user's own installed client to build its toy. Every
-harness runs on visionOS (`SP_PLATFORM=xros`, the default) and iOS/iPadOS (`SP_PLATFORM=ios`).
+device harness runs on visionOS (`SP_PLATFORM=xros`, the default) and iOS/iPadOS (`SP_PLATFORM=ios`);
+`isideload` is a Mac command-line tool, tested with an iPhone.
 
 | Harness | Question | Answer |
 |---|---|---|
@@ -11,6 +12,7 @@ harness runs on visionOS (`SP_PLATFORM=xros`, the default) and iOS/iPadOS (`SP_P
 | [`research/loadertest`](../research/loadertest/README.md) | Will the device's dyld load a macOS AppKit program whose load commands point at the shims, and bind every import the client has? | Yes: every import binds, AppKit subclasses work, no debugger needed. |
 | [`research/metaltest`](../research/metaltest/README.md) | Can macOS-built metallibs load and run on the device? | Yes, after clearing one header bit, for container versions v2.2–v2.5; v2.6+ load as they are. |
 | [`research/dlopentest`](../research/dlopentest/README.md) | Can the app load an image it didn't install with, from its data container, and can the device sign one itself? | Yes, when a profile installed on the device lists the signing certificate; ad hoc and unsigned are refused. The device signs with zsign, patched. |
+| [`research/isideload`](../research/isideload/README.md) | Can the isideload crate replace Xcode for provisioning (Apple ID sign-in, teams, device, App IDs for the app and `.helper`, capabilities, certificate, profiles), so a Windows or Linux host can do it? | Yes, on iPhone, with free and paid teams: a zsign-signed app installs, and the JIT helper attaches (a free team's on-device-signed game image is refused, though). It needs Mac-ADI anisette (Android-ADI servers now get `-80045`), its lower-level API (the high-level one can revoke), and a decision on the LGPL signer it links. |
 
 ## Executable memory (jittest)
 
@@ -400,3 +402,24 @@ the iPhone. The iPads were never reachable for any of it.
   there.
 - Not tested: a free team's certificate signed on the device, the iPads, and (at the time of writing)
   the visionOS update end to end.
+
+## Provisioning without Xcode (isideload, 2026-11-01)
+
+The first step towards a Windows/Linux host ([research/isideload](../research/isideload/README.md)). A
+Mac CLI on the isideload crate signed in to a free and a paid Apple ID, registered the iPhone, made the
+App IDs for the app and its `.helper` (increased-memory-limit, plus extended-virtual-addressing on the
+paid team), made a development certificate with its own key, and downloaded both profiles. A no-image
+build signed with zsign from those installed and launched (a free team's needs the developer trusted on
+the device first), the launcher imported the pushed `.p12` and signed a game image with it, and the JIT
+helper attached on both teams. On the paid team the image loaded and the helper prepared it as under
+Xcode's signing; on the free team dyld refused the image the device signed ("code signature invalid"),
+so a free team can't install games on the device as things stand.
+
+- Sign-in needs anisette from a Mac-ADI server: since mid-October 2026 Apple answers `-80045` to the
+  Android-ADI servers most tools used.
+- listTeams can't tell a free team from a paid one; the profile can.
+- isideload links an LGPL-2.1 signer; zsign, the one the device already runs, is the one to use.
+- A no-image install into an empty container starts the client with no `.build.info`
+  ([#36](https://github.com/paulstraw/slashplayed/issues/36)).
+- Open: how long the stored session lasts (measured daily), and why a free team's on-device signature
+  is refused.
