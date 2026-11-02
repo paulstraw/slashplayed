@@ -265,7 +265,9 @@ chat) and backgrounding to Settings and back all work. Found along the way:
 - **Orientation.** With rotation lock on, the app comes up portrait and cropped; it should be
   landscape only.
 - A new device needs `Library/spidentity`, the small identity file login needs from the Mac, before
-  its first login, or the login fails. The companion sends it; `apps/client/seed.sh` now does too.
+  its first login, or the login fails. The companion sends it; `apps/client/seed.sh` now does too. (That's
+  for the launch credentials the companion moves from the Mac. A device that signs in itself, through the
+  launcher's sign-in, reaches character select without it: the host tool's install, 2026-11-01.)
 - The Dynamic Island covers none of the default UI in landscape.
 
 **Update checks.** Blizzard's public patch service answers which build is live, without Battle.net:

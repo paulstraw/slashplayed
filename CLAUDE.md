@@ -51,6 +51,14 @@ the push, the export), `SlashplayedCertificate.swift` (a paid team's own certifi
   `retype.py`, `casc_archives.py`). `build.sh`, `ClientAssembly.swift`, and `spassemble.m` (the launcher's assembly
   of a newer build's image on the device, tested in the companion's tests) must produce byte-identical
   unsigned client images: change all three together.
+- `apps/setup/`: `slashplayed-setup`, the host tool for an iPad or iPhone without a Mac (Windows, Linux, a
+  Mac without Xcode; Rust, `rust-toolchain.toml` pins it): `src/kit.rs` (the device kit, the unsigned app
+  `scripts/release/device-kit.sh` makes at release), `device.rs` (usbmuxd, trust, Developer Mode, install,
+  house_arrest, the RemotePairing record), `account.rs` (the Apple ID sign-in, memory only), `provision.rs`
+  (device, App IDs, capabilities, certificate, profiles), `keystore.rs` (the signing key, in the OS's
+  credential store), `sign.rs` with `build.rs` and `zsign/` (zsign compiled in), `ddi.rs` (the pinned
+  mirror DDI). `vendor/isideload/` is isideload with its LGPL signer made optional (`VENDORED.md`).
+  `package.sh` packs a release build with its notices. Vision Pro stays Mac-only.
 - `shims/`: hand-written shims (`appkit/`, `audio/`, `coregraphics/`, `ident/`, `security/`, `system/`)
   and `generated/` (`gen_stubs.py`'s output, committed, one set for both platforms; it `#include`s the
   hand-written files). `exports_manifest.py` writes `exports.json`, the bind check's manifest.
@@ -85,6 +93,9 @@ shims/build.sh <xros|ios>                  # build/<platform>/*.dylib + exports.
 apps/companion/build.sh                    # build/companion/Slashplayed Companion.app (needs xcodegen)
 apps/companion/test.sh                     # companion unit tests; extra args go to xcodebuild
 SP_PLATFORM=ios SP_NO_INSTALL=1 apps/client/build.sh   # the script build of the device app, no install
+scripts/build-zsign.sh source; (cd apps/setup && cargo test --locked && cargo build --release --locked)
+                                           # slashplayed-setup; a device run needs --kit <zip>:
+                                           # scripts/release/device-kit.sh <bundle-resources.sh --build dir> <zip>
 research/<harness>/build.sh                # research harnesses (they install; no no-install switch)
 ```
 
@@ -136,6 +147,12 @@ again (over an hour for Retail on the headset). Don't change it casually.
 - **No Blizzard bytes, ever**, in the repo, CI, fixtures or release artifacts: no client binaries
   (thinned or not), no game data, no metallibs from the client, no logs or crash reports with
   credentials. Test fixtures are built from our own code (`research/loadertest` is the model).
+- **The Apple ID is a credential.** `slashplayed-setup` (`apps/setup/src/account.rs`) takes the password
+  typed by the person, uses it once for the sign-in, and zeroes it; the login lives in memory only and
+  ends with the process. Nothing about it is logged or stored, not even sizes, and no tracing subscriber
+  is ever installed (isideload's logs would carry account data). The person types it; test runs use the
+  owner's own Terminal. The tool's signing key goes only to the OS credential store and, as a .p12, to the
+  device. It never revokes a certificate a Slashplayed tool didn't make.
 - **Never read, print or log values from `net.battle` prefs** or the exported credentials file. Sizes
   and timestamps only, as `TokenRelay.swift` does.
 - **The Battle.net sign-in is a credential too.** Only the launcher's sign-in (`splogin.m`, and its
@@ -159,7 +176,7 @@ again (over an hour for Retail on the headset). Don't change it casually.
   72 characters, `type(scope): summary` in the imperative, no period; a blank line; a body wrapped at 72
   that says why, and what was checked where (devices, tests, check-tree) in a line or two. Types: `feat`,
   `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `revert`. Scopes: `companion`,
-  `client`, `helper`, `shims`, `addon`, `recon`, `release`, `research/<harness>`; no scope for `docs`
+  `client`, `helper`, `setup`, `shims`, `addon`, `recon`, `release`, `research/<harness>`; no scope for `docs`
   and `ci` commits or a change spread across the repo. The body
   is a few short paragraphs, not a changelog of every function touched: the diff has that.
   `scripts/hooks/commit-msg` checks the format; turn it on once per checkout with
@@ -209,6 +226,12 @@ again (over an hour for Retail on the headset). Don't change it casually.
   `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`, `ASC_API_KEY_P8_BASE64`, `ASC_API_KEY_ID`,
   `ASC_API_ISSUER_ID`, `SPARKLE_ED_PRIVATE_KEY`. A re-run after the Release exists fails on purpose;
   delete the Release first.
+- **slashplayed-setup** rides the same release: `release.sh` makes the device kit
+  (`scripts/release/device-kit.sh`, attached as `slashplayed-device-kit.zip`), then `release.yml` builds the
+  tool against its hash (`setup-build.yml`) and attaches the Windows and Linux archives, their attestations,
+  and their SHA256SUMS lines. `apps/setup/Cargo.toml`'s version must equal `MARKETING_VERSION` (check-tree).
+  Volunteer prereleases: `setup-prerelease.yml` (run by hand on any ref), published only after the owner
+  approves the `prerelease` environment.
 - **Locally**: `scripts/release/release.sh --unsigned` smoke-tests the whole script with no certificate.
   A signed local build (release candidates: `SP_RELEASE_VERSION=X.Y.Z-rc1`) uses `NOTARY_PROFILE` and
   the Sparkle key in the login keychain. `scripts/release/update-test.sh` tests a Sparkle update

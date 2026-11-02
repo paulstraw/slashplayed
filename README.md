@@ -29,7 +29,9 @@ In-game voice chat isn't supported on the device yet
 
 ## Requirements
 
-- An **Apple Silicon Mac** with macOS 15 or later and Xcode.
+- An **Apple Silicon Mac** with macOS 15 or later and Xcode. No Mac? For an iPad or iPhone, a tool for
+  Windows and Linux is in testing: see [Setting up without a Mac](docs/setup-without-a-mac.md).
+  Vision Pro needs a Mac.
 - An **Apple ID signed in to Xcode**. A free one works, and the app is signed again every 7 days; a
   paid Apple Developer Program membership signs it for a year.
 - Your device on **iPadOS 26, iOS 26, or visionOS 27**. Setup walks you through pairing it with the

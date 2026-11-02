@@ -8,6 +8,9 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ### Added
 
+- Slashplayed can be set up on an iPad or iPhone from Windows or Linux, with no Mac, with the new
+  command-line tool slashplayed-setup ([Setting up without a Mac](docs/setup-without-a-mac.md)). Run it
+  again to sign the app again; a free Apple ID needs that every 7 days. Vision Pro still needs a Mac.
 - Games can be installed on the iPad or iPhone itself, with no game files from a Mac: tap
   Install on the start screen, and the device downloads the game from Blizzard and sets it up.
 - Each game installed on the device has a Region in Settings (Americas, Europe, Korea, or Taiwan),

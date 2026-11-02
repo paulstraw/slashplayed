@@ -397,8 +397,9 @@ still ships images, and an app with images behaves as before.
   plays it. With no bundled image to fall back on, an image `dlopen` refuses is deleted and the launch
   stops on the reason; the next start offers Install again.
 
-The small identity file login needs from the Mac isn't part of the install: it comes from the host, as
-the companion sends it today. The addons are the app's own (below), so an installed game has them too.
+The small identity file login needs from the Mac isn't part of the install. The companion still sends it,
+for the Battle.net launch credentials it moves from the Mac. A device that signs in itself doesn't need it:
+the host tool's install reached character select without one (iPhone, free team, 2026-11-01). The addons are the app's own (below), so an installed game has them too.
 
 ### A game's region
 
@@ -649,6 +650,101 @@ has replaced A's certificate since the last push, the push says so; if its expor
 window says that the device's updates may not load until it's sent. For B, every action (not only a push)
 checks that a profile on the device still lists the certificate, installing the team's current one if
 none does, and keeps the launcher's copy in place.
+
+## The host tool (no Mac)
+
+`slashplayed-setup` (`apps/setup`, Rust) sets up an iPad or iPhone from Windows, Linux, or a Mac without
+Xcode. It does what the companion does with Xcode and devicectl, and nothing the device does for itself:
+the device installs and updates games, picks their region, and writes `.build.info`, `Config.wtf`, and the
+addons. **Vision Pro stays Mac-only:** there's no public visionOS developer disk image besides Xcode's, and
+pairing a headset without a Mac is unproven. The tool refuses a headset.
+
+One run, `slashplayed-setup [install]`, which is also the weekly re-sign on a free team:
+
+1. **The device kit** (`src/kit.rs`): the device app, unsigned and with no game images, one per platform,
+   which `scripts/release/device-kit.sh` assembles at release from what `bundle-resources.sh` stages, as
+   `ClientAssembly.assemble` does with no clients. Only the bundle ID is left to fill in (`@BUNDLE_ID@` in
+   the two Info.plists), plus the entitlements templates. A release build has the kit's SHA-256 compiled in
+   (`build.rs`, `SP_KIT_SHA256`) and downloads it from its own GitHub Release; `--kit` names a local one.
+   The kit comes first, so a bad download doesn't cost a sign-in.
+2. **The device** (`src/device.rs`), over USB through usbmuxd: Apple's driver on Windows (Apple Devices or
+   iTunes), the `usbmuxd` service on Linux, macOS's own on a Mac. If this computer isn't trusted, the tool
+   pairs (lockdown `Pair`; the person taps Trust) and saves the record with usbmuxd, as Finder or iTunes
+   would. If Developer Mode is off, the tool reveals it in Settings (amfi) and stops.
+3. **The Apple ID** (`src/account.rs`), through the vendored isideload: GSA over SRP, 2FA, anisette from
+   `mac-ani.jkcoxson.com` by default (`--anisette` for another). The password is typed, used for the one
+   login, and zeroed. The whole login lives in memory and ends with the process (owner decision), so
+   each run asks again. No tracing subscriber is installed, and `DEBUG_SENSITIVE` is cleared at start.
+4. **Provisioning** (`src/provision.rs`), isideload's low-level developer-services API, not its
+   `Sideloader`:
+   - The device is registered.
+   - The App IDs `<bundle id>` and `<bundle id>.helper` are found, or made only when missing and the
+     team has room.
+   - Capabilities are set in one v1 PATCH: increased-memory-limit, plus extended-virtual-addressing,
+     which Apple refuses a free team.
+   - The certificate is one whose public key is this computer's.
+   - Both profiles are downloaded and checked: application-identifier, the device, our certificate, and
+     the entitlements.
+   - Free or paid is the profile's call (`IsFreeProvisioningProfile`, or a 7-day life): listTeams has no
+     flag for it.
+5. **Signing** (`src/sign.rs`, `zsign/spzsign_host.cpp`): zsign, compiled in by `build.rs` from the source
+   `scripts/build-zsign.sh source` patches, with OpenSSL 3.5 from openssl-src.
+   - Each bundle is signed with its own profile and the entitlements the Mac signs it with: the kit's
+     templates, less `Signing.freeTeamDropped` on a free team. A profile's own entitlements carry more
+     (keychain-access-groups).
+   - The key, certificate, and profiles go to zsign in memory (`zsign.patch`'s `InitData`).
+6. **Install** over USB: an IPA built from the signed folder, with the Unix modes set by the tool so a
+   Windows build is the same, through installation_proxy. That updates in place and keeps the container.
+7. **Into the container** (house_arrest, AFC):
+   - The RemotePairing record (`Library/sppairing.plist`, as `Pairing.send`), when the app has none or
+     with `--pair-again`.
+   - The developer disk image (below).
+   - The signing identity as `Library/spidentity.p12` and `.pass`, every run. The launcher imports it,
+     and the device installs games with it.
+
+**The signing key** stays between runs in the OS credential store, never a file: the macOS Keychain,
+Windows Credential Manager, or the Secret Service on Linux (`src/keystore.rs`). There's one item per
+Apple ID, and it's stored before Apple sees a request for it. With no store (a Linux box with no Secret
+Service), each run makes a new key and certificate. At the team's certificate limit, the tool revokes
+the oldest certificate a Slashplayed tool made (machine name "Slashplayed setup", or the spike's
+"Slashplayed spike"), and never anyone else's. Xcode's Manage Certificates lists only Apple Development
+certificates, not the "iOS Development" kind these are, so this is the only way such a slot comes back
+without a paid team's developer site.
+
+**The developer disk image** (`src/ddi.rs`). Owner decision (2026-11-01): with no Xcode on the host, the
+iOS cryptex comes from the `doronz88/DeveloperDiskImage` mirror at run time, from a pinned commit, each
+file checked against a pinned SHA-256. Slashplayed never hosts it. The files go to `Library/spddi/` as
+`DeveloperDiskImage.swift` puts Xcode's, with `version.txt` last.
+- The pin is the mirror's image as published: Xcode 27 beta's build 27A5228h. The owner chose it over
+  waiting for 27B52 to be published.
+- The device still trusts only Apple's signature. The helper has the image personalized by Apple's TSS
+  for the device before mounting it.
+- Untested so far: the mirror's image mounting through the helper. The test iPhone already had Xcode's
+  mounted.
+
+**Credentials** follow the companion's rules:
+- The pairing record goes from idevice's memory straight to the device over AFC, so it never touches the
+  host's disk.
+- So does the `.p12`: built in memory and zeroed after the push, with a random password.
+- Logs give sizes only. The scratch folder (private, deleted at exit) holds only the kit, the app, and
+  the IPA.
+
+**isideload is vendored** (`apps/setup/vendor/isideload`, `VENDORED.md`, `isideload.patch`).
+- Upstream links its LGPL-2.1 signer, apple-codesign-quick, unconditionally. A static binary would then
+  carry the LGPL's relinking terms, so the vendored copy puts the signer behind an off-by-default feature.
+- `scripts/check-tree.sh` checks that the signer stays optional and that the idevice pin and version
+  agree with the rest of the repo.
+- `scripts/crate-notices.py --deny-copyleft` fails a release build that links any GPL-family crate.
+
+**Releases.**
+- `release.yml` attaches the kit to each `v*` release, then builds the tool against it for Linux x86_64
+  and aarch64 and Windows x86_64 (`setup-build.yml`). The Windows `.exe` is unsigned (owner decision),
+  so each archive gets SHA256SUMS lines and a build-provenance attestation.
+- `apps/setup/package.sh` packs each archive with its notices: the crates, the Rust standard library,
+  zsign, OpenSSL, and zlib/minizip.
+- `setup-prerelease.yml` makes the same as a GitHub prerelease from any ref (`setup-<version>-pre.<n>`),
+  published only after the owner approves the `prerelease` environment.
+- CI's `setup` job tests and builds it on Linux and Windows.
 
 ## Game data on the device
 
