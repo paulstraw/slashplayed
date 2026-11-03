@@ -207,8 +207,27 @@ fn uuid_upper() -> String {
 /// Developer Mode, which a development-signed app needs. If it's off, the option is revealed in Settings
 /// (iOS hides it until a developer tool asks) and the person turns it on there: that restarts the device,
 /// so this run stops and they run it again.
+///
+/// This is the run's first lockdown service, and where a device still locked since its restart says so:
+/// StartSession works before the first unlock (ensure_trusted gets through), but StartService answers
+/// "PasswordProtected" until then (checked on an iPhone, iOS 27.0.1, after Developer Mode's own restart). So
+/// a locked answer waits here for the unlock, as ensure_trusted's does; once unlocked, the later services
+/// (installation_proxy, house_arrest) work even if it locks again.
 pub async fn ensure_developer_mode(d: &Device) -> Result<(), Report> {
-    let mut amfi = AmfiClient::connect(&d.provider()).await.context("couldn't ask the device about Developer Mode")?;
+    let mut said = false;
+    let mut amfi = loop {
+        match AmfiClient::connect(&d.provider()).await {
+            Ok(a) => break a,
+            Err(e) if classify_refusal(&e) == SessionRefusal::Locked => {
+                if !said {
+                    eprintln!("Unlock {}: setup goes on once it's unlocked.", d.name);
+                    said = true;
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+            Err(e) => return Err(report!("couldn't ask the device about Developer Mode ({e})")),
+        }
+    };
     if amfi.get_developer_mode_status().await? {
         return Ok(());
     }
