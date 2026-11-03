@@ -106,14 +106,64 @@ pub async fn pick(udid: Option<&str>) -> Result<Device, Report> {
     }
 }
 
+/// What a failed StartSession with usbmuxd's existing record means for that record.
+#[derive(Debug, PartialEq, Eq)]
+enum SessionRefusal {
+    /// The device doesn't know the record's HostID (it was never paired with this computer, or the pairing
+    /// was reset or removed in Settings): only a new pairing helps.
+    NotAccepted,
+    /// The device knows the record but is locked (notably after a restart, Developer Mode's included,
+    /// before its first unlock): the record is fine, and the session works once it's unlocked.
+    Locked,
+    /// Anything else (the connection dropping, the TLS handshake failing, an answer idevice doesn't map):
+    /// nothing says the record is bad, so it isn't replaced.
+    Other,
+}
+
+/// Re-pairing is only for a record the device really refuses: a new pairing overwrites usbmuxd's record,
+/// which on a Mac is the system's own one that Finder and Xcode use, and asks the person to tap Trust again.
+/// So a locked device or a passing failure must never land there. lockdownd answers StartSession with
+/// "InvalidHostID" for an unknown HostID and "PasswordProtected" (or "DeviceLocked") while locked; idevice
+/// maps those names in `IdeviceError::from_device_error_type`.
+fn classify_refusal(e: &IdeviceError) -> SessionRefusal {
+    match e {
+        IdeviceError::InvalidHostID => SessionRefusal::NotAccepted,
+        IdeviceError::PasswordProtected | IdeviceError::DeviceLocked => SessionRefusal::Locked,
+        _ => SessionRefusal::Other,
+    }
+}
+
 /// Makes sure this computer is trusted by the device (a lockdown pair record usbmuxd keeps), asking the
 /// person to tap Trust when it isn't. On a Mac that already syncs with the device, nothing happens.
 pub async fn ensure_trusted(d: &Device) -> Result<(), Report> {
     let mut mux = UsbmuxdConnection::default().await.map_err(no_usbmuxd)?;
+    // No record at all (usbmuxd answers with an error for an unknown UDID) means pairing from scratch. If
+    // usbmuxd itself is unreachable, get_buid below says so.
     if let Ok(record) = mux.get_pair_record(&d.usb.udid).await {
-        let mut l = LockdownClient::connect(&d.provider()).await?;
-        if l.start_session(&record).await.is_ok() {
-            return Ok(());
+        let mut said = false;
+        loop {
+            // A fresh connection each try: a refused StartSession leaves the lockdown connection unusable.
+            let mut l = LockdownClient::connect(&d.provider()).await?;
+            let e = match l.start_session(&record).await {
+                Ok(_) => return Ok(()),
+                Err(e) => e,
+            };
+            match classify_refusal(&e) {
+                SessionRefusal::NotAccepted => break,
+                SessionRefusal::Locked => {
+                    if !said {
+                        eprintln!("Unlock {}: it trusts this computer, and setup goes on once it's unlocked.", d.name);
+                        said = true;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                }
+                SessionRefusal::Other => {
+                    return Err(report!(
+                        "couldn't start a session with {} ({e}). Unplug it, plug it in again, unlock it, and run this again",
+                        d.name
+                    ));
+                }
+            }
         }
     }
     let buid = mux.get_buid().await.map_err(no_usbmuxd)?;
@@ -245,5 +295,24 @@ mod tests {
         assert_eq!(u.matches('-').count(), 4);
         assert_eq!(&u[14..15], "4");
         assert_eq!(u, u.to_uppercase());
+    }
+
+    #[test]
+    fn only_an_unknown_host_id_repairs() {
+        use super::{SessionRefusal::*, classify_refusal};
+        use idevice::IdeviceError as E;
+        assert_eq!(classify_refusal(&E::InvalidHostID), NotAccepted);
+        assert_eq!(classify_refusal(&E::PasswordProtected), Locked);
+        assert_eq!(classify_refusal(&E::DeviceLocked), Locked);
+        for e in [
+            E::SessionInactive,
+            E::NoEstablishedConnection,
+            E::UnexpectedResponse("missing EnableSessionSSL in StartSession response".into()),
+            E::UnknownErrorType("SomethingNew".into()),
+            E::InternalError("No context".into()),
+            E::UserDeniedPairing,
+        ] {
+            assert_eq!(classify_refusal(&e), Other, "{e:?}");
+        }
     }
 }
