@@ -303,7 +303,7 @@ jobs:
           cache-workspace-crates: true
           # Nothing here is installed with cargo install; ~/.cargo/bin holds only rustup's proxies.
           cache-bin: false
-          save-if: true # TEMPORARY: measuring a warm run on this PR; reverted before review
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
       # A checkout stamps every file with the time it was written, and cargo reruns a build script when
       # a file it watches (build.rs itself, and spzsign_host.cpp) is newer than its last run: on every
