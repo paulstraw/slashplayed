@@ -31,9 +31,11 @@ Run on 2026-11-01 on an iPhone 16 Pro (iOS 27), from macOS with Rust 1.99.0.
     (trusted device or SMS), and keeps the session in the login Keychain. More under
     [Credentials](#credentials).
   - `teams`: lists teams from the stored session.
-  - `provision --team <id> [--udid <udid>] --free|--paid [--create-app-ids] [--create-cert] --out <dir>
-    [--identity <dir>]`: steps 2–8 below. It makes App IDs or a certificate only when the flag allows it,
-    and it never revokes.
+  - `provision --team <id> [--udid <udid>] --free|--paid [--create-app-ids] [--create-cert]
+    [--profiles-only] --out <dir> [--identity <dir>]`: steps 2–8 below. It makes App IDs or a certificate
+    only when the flag allows it, and it never revokes. `--profiles-only` skips the certificate step, for
+    [the profile-only refresh](#profile-only-refresh-step-4): a team profile lists all of the team's
+    certificates, so it works even when the spike's own certificate has been revoked.
   - `sign-quick`: signs a built app with isideload's own signer, apple-codesign-quick, for the
     comparison.
   - `check-session`: the token-lifetime probe (see [Token lifetime](#token-lifetime)).
@@ -321,6 +323,35 @@ from a stored session, with no password stored, only on a token that lasts a wee
 that leaves the stored `xcode.auth` token, or the owner's choice between storing the password and asking
 again. Read the log after a week or two, record the answer here, and remove the agent
 (`check-session-agent.sh remove`).
+
+## Profile-only refresh (step 4)
+
+The question: can a device renew a free-team app by installing a new profile alone, without re-signing or
+reinstalling itself? It can. Checked 2026-11-02 on the iPhone 16 Pro (iOS 27.0.1), with the free spike
+(`<free team>.slashplayed.spike`, installed by `slashplayed-companion`), from the Mac with idevice's
+`misagent` tool (`work/idevice/src/tools`, `idevice-tools misagent list|remove|install`):
+
+1. `provision --free --profiles-only` got new app and helper profiles, about 1.1 days after login. Minting
+   from the GS token failed (-22411), and the stored `xcode.auth` token worked.
+2. Every installed profile for the spike's app and helper was removed through misagent, including the
+   one embedded in the app. The launch then failed: FBSOpenApplicationErrorDomain error 3, "invalid code
+   signature, inadequate entitlements or its profile has not been explicitly trusted". iOS showed "Slashplayed
+   is no longer available".
+3. Only the two new profiles were installed, with UUIDs different from the embedded one's. The app launched.
+   After the dialog was dismissed, the JIT helper ran and Classic Era, with its device-signed image,
+   reached character select.
+
+So iOS checks an app against the installed profiles, not the one in its bundle. A refresh is: new profiles
+from Apple, then misagent install. It doesn't need a new certificate either: the free team's
+certificates last a year (each one's notAfter is a year after its notBefore), so the `.p12` already on the
+device covers a year of weekly refreshes.
+
+Also seen: every install adds its profiles to the device and none are removed. The iPhone had 11 for the
+free spike's app alone, all still valid. A refresh needn't remove old ones, since they expire. Installing
+the new one first means the app is never without a valid profile, and the dialog above never shows.
+
+Still open: misagent from the device itself, over the LocalDevVPN loopback (the RSD shim,
+`com.apple.misagent.shim.remote`), as the helper reaches its other services.
 
 ## The idevice pin
 

@@ -59,6 +59,9 @@ pub struct Options {
     pub free: Option<bool>,
     pub create_app_ids: bool,
     pub create_cert: bool,
+    /// Only the profiles (the device self-refresh spike: a new profile installed without re-signing).
+    /// Skips the certificate, so works with a team whose certificate for the spike's key was revoked.
+    pub profiles_only: bool,
     pub out: std::path::PathBuf,
     pub identity: Option<std::path::PathBuf>,
 }
@@ -337,6 +340,13 @@ pub async fn provision(
     }
 
     // 6. The certificate: ours if the team has it, else (only when allowed) a new one. Never a revoke.
+    // Skipped with --profiles-only: a team profile lists the team's certificates whichever we hold.
+    if opts.profiles_only && opts.identity.is_some() {
+        bail!("--profiles-only makes no identity");
+    }
+    let ours = if opts.profiles_only {
+        None
+    } else {
     let mut fresh_key = false;
     if restored.stored.signing_key.is_empty() {
         let key = RsaPrivateKey::new(&mut rand::thread_rng(), 2048)?;
@@ -381,6 +391,9 @@ pub async fn provision(
     let not_after = cert.tbs_certificate.validity.not_after.to_string();
     log.step("certificate", json!({ "created": created_cert, "not_after": not_after,
         "subject": cert.tbs_certificate.subject.to_string() }));
+    Some((key, cert, cert_der, machine_id))
+    };
+    let cert_der = ours.as_ref().map(|o| o.2.clone()).unwrap_or_default();
 
     // 7. Profiles.
     fs::create_dir_all(&opts.out)?;
@@ -405,7 +418,7 @@ pub async fn provision(
 
     // 8. The identity, if asked for: spidentity.p12 and .pass (push-identity.sh's pair) and key.pem and
     // cert.pem (zsign's -k/-c, so no password goes on its command line). The caller zeroes and deletes them.
-    if let Some(dir) = &opts.identity {
+    if let (Some(dir), Some((key, cert, _, machine_id))) = (&opts.identity, ours) {
         let mut pw_bytes = [0u8; 24];
         rand::thread_rng().fill_bytes(&mut pw_bytes);
         let password = Zeroizing::new(hex::encode(pw_bytes));

@@ -8,7 +8,7 @@
 //                             (the owner: password, 2FA)
 //   spisideload teams         --apple-id <id> --report <file>
 //   spisideload provision     --apple-id <id> --team <TEAMID> [--udid <udid>] [--free|--paid]
-//                             [--create-app-ids] [--create-cert] --out <dir> [--identity <dir>] --report <file>
+//                             [--create-app-ids] [--create-cert] [--profiles-only] --out <dir> [--identity <dir>] --report <file>
 //   spisideload sign-quick    --apple-id <id> --profiles <dir> --app <Slashplayed.app> --report <file>
 //   spisideload check-session --apple-id <id> --log <file.jsonl>
 //   spisideload forget        --apple-id <id>
@@ -175,6 +175,7 @@ async fn run(args: &Args, log: &mut Log) -> Result<(), Report> {
                 },
                 create_app_ids: args.flag("--create-app-ids"),
                 create_cert: args.flag("--create-cert"),
+                profiles_only: args.flag("--profiles-only"),
                 out: PathBuf::from(args.get("--out")?),
                 identity: args.opt("--identity").map(PathBuf::from),
             };
