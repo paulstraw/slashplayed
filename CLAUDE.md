@@ -226,7 +226,8 @@ again (over an hour for Retail on the headset). Don't change it casually.
   `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`, `ASC_API_KEY_P8_BASE64`, `ASC_API_KEY_ID`,
   `ASC_API_ISSUER_ID`, `SPARKLE_ED_PRIVATE_KEY`. A re-run after the Release exists fails on purpose;
   delete the Release first.
-- **slashplayed-companion** rides the same release: `release.sh` makes the device kit
+- **slashplayed-companion** ships in prereleases only, until the owner sets the repository variable
+  `SP_RELEASE_COMPANION_RS` to `true`; then it rides the same release. `release.sh` makes the device kit
   (`scripts/release/device-kit.sh`, attached as `slashplayed-device-kit.zip`), then `release.yml` builds the
   tool against its hash (`companion-rs-build.yml`) and attaches the Windows and Linux archives, their attestations,
   and their SHA256SUMS lines. `apps/companion-rs/Cargo.toml`'s version must equal `MARKETING_VERSION` (check-tree).
