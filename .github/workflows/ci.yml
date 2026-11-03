@@ -251,17 +251,27 @@ jobs:
           "$init" -y --profile minimal --default-toolchain none --no-modify-path
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      # The toolchain rust-toolchain.toml pins, installed and made the default. Restore cargo's output
-      # runs `rustc -vV` from the repo's root, where no toolchain file applies, and rustup was installed
-      # with none: without a default that fails, and the cache's key needs the compiler's version. The
-      # toolchain file stays the only pin; this just reads it.
+      # The toolchain rust-toolchain.toml pins, installed, made the default, and the only one. Restore
+      # cargo's output runs `rustc -vV` from the repo's root, where no toolchain file applies, and hashes
+      # every toolchain `rustup toolchain list` shows into the cache's key. The runner images come with
+      # rustup and a stable Rust of their own already in ~/.cargo, which nothing here uses: left there, an
+      # image update to the next stable would miss the cache though the build hadn't changed (and a
+      # self-hosted runner with no default would fail the key). The toolchain file stays the only pin;
+      # this just reads it.
       - name: Install the pinned Rust
         working-directory: apps/companion-rs
         run: |
           set -euo pipefail
           rustup toolchain install
           toolchain=$(rustup show active-toolchain)
-          rustup default "${toolchain%% *}"
+          # A CR is stripped in case Windows' rustup.exe ends its lines with CRLF.
+          toolchain=${toolchain%$'\r'}; toolchain=${toolchain%% *}
+          rustup default "$toolchain"
+          rustup toolchain list --quiet | while IFS= read -r t; do
+            t=${t%$'\r'}; t=${t%% *}
+            if [[ -n $t && $t != "$toolchain" ]]; then rustup toolchain uninstall "$t"; fi
+          done
+          rustup toolchain list
           rustc -vV
 
       # Cargo's output from main's last run: the crates, and build.rs's OpenSSL (openssl-src) and zsign,
