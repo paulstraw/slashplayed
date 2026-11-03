@@ -350,8 +350,9 @@ Also seen: every install adds its profiles to the device and none are removed. T
 free spike's app alone, all still valid. A refresh needn't remove old ones, since they expire. Installing
 the new one first means the app is never without a valid profile, and the dialog above never shows.
 
-Still open: misagent from the device itself, over the LocalDevVPN loopback (the RSD shim,
-`com.apple.misagent.shim.remote`), as the helper reaches its other services.
+The device can do the install itself: jittest's `h5` had the helper install a fresh profile through
+misagent over its own tunnel (`com.apple.misagent.shim.remote` over RSD) in 0.08 s
+([research/jittest](../jittest/README.md#results)).
 
 ## The idevice pin
 
