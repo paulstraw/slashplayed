@@ -28,7 +28,7 @@
 #   Slashplayed-Companion-<version>.dmg   signed, notarized and stapled; the app plus an /Applications link
 #   notes.md                              this version's CHANGELOG.md section (the GitHub release notes)
 #   appcast-item.xml                      one Sparkle <item>; appcast-merge.sh prepends it to the live feed
-#   slashplayed-device-kit.zip            the device app, unsigned, for slashplayed-setup (device-kit.sh)
+#   slashplayed-device-kit.zip            the device app, unsigned, for slashplayed-companion (device-kit.sh)
 #   SHA256SUMS                            for the DMG and the kit
 #
 # What it does, in order: checks the version, the changelog and (signed) every credential it will need,
@@ -351,7 +351,7 @@ check_no_blizzard_bytes() {
   (( bad == 0 )) || { echo "error: $dir holds Blizzard-derived files; refusing to package" >&2; exit 1; }
 }
 check_no_blizzard_bytes "$STAGE"
-# The device kit slashplayed-setup installs (apps/setup): the app's own bundled resources, assembled into the
+# The device kit slashplayed-companion installs (apps/companion-rs): the app's own bundled resources, assembled into the
 # unsigned device app. Unpacked and checked like the app before it ships.
 scripts/release/device-kit.sh "$APP/Contents/Resources" "$OUT/slashplayed-device-kit.zip"
 mkdir -p "$OUT/device-kit" && (cd "$OUT/device-kit" && unzip -q "$OUT/slashplayed-device-kit.zip")

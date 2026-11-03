@@ -6,7 +6,7 @@
 #   scripts/build-zsign.sh [ios|xros|macos]...     (default: all three)
 #   scripts/build-zsign.sh source                  zsign's patched source only, nothing built
 #
-# source is the host tool's (apps/setup/build.rs compiles zsign itself, on Windows and Linux too, so this
+# source is the host tool's (apps/companion-rs/build.rs compiles zsign itself, on Windows and Linux too, so this
 # needs only git: no xcrun, no perl, no OpenSSL clone).
 # ios and xros are the launcher's (apps/client/build-launcher.sh links them); macos is the companion's unit
 # tests' (they sign a fixture of our own with spsign.m on the Mac), arm64 only, like the test run.

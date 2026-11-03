@@ -7,9 +7,9 @@ and tested on a free and a paid team. Its `LICENSE` is the repository's. The cra
 ## Why it's vendored
 
 isideload depends on [apple-codesign-quick](https://crates.io/crates/apple-codesign-quick), its own code
-signer, unconditionally, and that crate is LGPL-2.1-or-later. `slashplayed-setup` is one statically linked
+signer, unconditionally, and that crate is LGPL-2.1-or-later. `slashplayed-companion` is one statically linked
 binary, so linking the crate would bind the whole binary to the LGPL's relinking terms, even though the tool
-never calls the signer: it signs with zsign (`apps/setup/build.rs`). The owner chose (2026-11-01) to patch
+never calls the signer: it signs with zsign (`apps/companion-rs/build.rs`). The owner chose (2026-11-01) to patch
 the dependency out, here in the repository, so the change is reviewed with the rest.
 
 ## What changed
@@ -18,7 +18,7 @@ the dependency out, here in the repository, so the change is reviewed with the r
 repository, the folder that holds `isideload/`, applies it and gives this copy):
 
 - **Cargo.toml:** `apple-codesign-quick` is optional, behind a new `sideload` feature, which is on by
-  default as before. `slashplayed-setup` turns default features off. The `readme` key is gone, since the
+  default as before. `slashplayed-companion` turns default features off. The `readme` key is gone, since the
   README isn't copied.
 - **src/lib.rs:** the `sideload` module (the high-level `Sideloader`, its signer, and its install path)
   builds only with that feature. A new `certs` module holds Apple's root and WWDR G3 certificates, which
@@ -28,14 +28,14 @@ repository, the folder that holds `isideload/`, applies it and gives this copy):
 
 Nothing in the sign-in, anisette, or developer-services code changed. `scripts/check-tree.sh` fails if
 `Cargo.toml` stops making the signer optional, and `scripts/crate-notices.py --deny-copyleft` (run by
-`apps/setup/package.sh` for every release build) fails if any GPL-family crate is linked.
+`apps/companion-rs/package.sh` for every release build) fails if any GPL-family crate is linked.
 
 ## Updating
 
 1. Copy the new commit's `isideload/` here.
 2. Apply `../isideload.patch`, and fix whatever no longer applies.
 3. Regenerate the patch against the new commit.
-4. Update the commit above, and run `apps/setup`'s tests and a device run.
+4. Update the commit above, and run `apps/companion-rs`'s tests and a device run.
 
 The cleaner fix is upstream: a PR to isideload that makes the signer optional would let this go back to a
 pinned git dependency.

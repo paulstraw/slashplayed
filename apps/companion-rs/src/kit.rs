@@ -46,7 +46,7 @@ pub async fn fetch(path: Option<&Path>) -> Result<(Vec<u8>, String), Report> {
         return Ok((bytes, format!("{} (SHA-256 {sha})", p.display())));
     }
     let Some(want) = pinned_sha256() else {
-        bail!("this build of slashplayed-setup has no device kit pinned: name one with --kit <{ASSET}>");
+        bail!("this build of slashplayed-companion has no device kit pinned: name one with --kit <{ASSET}>");
     };
     let tag = release_tag();
     let url = format!("https://github.com/{REPO}/releases/download/{tag}/{ASSET}");

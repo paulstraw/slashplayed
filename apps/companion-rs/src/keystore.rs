@@ -16,7 +16,7 @@ use rsa::{
 };
 use zeroize::{Zeroize, Zeroizing};
 
-pub const SERVICE: &str = "com.strawdynamics.slashplayed.setup";
+pub const SERVICE: &str = "com.strawdynamics.slashplayed.companion-rs";
 
 pub enum Loaded {
     Key(RsaPrivateKey),

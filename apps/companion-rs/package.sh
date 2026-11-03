@@ -1,11 +1,11 @@
 #!/bin/bash
-# Packages a release build of slashplayed-setup for one target, with every notice its license terms ask for:
+# Packages a release build of slashplayed-companion for one target, with every notice its license terms ask for:
 #
-#   apps/setup/package.sh <target triple> <out dir>
+#   apps/companion-rs/package.sh <target triple> <out dir>
 #
-# after `cargo build --release --locked --target <triple>` here (CI's setup jobs, .github/workflows/). Writes
-# <out dir>/slashplayed-setup-<os>-<arch>.zip (Windows) or .tar.gz (Linux, macOS), holding:
-#   slashplayed-setup[.exe]   the tool
+# after `cargo build --release --locked --target <triple>` here (CI's companion-rs jobs, .github/workflows/). Writes
+# <out dir>/slashplayed-companion-<os>-<arch>.zip (Windows) or .tar.gz (Linux, macOS), holding:
+#   slashplayed-companion[.exe]   the tool
 #   README.txt                what it is and where its docs are
 #   licenses/NOTICES.txt      every Rust crate it links (scripts/crate-notices.py, which also fails on a
 #                             GPL-family crate: the binary is static)
@@ -21,9 +21,9 @@ die() { echo "package: $*" >&2; exit 1; }
 TARGET=$1
 mkdir -p "$2"
 OUTDIR=$(cd "$2" && pwd)
-SETUP=$ROOT/apps/setup
-TOOLCHAIN=$(sed -n 's/^channel = "\(.*\)"/\1/p' "$SETUP/rust-toolchain.toml")
-[ -n "$TOOLCHAIN" ] || die "no channel in apps/setup/rust-toolchain.toml"
+CRATE=$ROOT/apps/companion-rs
+TOOLCHAIN=$(sed -n 's/^channel = "\(.*\)"/\1/p' "$CRATE/rust-toolchain.toml")
+[ -n "$TOOLCHAIN" ] || die "no channel in apps/companion-rs/rust-toolchain.toml"
 
 case $TARGET in
   *windows*) os=windows; exe=.exe ;;
@@ -32,28 +32,28 @@ case $TARGET in
   *) die "unknown target $TARGET" ;;
 esac
 arch=${TARGET%%-*}
-BIN=$SETUP/target/$TARGET/release/slashplayed-setup$exe
+BIN=$CRATE/target/$TARGET/release/slashplayed-companion$exe
 [ -f "$BIN" ] || die "no $BIN: build it first (cargo build --release --locked --target $TARGET)"
 ZSIGN=${SP_ZSIGN_SRC:-$ROOT/work/zsign/src/zsign}
 [ -f "$ZSIGN/LICENSE" ] || die "no zsign source in $ZSIGN (scripts/build-zsign.sh source)"
 
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
-NAME=slashplayed-setup-$os-$arch
+NAME=slashplayed-companion-$os-$arch
 PKG=$STAGE/$NAME
 mkdir -p "$PKG/licenses"
 cp "$BIN" "$PKG/"
 
-"${PYTHON:-python3}" -I "$ROOT/scripts/crate-notices.py" --toolchain "$TOOLCHAIN" --manifest-dir "$SETUP" --features "" \
-  --target "$TARGET" --own slashplayed-setup --deny-copyleft --out "$PKG/licenses/NOTICES.txt" \
-  --title "slashplayed-setup and the Rust crates it's built with, as the $TARGET build links them" ||
+"${PYTHON:-python3}" -I "$ROOT/scripts/crate-notices.py" --toolchain "$TOOLCHAIN" --manifest-dir "$CRATE" --features "" \
+  --target "$TARGET" --own slashplayed-companion --deny-copyleft --out "$PKG/licenses/NOTICES.txt" \
+  --title "slashplayed-companion and the Rust crates it's built with, as the $TARGET build links them" ||
   die "couldn't write the crate notices (see above)"
 SYSROOT=$(rustup run "$TOOLCHAIN" rustc --print sysroot)
 [ -s "$SYSROOT/share/doc/rust/COPYRIGHT-library.html" ] || die "Rust $TOOLCHAIN has no COPYRIGHT-library.html"
 cp "$SYSROOT/share/doc/rust/COPYRIGHT-library.html" "$PKG/licenses/rust-std.html"
 cp "$ZSIGN/LICENSE" "$PKG/licenses/zsign.txt"
 # OpenSSL's license, from the very openssl-src source build.rs compiled.
-OPENSSL=$(cd "$SETUP" && rustup run "$TOOLCHAIN" cargo metadata --locked --format-version 1 | "${PYTHON:-python3}" -I -c '
+OPENSSL=$(cd "$CRATE" && rustup run "$TOOLCHAIN" cargo metadata --locked --format-version 1 | "${PYTHON:-python3}" -I -c '
 import json, os, sys
 m = json.load(sys.stdin)
 p = [p for p in m["packages"] if p["name"] == "openssl-src"]
@@ -71,13 +71,13 @@ cp "$OPENSSL" "$PKG/licenses/openssl.txt"
 grep -q "Jean-loup Gailly" "$PKG/licenses/zlib.txt" || die "couldn't find zlib's license in zlib.h"
 cp "$ROOT/LICENSE" "$PKG/licenses/slashplayed.txt"
 cat > "$PKG/README.txt" <<EOF
-slashplayed-setup $(sed -n 's/^version = "\(.*\)"/\1/p' "$SETUP/Cargo.toml" | head -1)
+slashplayed-companion $(sed -n 's/^version = "\(.*\)"/\1/p' "$CRATE/Cargo.toml" | head -1)
 
 Sets up Slashplayed on an iPhone or iPad over USB, with no Mac: signs in to your Apple ID, makes the
 signing profiles, signs and installs the app, and gets it ready to install games on the device itself.
 Run it again to re-sign: within 7 days on a free Apple ID, within a year on a paid one.
 
-  slashplayed-setup --help
+  slashplayed-companion --help
 
 Guide: https://github.com/paulstraw/slashplayed/blob/main/docs/setup-without-a-mac.md
 Vision Pro still needs a Mac with the Slashplayed Companion.

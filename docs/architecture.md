@@ -653,13 +653,13 @@ none does, and keeps the launcher's copy in place.
 
 ## The host tool (no Mac)
 
-`slashplayed-setup` (`apps/setup`, Rust) sets up an iPad or iPhone from Windows, Linux, or a Mac without
+`slashplayed-companion` (`apps/companion-rs`, Rust) sets up an iPad or iPhone from Windows, Linux, or a Mac without
 Xcode. It does what the companion does with Xcode and devicectl, and nothing the device does for itself:
 the device installs and updates games, picks their region, and writes `.build.info`, `Config.wtf`, and the
 addons. **Vision Pro stays Mac-only:** there's no public visionOS developer disk image besides Xcode's, and
 pairing a headset without a Mac is unproven. The tool refuses a headset.
 
-One run, `slashplayed-setup [install]`, which is also the weekly re-sign on a free team:
+One run, `slashplayed-companion [install]`, which is also the weekly re-sign on a free team:
 
 1. **The device kit** (`src/kit.rs`): the device app, unsigned and with no game images, one per platform,
    which `scripts/release/device-kit.sh` assembles at release from what `bundle-resources.sh` stages, as
@@ -706,7 +706,7 @@ One run, `slashplayed-setup [install]`, which is also the weekly re-sign on a fr
 Windows Credential Manager, or the Secret Service on Linux (`src/keystore.rs`). There's one item per
 Apple ID, and it's stored before Apple sees a request for it. With no store (a Linux box with no Secret
 Service), each run makes a new key and certificate. At the team's certificate limit, the tool revokes
-the oldest certificate a Slashplayed tool made (machine name "Slashplayed setup", or the spike's
+the oldest certificate a Slashplayed tool made (machine name "Slashplayed companion", the earlier "Slashplayed setup", or the spike's
 "Slashplayed spike"), and never anyone else's. Xcode's Manage Certificates lists only Apple Development
 certificates, not the "iOS Development" kind these are, so this is the only way such a slot comes back
 without a paid team's developer site.
@@ -729,7 +729,7 @@ file checked against a pinned SHA-256. Slashplayed never hosts it. The files go 
 - Logs give sizes only. The scratch folder (private, deleted at exit) holds only the kit, the app, and
   the IPA.
 
-**isideload is vendored** (`apps/setup/vendor/isideload`, `VENDORED.md`, `isideload.patch`).
+**isideload is vendored** (`apps/companion-rs/vendor/isideload`, `VENDORED.md`, `isideload.patch`).
 - Upstream links its LGPL-2.1 signer, apple-codesign-quick, unconditionally. A static binary would then
   carry the LGPL's relinking terms, so the vendored copy puts the signer behind an off-by-default feature.
 - `scripts/check-tree.sh` checks that the signer stays optional and that the idevice pin and version
@@ -738,13 +738,13 @@ file checked against a pinned SHA-256. Slashplayed never hosts it. The files go 
 
 **Releases.**
 - `release.yml` attaches the kit to each `v*` release, then builds the tool against it for Linux x86_64
-  and aarch64 and Windows x86_64 (`setup-build.yml`). The Windows `.exe` is unsigned (owner decision),
+  and aarch64 and Windows x86_64 (`companion-rs-build.yml`). The Windows `.exe` is unsigned (owner decision),
   so each archive gets SHA256SUMS lines and a build-provenance attestation.
-- `apps/setup/package.sh` packs each archive with its notices: the crates, the Rust standard library,
+- `apps/companion-rs/package.sh` packs each archive with its notices: the crates, the Rust standard library,
   zsign, OpenSSL, and zlib/minizip.
-- `setup-prerelease.yml` makes the same as a GitHub prerelease of the branch it runs on (`setup-<version>-pre.<n>`),
+- `companion-rs-prerelease.yml` makes the same as a GitHub prerelease of the branch it runs on (`companion-<version>-pre.<n>`),
   published only after the owner approves the `prerelease` environment.
-- CI's `setup` job tests and builds it on Linux and Windows.
+- CI's `companion-rs` job tests and builds it on Linux and Windows.
 
 ## Game data on the device
 

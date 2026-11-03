@@ -1,5 +1,5 @@
 #!/bin/bash
-# The device kit, the release asset slashplayed-setup installs from (apps/setup/src/kit.rs): the device app,
+# The device kit, the release asset slashplayed-companion installs from (apps/companion-rs/src/kit.rs): the device app,
 # unsigned and with no game images, for each device platform, assembled from what
 # apps/companion/bundle-resources.sh stages, the way the companion's ClientAssembly.assemble assembles it with
 # no clients (keep the three in step: a file the companion's app gets, the kit's gets too).

@@ -38,9 +38,9 @@ check() {
 # --- Scrub line ---------------------------------------------------------------------------------------
 check "offsets into the client (the scrub line keeps client internals general)" \
   -E 'wow\+0x|\+0x[0-9a-f]{5,}'
-# Not the vendored isideload (apps/setup/vendor), third-party code whose AES-CBC decryptor is Apple's
+# Not the vendored isideload (apps/companion-rs/vendor), third-party code whose AES-CBC decryptor is Apple's
 # sign-in, nothing of the client's.
-check --skip ':!apps/setup/vendor' "client-internal or dropped-research wording (generalize, or link docs/ instead)" \
+check --skip ':!apps/companion-rs/vendor' "client-internal or dropped-research wording (generalize, or link docs/ instead)" \
   -iE 'decryptor|notes/|research-00|recon-001'
 
 # --- No hardcoding -------------------------------------------------------------------------------------
@@ -62,7 +62,7 @@ fi
 # Apple's public root and WWDR G3 CA certificates in the vendored isideload (it pins Apple's root for the
 # sign-in) are the one exception: public certificates, no key.
 hits=$(git ls-files | grep -E '(^|/)local\.env$|\.(p12|p8|cer|mobileprovision|provisionprofile)$' |
-  grep -vxE 'apps/setup/vendor/isideload/src/assets/(apple_root|AppleWWDRCAG3)\.cer' || true)
+  grep -vxE 'apps/companion-rs/vendor/isideload/src/assets/(apple_root|AppleWWDRCAG3)\.cer' || true)
 if [[ -n "$hits" ]]; then
   echo "error: signing material or local config is tracked (git rm --cached it; .gitignore covers local.env):" >&2
   sed 's/^/  /' <<<"$hits" >&2
@@ -89,24 +89,24 @@ if [[ -n "$hits" ]]; then
 fi
 
 # --- Pins that must agree ------------------------------------------------------------------------------
-# The host tool (apps/setup) links idevice through Cargo, the rest of the repo through build-idevice.sh:
+# The host tool (apps/companion-rs) links idevice through Cargo, the rest of the repo through build-idevice.sh:
 # one vetted commit for both. Its version is the release's (MARKETING_VERSION), since a release carries it
 # and the device kit it installs under one tag.
 idevice_pin=$(sed -n 's/^COMMIT=\([0-9a-f]*\)$/\1/p' scripts/build-idevice.sh)
-setup_pin=$(sed -n 's/^idevice = { git = .*rev = "\([0-9a-f]*\)" }$/\1/p' apps/setup/Cargo.toml)
+setup_pin=$(sed -n 's/^idevice = { git = .*rev = "\([0-9a-f]*\)" }$/\1/p' apps/companion-rs/Cargo.toml)
 if [[ -z "$idevice_pin" || "$idevice_pin" != "$setup_pin" ]]; then
-  echo "error: apps/setup/Cargo.toml's idevice rev ($setup_pin) isn't scripts/build-idevice.sh's COMMIT ($idevice_pin)" >&2
+  echo "error: apps/companion-rs/Cargo.toml's idevice rev ($setup_pin) isn't scripts/build-idevice.sh's COMMIT ($idevice_pin)" >&2
   failed=1
 fi
 marketing=$(awk -F'"' '/^ *MARKETING_VERSION:/ {print $2; exit}' apps/companion/project.yml)
-setup_version=$(sed -n 's/^version = "\(.*\)"$/\1/p' apps/setup/Cargo.toml | head -1)
+setup_version=$(sed -n 's/^version = "\(.*\)"$/\1/p' apps/companion-rs/Cargo.toml | head -1)
 if [[ "$marketing" != "$setup_version" ]]; then
-  echo "error: apps/setup/Cargo.toml's version ($setup_version) isn't MARKETING_VERSION ($marketing)" >&2
+  echo "error: apps/companion-rs/Cargo.toml's version ($setup_version) isn't MARKETING_VERSION ($marketing)" >&2
   failed=1
 fi
-# The vendored isideload keeps its LGPL signer optional (apps/setup/vendor/isideload/VENDORED.md).
-if ! grep -qx 'apple-codesign-quick = { version = "0.1.0", optional = true }' apps/setup/vendor/isideload/Cargo.toml; then
-  echo "error: apps/setup/vendor/isideload/Cargo.toml no longer makes apple-codesign-quick optional" >&2
+# The vendored isideload keeps its LGPL signer optional (apps/companion-rs/vendor/isideload/VENDORED.md).
+if ! grep -qx 'apple-codesign-quick = { version = "0.1.0", optional = true }' apps/companion-rs/vendor/isideload/Cargo.toml; then
+  echo "error: apps/companion-rs/vendor/isideload/Cargo.toml no longer makes apple-codesign-quick optional" >&2
   failed=1
 fi
 

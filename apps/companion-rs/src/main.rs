@@ -1,4 +1,4 @@
-// slashplayed-setup: sets up Slashplayed on an iPad or iPhone from Windows, Linux, or a Mac, with no Xcode
+// slashplayed-companion: sets up Slashplayed on an iPad or iPhone from Windows, Linux, or a Mac, with no Xcode
 // and no Mac companion (docs/setup-without-a-mac.md; how it works: docs/architecture.md, "The host tool").
 // Run it again to re-sign: weekly on a free Apple ID, yearly on a paid one. Each run:
 //
@@ -34,14 +34,14 @@ pub fn say(line: &str) {
 }
 
 const USAGE: &str = "\
-slashplayed-setup: set up Slashplayed on an iPhone or iPad without a Mac.
+slashplayed-companion: set up Slashplayed on an iPhone or iPad without a Mac.
 
 Usage:
-  slashplayed-setup [install] [options]   install or re-sign Slashplayed on the device on USB
-  slashplayed-setup devices               list the iPhones and iPads on USB
-  slashplayed-setup forget --apple-id <id>
+  slashplayed-companion [install] [options]   install or re-sign Slashplayed on the device on USB
+  slashplayed-companion devices               list the iPhones and iPads on USB
+  slashplayed-companion forget --apple-id <id>
                                           delete this computer's signing key for that Apple ID
-  slashplayed-setup --version
+  slashplayed-companion --version
 
 Options for install:
   --apple-id <id>       the Apple ID to sign with (asked for if not given)
@@ -103,7 +103,7 @@ fn main() {
     let args = match parse(std::env::args().skip(1)) {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("slashplayed-setup: {}", secret::safe_error(&e));
+            eprintln!("slashplayed-companion: {}", secret::safe_error(&e));
             std::process::exit(2);
         }
     };
@@ -112,12 +112,12 @@ fn main() {
         return;
     }
     if args.flag("--version") || args.command == "version" {
-        println!("slashplayed-setup {} (device kit: {})", env!("CARGO_PKG_VERSION"), kit::release_tag());
+        println!("slashplayed-companion {} (device kit: {})", env!("CARGO_PKG_VERSION"), kit::release_tag());
         return;
     }
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("tokio runtime");
     if let Err(e) = runtime.block_on(run(&args)) {
-        eprintln!("slashplayed-setup: {}", secret::safe_error(&e));
+        eprintln!("slashplayed-companion: {}", secret::safe_error(&e));
         std::process::exit(1);
     }
 }
@@ -147,7 +147,7 @@ async fn run(args: &Args) -> Result<(), Report> {
 
 async fn install(args: &Args) -> Result<(), Report> {
     // 1. The kit, first: a bad download shouldn't cost a sign-in.
-    let scratch = secret::Scratch::new("setup")?;
+    let scratch = secret::Scratch::new("companion")?;
     let (bytes, from) = kit::fetch(args.opt("--kit").map(std::path::Path::new)).await?;
     let kit = kit::extract(&bytes, scratch.path())?;
     drop(bytes);

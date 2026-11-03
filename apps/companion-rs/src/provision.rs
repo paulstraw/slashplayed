@@ -45,11 +45,11 @@ use crate::{keystore, profile, say};
 
 /// The name Apple shows for this tool's certificate (the developer site, Xcode's Manage Certificates): how
 /// a person, and this tool at the certificate limit, tells it from Xcode's and other tools'.
-pub const MACHINE_NAME: &str = "Slashplayed setup";
-/// Every name this project's tools give their certificates: MACHINE_NAME, and research/isideload's spike
-/// ("Slashplayed spike"). Only these may be revoked at the limit. Xcode can't help free a slot taken by one:
-/// they're the older "iOS Development" kind, which Xcode's Manage Certificates doesn't list.
-pub const OUR_NAMES: &[&str] = &[MACHINE_NAME, "Slashplayed spike"];
+pub const MACHINE_NAME: &str = "Slashplayed companion";
+/// Every name this project's tools give their certificates: MACHINE_NAME, its name before the tool was
+/// renamed ("Slashplayed setup"), and research/isideload's spike ("Slashplayed spike"). Only these may be
+/// revoked at the limit. Xcode can't help free a slot taken by one: they're the older "iOS Development" kind, which Xcode's Manage Certificates doesn't list.
+pub const OUR_NAMES: &[&str] = &[MACHINE_NAME, "Slashplayed setup", "Slashplayed spike"];
 pub const IML: &str = "com.apple.developer.kernel.increased-memory-limit";
 pub const EVA: &str = "com.apple.developer.kernel.extended-virtual-addressing";
 /// submitDevelopmentCSR's result code when the team has all the development certificates it may.
@@ -387,11 +387,12 @@ mod tests {
             cert(Some(MACHINE_NAME), Some("4"), 100),
             cert(None, Some("5"), 1),
             cert(Some(MACHINE_NAME), None, 1),
-            cert(Some("Slashplayed setup "), Some("6"), 1),
+            cert(Some("Slashplayed companion "), Some("6"), 1),
+            cert(Some("Slashplayed setup"), Some("8"), 40),
             cert(Some("Slashplayed spike"), Some("7"), 50),
         ];
         let r: Vec<_> = revocable(&certs).iter().map(|c| c.serial_number.clone().unwrap()).collect();
-        assert_eq!(r, vec!["7", "4", "2"]);
+        assert_eq!(r, vec!["8", "7", "4", "2"]);
     }
 
     #[test]

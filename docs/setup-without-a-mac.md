@@ -1,7 +1,8 @@
 # Setting up without a Mac
 
-**slashplayed-setup** sets up Slashplayed on an **iPad or iPhone** from a **Windows** or **Linux** PC,
-with no Mac. It's a command-line tool: plug in the device, run it, and answer its questions. It's new.
+**slashplayed-companion**, the Slashplayed Companion for Windows and Linux, sets up Slashplayed on an
+**iPad or iPhone** from a PC, with no Mac. For now it's a command-line tool: plug in the device, run it,
+and answer its questions. It's new.
 Until a release includes it, it comes as test builds for volunteers (see [Testing it](#testing-it)).
 
 **Apple Vision Pro still needs a Mac** with the [Slashplayed Companion](../README.md#get-started).
@@ -37,8 +38,8 @@ You install the games on the device itself: open Slashplayed and tap one.
 
 1. Unzip the download for your system.
 2. Plug in the device, unlock it, and run the tool from a terminal:
-   - **Windows:** in PowerShell, `.\slashplayed-setup.exe`
-   - **Linux:** `./slashplayed-setup`
+   - **Windows:** in PowerShell, `.\slashplayed-companion.exe`
+   - **Linux:** `./slashplayed-companion`
 3. If the device asks whether to trust this computer, tap **Trust**.
 4. If Developer Mode is off, the tool says so and shows the switch in Settings > Privacy & Security >
    Developer Mode. Turn it on, let the device restart, tap **Turn On**, then run the tool again.
@@ -59,12 +60,12 @@ do this within 7 days of the last run, or the app won't open until you do.
 |---|---|
 | `--apple-id <email>` | Don't ask for the Apple ID. |
 | `--team <TEAMID>` | Pick the team without asking. |
-| `--udid <UDID>` | Pick the device when several are plugged in (`slashplayed-setup devices` lists them). |
+| `--udid <UDID>` | Pick the device when several are plugged in (`slashplayed-companion devices` lists them). |
 | `--bundle-id <id>` | The app's bundle ID. The default is `<team ID>.slashplayed`, the same as the Mac companion's, so the two sign the same app. |
 | `--anisette <url>` | The anisette server Apple's sign-in needs. The default is `https://mac-ani.jkcoxson.com`. You can run your own. |
 | `--pair-again` | Make a new pairing record, if starting games keeps failing at the pairing step. |
 
-`slashplayed-setup forget --apple-id <email>` deletes the signing key the tool keeps for that Apple ID
+`slashplayed-companion forget --apple-id <email>` deletes the signing key the tool keeps for that Apple ID
 (see below).
 
 ## What it keeps
@@ -82,8 +83,8 @@ do this within 7 days of the last run, or the app won't open until you do.
 ## Testing it
 
 Test builds are posted as **prereleases** on the
-[releases page](https://github.com/paulstraw/slashplayed/releases): `slashplayed-setup-windows-x86_64.zip`,
-`slashplayed-setup-linux-x86_64.tar.gz`, and `slashplayed-setup-linux-aarch64.tar.gz`.
+[releases page](https://github.com/paulstraw/slashplayed/releases): `slashplayed-companion-windows-x86_64.zip`,
+`slashplayed-companion-linux-x86_64.tar.gz`, and `slashplayed-companion-linux-aarch64.tar.gz`.
 
 - **Windows:** the `.exe` isn't signed, so SmartScreen warns about it. Choose **More info > Run anyway**.
 - **Checking a download:** compare it with `SHA256SUMS`. To check it was built by this repository's

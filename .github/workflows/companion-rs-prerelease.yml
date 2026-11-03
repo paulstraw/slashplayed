@@ -1,16 +1,16 @@
-# A slashplayed-setup prerelease for volunteers on Windows and Linux, from a branch (a PR's, say), started
-# by hand: Actions > Setup prerelease > Run workflow, with that branch under "Use workflow from". It builds
+# A slashplayed-companion prerelease for volunteers on Windows and Linux, from a branch (a PR's, say), started
+# by hand: Actions > Companion prerelease > Run workflow, with that branch under "Use workflow from". It builds
 # the commit the run is on, never one named in an input: the caches the kit job saves (companion-deps) are
 # scoped to the run's branch, so a branch's code can't reach main's caches, which releases restore. Owner decision (2026-11-01):
 # prereleases are published only on the owner's approval, which the `prerelease` environment asks for
 # before the publish job runs; the builds before it hold no secrets and publish nothing.
 #
 # It builds the device kit unsigned on macOS (as release.sh does, without Developer ID or notarization: the
-# kit is signed on the host by the tool), slashplayed-setup against it (setup-build.yml), and publishes both
-# as a GitHub prerelease tagged setup-<version>-pre.<run number>, which doesn't match release.yml's v* and so
+# kit is signed on the host by the tool), slashplayed-companion against it (companion-rs-build.yml), and publishes both
+# as a GitHub prerelease tagged companion-<version>-pre.<run number>, which doesn't match release.yml's v* and so
 # never starts a release, with SHA256SUMS and build-provenance attestations. The Windows .exe is unsigned
 # (owner decision): the notes say to expect SmartScreen.
-name: Setup prerelease
+name: Companion prerelease
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: setup-prerelease
+  group: companion-prerelease
   cancel-in-progress: false
 
 env:
@@ -66,7 +66,7 @@ jobs:
           {
             echo "sha=$(git rev-parse HEAD)"
             echo "version=$version"
-            echo "tag=setup-$version-pre.$GITHUB_RUN_NUMBER"
+            echo "tag=companion-$version-pre.$GITHUB_RUN_NUMBER"
           } >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/companion-deps
@@ -93,17 +93,17 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  setup-build:
+  companion-rs-build:
     needs: kit
     permissions:
       contents: read
-    uses: ./.github/workflows/setup-build.yml
+    uses: ./.github/workflows/companion-rs-build.yml
     with:
       kit_sha256: ${{ needs.kit.outputs.kit_sha256 }}
       release_tag: ${{ needs.kit.outputs.tag }}
 
   publish:
-    needs: [kit, setup-build]
+    needs: [kit, companion-rs-build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # The owner approves here, after seeing the builds pass.
@@ -134,7 +134,7 @@ jobs:
           (cd assets && sha256sum -- *) > SHA256SUMS
           cat SHA256SUMS
           cat > notes.md <<EOF
-          A test build of **slashplayed-setup**, which sets up Slashplayed on an iPhone or iPad from Windows
+          A test build of **slashplayed-companion**, which sets up Slashplayed on an iPhone or iPad from Windows
           or Linux with no Mac, built from \`$REF\` ($SHA). It's for volunteers testing it before a release:
           [the guide](https://github.com/$GITHUB_REPOSITORY/blob/$SHA/docs/setup-without-a-mac.md) says how
           to run it and what to report.
@@ -148,5 +148,5 @@ jobs:
           EOF
           sed -i 's/^          //' notes.md
           gh release create "$TAG" -R "$GITHUB_REPOSITORY" --prerelease --target "$SHA" \
-            --title "slashplayed-setup $VERSION prerelease ${TAG##*.}" --notes-file notes.md \
+            --title "slashplayed-companion $VERSION prerelease ${TAG##*.}" --notes-file notes.md \
             assets/* SHA256SUMS

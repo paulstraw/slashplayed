@@ -190,12 +190,12 @@ jobs:
       - name: Test the companion
         run: apps/companion/test.sh
 
-  # The host tool, slashplayed-setup (apps/setup), on the two systems it's for: its unit tests and a
+  # The host tool, slashplayed-companion (apps/companion-rs), on the two systems it's for: its unit tests and a
   # release build, from source as a volunteer would build it. zsign's patched source comes from
   # scripts/build-zsign.sh source (git only); build.rs compiles it with OpenSSL from openssl-src. On
   # Linux, the crates' notices too, which fail on a GPL-family crate (the binary links statically:
-  # apps/setup/vendor/isideload/VENDORED.md). Gated like the companion jobs.
-  setup:
+  # apps/companion-rs/vendor/isideload/VENDORED.md). Gated like the companion jobs.
+  companion-rs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     strategy:
@@ -234,7 +234,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # rustup, pinned and checked as for the companion; apps/setup/rust-toolchain.toml then picks Rust.
+      # rustup, pinned and checked as for the companion; apps/companion-rs/rust-toolchain.toml then picks Rust.
       - name: Install rustup
         env:
           RUSTUP_URL: ${{ matrix.rustup_url }}
@@ -254,12 +254,12 @@ jobs:
       - name: Fetch zsign's source
         run: scripts/build-zsign.sh source
 
-      - name: Test slashplayed-setup
-        working-directory: apps/setup
+      - name: Test slashplayed-companion
+        working-directory: apps/companion-rs
         run: cargo test --locked
 
-      - name: Build slashplayed-setup
-        working-directory: apps/setup
+      - name: Build slashplayed-companion
+        working-directory: apps/companion-rs
         env:
           TARGET: ${{ matrix.target }}
         run: cargo build --release --locked --target "$TARGET"
@@ -267,4 +267,4 @@ jobs:
       - name: Package it, with its notices
         env:
           TARGET: ${{ matrix.target }}
-        run: apps/setup/package.sh "$TARGET" "$RUNNER_TEMP/setup"
+        run: apps/companion-rs/package.sh "$TARGET" "$RUNNER_TEMP/companion-rs"

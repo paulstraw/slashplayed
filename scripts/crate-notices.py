@@ -5,10 +5,10 @@
         --target <triple> [--target <triple>...] --title <text> --out <notices.txt> \
         [--own <crate>] [--deny-copyleft]
 
---own names the crate being built when it's this repository's own (apps/setup's slashplayed-setup): it's
+--own names the crate being built when it's this repository's own (apps/companion-rs's slashplayed-companion): it's
 MIT under the repository's LICENSE, so it's listed without a text of its own. --deny-copyleft fails when a
 linked crate can only be had under a GPL-family license (GPL, LGPL, AGPL): the host tool links statically,
-so one would bind the whole binary (apps/setup/vendor/isideload/VENDORED.md says why its signer is left out).
+so one would bind the whole binary (apps/companion-rs/vendor/isideload/VENDORED.md says why its signer is left out).
 
 scripts/build-idevice.sh runs it for each platform after the build, with the same toolchain, crate,
 features, and targets as the build, so the list is what cargo actually linked: `cargo tree` with normal
@@ -128,7 +128,7 @@ def main():
                 if d == root:
                     break
                 d = os.path.dirname(d)
-        # So is one from a git checkout (idevice, patched in by commit for apps/setup): up to the checkout's
+        # So is one from a git checkout (idevice, patched in by commit for apps/companion-rs): up to the checkout's
         # root, which cargo marks with .cargo-ok.
         elif p["source"].startswith("git+"):
             d = directory
