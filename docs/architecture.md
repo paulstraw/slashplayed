@@ -719,8 +719,12 @@ file checked against a pinned SHA-256. Slashplayed never hosts it. The files go 
   waiting for 27B52 to be published.
 - The device still trusts only Apple's signature. The helper has the image personalized by Apple's TSS
   for the device before mounting it.
-- Untested so far: the mirror's image mounting through the helper. The test iPhone already had Xcode's
-  mounted.
+- Checked on the iPhone 16 Pro (iOS 27.0.1, 2026-11-02): with no image installed, the helper mounted the
+  mirror's copy (`com.apple.MobileAsset.DDI 27.1.5228.8`) in 1.7 s, then attached and prepared as usual.
+- On iOS 27 the image is a cryptex that stays installed across restarts: a device needs one once, not
+  after every reboot. Testing this on a Mac needs care, because CoreDevice installs Xcode's own image
+  whenever devicectl starts a developer service (`apps/client/run.sh` does). Remove the installed one
+  with idevice's `cryptexd uninstall com.apple.MobileAsset.DDI`, then launch from the device, unplugged.
 
 **Credentials** follow the companion's rules:
 - The pairing record goes from idevice's memory straight to the device over AFC, so it never touches the
