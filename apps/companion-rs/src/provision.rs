@@ -141,21 +141,33 @@ pub async fn app_ids(session: &mut DeveloperSession, team: &DeveloperTeam, bundl
     Ok((find(bundle_id)?, find(&helper)?))
 }
 
+/// What became of extended-virtual-addressing in the capability PATCH. `Refused` keeps Apple's status code
+/// (and only that: the response body may carry account details) so a paid team's bail in `profiles()` can
+/// say why, rather than blaming a free team it isn't.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Eva {
+    Granted,
+    Refused(u16),
+}
+
 /// Capabilities, in one v1 bundleIds PATCH as Xcode sends them (isideload's own call can send only
-/// increased-memory-limit). Returns whether extended-virtual-addressing was granted: Apple refuses it for a
+/// increased-memory-limit). Says whether extended-virtual-addressing was granted: Apple refuses it for a
 /// free team, which is then signed with increased-memory-limit alone (Signing.freeTeamDropped).
-pub async fn capabilities(session: &mut DeveloperSession, team: &DeveloperTeam, app_id: &AppId) -> Result<bool, Report> {
-    if patch_capabilities(session, team, app_id, &["INCREASED_MEMORY_LIMIT", "EXTENDED_VIRTUAL_ADDRESSING"])
-        .await
-        .is_ok()
-    {
-        return Ok(true);
+///
+/// Any HTTP answer but a 2xx takes that path: which status a free team gets isn't recorded
+/// (research/isideload never sent EVA on one), and the free path is the one tested on a device, so no guess
+/// at the code may break it. A paid team can't be hidden by this: its profile isn't a free one, so
+/// `profiles()` stops with the status. Only a request that didn't go through at all fails here.
+pub async fn capabilities(session: &mut DeveloperSession, team: &DeveloperTeam, app_id: &AppId) -> Result<Eva, Report> {
+    let status = patch_capabilities(session, team, app_id, &["INCREASED_MEMORY_LIMIT", "EXTENDED_VIRTUAL_ADDRESSING"]).await?;
+    if (200..300).contains(&status) {
+        return Ok(Eva::Granted);
     }
     session
         .add_increased_memory_limit(team, app_id)
         .await
         .context("Apple refused the increased-memory-limit capability")?;
-    Ok(false)
+    Ok(Eva::Refused(status))
 }
 
 async fn patch_capabilities(
@@ -163,7 +175,7 @@ async fn patch_capabilities(
     team: &DeveloperTeam,
     app_id: &AppId,
     caps: &[&str],
-) -> Result<(), Report> {
+) -> Result<u16, Report> {
     let mut headers = session.get_headers().await?;
     headers.insert("Content-Type", HeaderValue::from_static("application/vnd.api+json"));
     headers.insert("Accept", HeaderValue::from_static("application/vnd.api+json"));
@@ -186,17 +198,17 @@ async fn patch_capabilities(
         },
         "relationships": { "bundleIdCapabilities": { "data": data } },
     }});
-    session
+    let resp = session
         .get_grandslam_client()
         .patch(&format!("https://developerservices2.apple.com/services/v1/bundleIds/{}", app_id.app_id_id))?
         .headers(headers)
         .body(body.to_string())
         .send()
         .await
-        .context("the capability request didn't go through")?
-        .error_for_status()
-        .context("Apple refused the capabilities")?;
-    Ok(())
+        .context("the capability request didn't go through")?;
+    // The status alone is what the caller needs; the body (which may name the account) is never read into
+    // an error.
+    Ok(resp.status().as_u16())
 }
 
 /// The signing identity: our key and its certificate on the team.
@@ -332,14 +344,17 @@ pub async fn profiles(
     helper_id: &AppId,
     udid: &str,
     id: &Identity,
-    eva_granted: bool,
+    eva: Eva,
 ) -> Result<(Vec<u8>, Vec<u8>, bool), Report> {
     let app = session.download_team_provisioning_profile(team, app_id, None).await?;
     let app_bytes: Vec<u8> = app.encoded_profile.as_ref().to_vec();
     let parsed = profile::Profile::parse(&app_bytes)?;
     let free = parsed.is_free() || app.is_free_provisioning_profile == Some(true);
-    if !free && !eva_granted {
-        bail!("Apple refused extended-virtual-addressing on {}, which isn't a free team", team.team_id);
+    if let (false, Eva::Refused(status)) = (free, eva) {
+        bail!(
+            "Apple refused extended-virtual-addressing on {} (HTTP {status} to the capability request), but its profile isn't a free team's",
+            team.team_id
+        );
     }
     let want: &[&str] = if free { &[IML] } else { &[IML, EVA] };
     profile::check(&parsed, &team.team_id, &app_id.identifier, udid, &id.cert_der, want, &[])?;
