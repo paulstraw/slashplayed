@@ -23,7 +23,10 @@ SWIFTC="xcrun --sdk $SP_SDK swiftc -target $SP_TARGET -O -parse-as-library"
 rm -rf $OUT && mkdir -p $APP $HELPER
 # main.c plus the helper's host side (helper_host.swift); swiftc links, so the Swift runtime comes along.
 xcrun --sdk $SP_SDK clang -target $SP_TARGET -O1 -Wall -c main.c -o $OUT/main.o
-IDEVICE=../../work/idevice
+# SP_IDEVICE_DIR: another idevice build (h5 needs one with misagent, and SP_MISAGENT=1 to compile it in).
+IDEVICE=${SP_IDEVICE_DIR:-../../work/idevice}
+MISAGENT=
+[ -z "${SP_MISAGENT:-}" ] || MISAGENT="-D SP_MISAGENT"
 if [ -f $IDEVICE/$SP_PLATFORM/libidevice_ffi.a ]; then
   # P1 pairs from the app itself, so the host links idevice too.
   # shellcheck disable=SC2046 # native-libs.txt is a list of linker flags
@@ -48,7 +51,7 @@ cp "$SP_PROFILE" $APP/embedded.mobileprovision
 if [ -f $IDEVICE/$SP_PLATFORM/libidevice_ffi.a ]; then
   echo "helper: with idevice ($(head -1 $IDEVICE/BUILD.txt))" >&2
   # shellcheck disable=SC2046 # native-libs.txt is a list of linker flags
-  $SWIFTC -application-extension -Xlinker -e -Xlinker _NSExtensionMain -D SP_IDEVICE \
+  $SWIFTC -application-extension -Xlinker -e -Xlinker _NSExtensionMain -D SP_IDEVICE $MISAGENT \
     -I $IDEVICE/include -I $HELPER_SRC/iokit $HELPER_SRC/Helper.swift $HELPER_SRC/Device.swift $HELPER_SRC/Pair.swift \
     $IDEVICE/$SP_PLATFORM/libidevice_ffi.a $(cat $IDEVICE/$SP_PLATFORM/native-libs.txt) -o $HELPER/SPJitHelper
 else

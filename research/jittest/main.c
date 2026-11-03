@@ -400,6 +400,14 @@ static void h2(void) {
     say("  %s\n", sp_helper_status(say_str) ? "FAIL" : "PASS");
 }
 
+// ---- H5: misagent through the helper's tunnel: lists the device's profiles and installs
+// Documents/spjit-profile.mobileprovision if it's there (the device renewing its own profile).
+extern int sp_helper_profiles(void (*log)(const char *));
+
+static void h5(void) {
+    say("  %s\n", sp_helper_profiles(say_str) ? "FAIL" : "PASS");
+}
+
 // E4c (no debugger needed): what plain calls do to own __TEXT. Doesn't execute anything patched.
 static void e4c(void) {
     void *p = (void *)sp_fill;
@@ -471,6 +479,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(which, "e7")) e7();
     else if (!strcmp(which, "h1")) h1();
     else if (!strcmp(which, "h2")) h2();
+    else if (!strcmp(which, "h5")) h5();
     else if (!strcmp(which, "p1")) p1();
     else if (!strcmp(which, "p2")) p2();
     else if (!strcmp(which, "h3")) e4d();

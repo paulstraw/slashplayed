@@ -17,6 +17,9 @@
 //   "mount"  personalize and mount the disk image from "ddi" (paths relative to its Restore directory →
 //            contents).
 //   "attach" (h3, h4) attach to "pid" and service its requests; the reply comes once it has detached.
+//   "profiles" (h5, research only: built with -D SP_MISAGENT and an idevice with misagent) lists the
+//            device's provisioning profiles through misagent over RSD, installs "profile" if given, and
+//            lists again: whether the device can renew its own profile (research/isideload, step 4).
 //   "pair"   the headset only: pair-setup with visionOS's manual pairing service at "endpoints", the code
 //            from the app over loopback ("pinPort", "pinToken"); the new record is the reply's "pairing"
 //            (Pair.swift).
@@ -24,6 +27,9 @@
 // stream them; "rejected" when the device didn't accept the pairing record. The pairing record is parsed
 // in memory and never logged or written to disk.
 import Foundation
+#if SP_IDEVICE && SP_MISAGENT
+import idevice  // the profiles op's misagent calls (below)
+#endif
 
 @objc(SPHelper)
 final class SPHelper: NSObject, NSExtensionRequestHandling {
@@ -79,6 +85,10 @@ final class SPHelper: NSObject, NSExtensionRequestHandling {
             return try mountDeveloperDiskImage(tunnel, files: request["ddi"] as? [String: Data] ?? [:], log: log)
         case "attach":
             return try serve(pid: Int32(request["pid"] as? Int ?? 0), tunnel: tunnel, log: log)
+#if SP_MISAGENT
+        case "profiles":
+            return try profiles(tunnel, install: request["profile"] as? Data, log: log)
+#endif
         default:
             throw HelperError("unknown op \(op)")
         }
@@ -125,3 +135,39 @@ func tcpProbe(host: String, port: UInt16, timeoutMs: Int32) -> String {
     if err == 0 { return "connected in \(took())" }
     return "errno \(err) (\(String(cString: strerror(err)))) after \(took())"
 }
+
+#if SP_IDEVICE && SP_MISAGENT
+// misagent through the tunnel's RSD (com.apple.misagent.shim.remote): the profile count, then the install.
+// Profiles hold no secret (certificates and UDIDs are public to the team), but only counts and UUIDs are said.
+func profiles(_ tunnel: Tunnel, install: Data?, log: (String) -> Void) throws -> String {
+    var client: OpaquePointer?
+    try check("misagent", misagent_connect_rsd(tunnel.adapter, tunnel.handshake, &client))
+    defer { misagent_client_free(client) }
+    func uuids() throws -> [String] {
+        var profiles: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?
+        var lens: UnsafeMutablePointer<Int>?
+        var count = 0
+        try check("misagent copy", misagent_copy_all(client, &profiles, &lens, &count))
+        defer { misagent_free_profiles(profiles, lens, count) }
+        return (0..<count).compactMap { i in
+            guard let p = profiles?[i], let n = lens?[i] else { return nil }
+            let d = Data(bytes: p, count: n)
+            guard let a = d.range(of: Data("<?xml".utf8)), let b = d.range(of: Data("</plist>".utf8)),
+                  let plist = try? PropertyListSerialization.propertyList(from: d[a.lowerBound..<b.upperBound], format: nil)
+                    as? [String: Any] else { return "?" }
+            return plist["UUID"] as? String ?? "?"
+        }
+    }
+    let before = try uuids()
+    log("misagent: \(before.count) profiles installed")
+    guard let install else { return "misagent reachable: \(before.count) profiles" }
+    let t = now()
+    try install.withUnsafeBytes { raw in
+        try check("misagent install", misagent_install(client, raw.bindMemory(to: UInt8.self).baseAddress, install.count))
+    }
+    let after = try uuids()
+    let added = Set(after).subtracting(before)
+    log(String(format: "misagent: installed %d bytes in %.2f s", install.count, now() - t))
+    return "misagent: \(before.count) profiles before, \(after.count) after, new: \(added.sorted().joined(separator: ", "))"
+}
+#endif

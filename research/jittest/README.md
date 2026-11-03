@@ -36,6 +36,7 @@ process outright), chosen by the first argument. Background and full results:
 | `h2` | The helper opens the RemotePairing tunnel (idevice) and reports the endpoint, TXM, and the mounted developer disk image |
 | `h3` | `e4d` with the helper as the debugger: it mounts the disk image if needed, attaches to the app, prepares, and detaches |
 | `h4` | `e7` (the real shim, 44 MB) with the helper as the debugger |
+| `h5` | misagent through the helper's tunnel: lists the device's provisioning profiles and installs `Documents/spjit-profile.mobileprovision` if it's there. Needs idevice built with the `misagent` feature (`SP_IDEVICE_DIR`) and `SP_MISAGENT=1` at build time; the shipping helper leaves it out |
 | `p1` | The app makes its own RemotePairing record: a fresh one through 10.7.0.1:49152, pair-setup with the PIN the device shows (from `Documents/spjit-pin`) |
 | `p2` | The same through visionOS's manual pairing service (Settings > General > Remote Devices open), then a tunnel with the new record; runs under UIKit |
 
@@ -214,3 +215,9 @@ Vision Pro (M2, visionOS 27.0) and iPad Pro 12.9" 6th gen (M2, iPadOS 26.6):
 - `e7` (2,887 pages): contents match, and the first and last pages execute after detach. Most of the
   stop's ~57 s on the headset was lldb's own overhead, not the prepare; the client launch avoids it by
   attaching late (see [docs/architecture.md](../../docs/architecture.md#executable-memory-under-txm)).
+- `h5`, on an iPhone 16 Pro (iOS 27.0.1), 2026-11-02, with LocalDevVPN on: the helper's tunnel came up
+  through 10.7.0.1:49152 in 0.15 s, misagent (`com.apple.misagent.shim.remote` over RSD) listed 32
+  profiles, and installing a fresh free-team profile for another app took 0.08 s (33 after, the new UUID
+  among them). So the device can install a renewed profile itself, the last piece of the profile-only
+  refresh in [research/isideload](../isideload/README.md). Xcode's developer disk image happened to be
+  mounted; misagent is a lockdown service, not one the disk image brings.

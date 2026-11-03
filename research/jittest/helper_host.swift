@@ -292,6 +292,26 @@ func sp_helper_status(_ out: SPLog) -> Int32 {
     return runToCompletion(timeout: 60, log) { await openSession(log, mount: false) == nil ? 1 : 0 }
 }
 
+// Experiment h5: misagent through the helper's tunnel, the device renewing its own profile (step 4,
+// research/isideload). Installs Documents/spjit-profile.mobileprovision if it's there, else only lists.
+// Passes when misagent answered (and the install, if any, added a profile).
+@_cdecl("sp_helper_profiles")
+func sp_helper_profiles(_ out: SPLog) -> Int32 {
+    let log = HostLog(out)
+    return runToCompletion(timeout: 90, log) {
+        guard let session = await openSession(log, mount: false) else { return 1 }
+        let path = NSHomeDirectory() + "/Documents/spjit-profile.mobileprovision"
+        var request: [String: Any] = ["op": "profiles", "pairing": session.pairing, "endpoints": session.endpoints]
+        if let profile = FileManager.default.contents(atPath: path) {
+            request["profile"] = profile
+            log.say("installing \(path) (\(profile.count) bytes)")
+        }
+        guard let reply = await helperRequest(request, log) else { return 1 }
+        log.say("profiles: \(reply["ok"] as? Bool == true ? "" : "FAIL: ")\(reply["summary"] ?? "?")")
+        return reply["ok"] as? Bool == true ? 0 : 1
+    }
+}
+
 nonisolated(unsafe) private var attachLog: HostLog?
 nonisolated(unsafe) private var attachReply: (ok: Bool, summary: String)?
 
