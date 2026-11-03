@@ -681,7 +681,9 @@ One run, `slashplayed-companion [install]`, which is also the weekly re-sign on 
    - The App IDs `<bundle id>` and `<bundle id>.helper` are found, or made only when missing and the
      team has room.
    - Capabilities are set in one v1 PATCH: increased-memory-limit, plus extended-virtual-addressing,
-     which Apple refuses a free team.
+     which Apple refuses a free team. Its answer was checked on the iPhone with both teams (2026-11-02): a
+     free team gets 403, a paid one a 2xx. Any other status stops the run, rather than signing a paid
+     team's app as a free one's.
    - The certificate is one whose public key is this computer's.
    - Both profiles are downloaded and checked: application-identifier, the device, our certificate, and
      the entitlements.
@@ -710,6 +712,10 @@ the oldest certificate a Slashplayed tool made (machine name "Slashplayed compan
 "Slashplayed spike"), and never anyone else's. Xcode's Manage Certificates lists only Apple Development
 certificates, not the "iOS Development" kind these are, so this is the only way such a slot comes back
 without a paid team's developer site.
+- With no store, the tool can't find its certificate again next run, so it would reach the limit every
+  run and keep revoking, possibly another computer's certificate (that computer's device then won't open
+  Slashplayed until it runs again). So without a store it stops at the limit and revokes only with
+  `--revoke-oldest`.
 
 **The developer disk image** (`src/ddi.rs`). Owner decision (2026-11-01): with no Xcode on the host, the
 iOS cryptex comes from the `doronz88/DeveloperDiskImage` mirror at run time, from a pinned commit, each

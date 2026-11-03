@@ -284,7 +284,13 @@ pub fn describe(certs: &[DevelopmentCertificate]) -> String {
         .join("; ")
 }
 
-pub async fn identity(session: &mut DeveloperSession, team: &DeveloperTeam, apple_id: &str) -> Result<Identity, Report> {
+/// `revoke_oldest`: at the certificate limit with no stored key, revoke anyway (see below).
+pub async fn identity(
+    session: &mut DeveloperSession,
+    team: &DeveloperTeam,
+    apple_id: &str,
+    revoke_oldest: bool,
+) -> Result<Identity, Report> {
     let (key, stored) = match keystore::load(apple_id) {
         keystore::Loaded::Key(k) => (k, true),
         loaded => {
@@ -315,6 +321,16 @@ pub async fn identity(session: &mut DeveloperSession, team: &DeveloperTeam, appl
     match session.submit_development_csr(team, request.clone(), MACHINE_NAME.into(), None).await {
         Ok(r) => r,
         Err(e) if developer_code(&e) == Some(MAX_CERTS) => {
+            // Without a stored key, this computer can't find its certificate again next run, so it would hit
+            // the limit every run and keep revoking: possibly another computer's certificate, which stops
+            // Slashplayed opening on that one's device. So it asks first. With a stored key this happens at
+            // most once, since the certificate is reused after.
+            if !stored && !revoke_oldest {
+                bail!(
+                    "the team has all the development certificates Apple allows ({}), and this computer has no credential store to keep its signing key in, so it can't reuse a certificate. Nothing was revoked. Free a slot yourself, or run this again with --revoke-oldest to revoke the oldest certificate a Slashplayed tool made, on this or another computer (that computer's device then needs its own run before Slashplayed opens again)",
+                    describe(&certs)
+                );
+            }
             let Some(old) = revocable(&certs).into_iter().next() else {
                 bail!(
                     "the team has all the development certificates Apple allows ({}), and none of them is Slashplayed's. Nothing was revoked: this tool never revokes a certificate it didn't make. Free a slot yourself, then run this again: in Xcode on a Mac (Settings > Apple Accounts > Manage Certificates, which lists only Apple Development ones), on developer.apple.com (paid teams), or in the sideloading app that made an iOS Development one",

@@ -73,7 +73,10 @@ do this within 7 days of the last run, or the app won't open until you do.
 - **Your Apple ID password:** never kept. You type it each run.
 - **The signing key:** kept in your system's own credential store (Windows Credential Manager, the
   Secret Service on Linux, the Keychain on a Mac), so each run reuses the same certificate instead of
-  making a new one. Where there's no credential store, each run makes a new certificate.
+  making a new one. Where there's no credential store, each run makes a new certificate. Once the team
+  has all the certificates Apple allows, such a run stops: free a slot, or run it with `--revoke-oldest`,
+  which revokes the oldest certificate a Slashplayed tool made. If you use Slashplayed from another
+  computer too, that one's device then needs its own run before Slashplayed opens again.
 - **Certificates:** a free Apple ID can have only a few. When there's no room, the tool replaces one
   Slashplayed made. It never removes a certificate made by Xcode or another app; if those fill every
   slot, it says so and stops.

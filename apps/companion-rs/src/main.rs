@@ -52,6 +52,8 @@ Options for install:
   --server-client-info  send the anisette server's own client identity rather than iloader's fixed one
   --kit <zip>           a device kit to use instead of this release's
   --pair-again          make a new pairing record even if the app has one
+  --revoke-oldest       with no credential store, at the team's certificate limit: revoke the oldest
+                        certificate a Slashplayed tool made, even another computer's
 
 Run it again to re-sign: within 7 days on a free Apple ID, within a year on a paid one.
 Your Apple ID password is used once for the sign-in and never stored.";
@@ -63,7 +65,7 @@ struct Args {
 }
 
 const VALUED: &[&str] = &["--apple-id", "--team", "--udid", "--bundle-id", "--anisette", "--kit"];
-const FLAGS: &[&str] = &["--server-client-info", "--pair-again"];
+const FLAGS: &[&str] = &["--server-client-info", "--pair-again", "--revoke-oldest"];
 
 fn parse(args: impl IntoIterator<Item = String>) -> Result<Args, Report> {
     let mut it = args.into_iter().peekable();
@@ -181,7 +183,7 @@ async fn install(args: &Args) -> Result<(), Report> {
     provision::register_device(&mut session, &team, &d.usb, &d.name).await?;
     let (app_id, helper_id) = provision::app_ids(&mut session, &team, &bundle_id).await?;
     let eva = provision::capabilities(&mut session, &team, &app_id).await?;
-    let id = provision::identity(&mut session, &team, &apple_id).await?;
+    let id = provision::identity(&mut session, &team, &apple_id, args.flag("--revoke-oldest")).await?;
     let (app_profile, helper_profile, free) =
         provision::profiles(&mut session, &team, &app_id, &helper_id, &d.usb.udid, &id, eva).await?;
     drop(session);
