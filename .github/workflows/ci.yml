@@ -251,6 +251,58 @@ jobs:
           "$init" -y --profile minimal --default-toolchain none --no-modify-path
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
+      # The toolchain rust-toolchain.toml pins, installed and made the default. Restore cargo's output
+      # runs `rustc -vV` from the repo's root, where no toolchain file applies, and rustup was installed
+      # with none: without a default that fails, and the cache's key needs the compiler's version. The
+      # toolchain file stays the only pin; this just reads it.
+      - name: Install the pinned Rust
+        working-directory: apps/companion-rs
+        run: |
+          set -euo pipefail
+          rustup toolchain install
+          toolchain=$(rustup show active-toolchain)
+          rustup default "${toolchain%% *}"
+          rustc -vV
+
+      # Cargo's output from main's last run: the crates, and build.rs's OpenSSL (openssl-src) and zsign,
+      # which on a cold run are most of the job, twice (debug for the tests, release for the build), and
+      # on Windows twenty minutes of it. Swatinem/rust-cache keys it on the runner, the compiler's
+      # version, rust-toolchain.toml, Cargo.toml and Cargo.lock, and the CARGO/CC/RUST env; `key` adds
+      # the target and what build.rs builds from that cargo can't see. build.rs tells cargo to rerun it
+      # only for spzsign_host.cpp and two env vars, so a changed scripts/build-zsign.sh pin or
+      # scripts/zsign.patch (new zsign source in work/zsign/src) would otherwise reuse the old zsign and
+      # OpenSSL. They're in `key`, not just the lockfile part of the key, because rust-cache falls back
+      # to any cache with the same `key` and env and a different lockfile: a zsign change has to miss
+      # outright, never land on an older build of it.
+      # cache-workspace-crates: OpenSSL and zsign are this crate's own build script's output, which
+      # rust-cache otherwise drops as a workspace crate's; without it the cache holds only the crates.
+      # Saved only from main's pushes, as the companion's caches effectively are: a cache is scoped to the
+      # ref that saved it, so main never reads a PR's (untrusted code can't reach main's builds), and a
+      # PR's would serve only that PR's own reruns while spending the repository's cache space (these are
+      # hundreds of MB each, and an evicted idevice or zsign cache costs every PR its five minutes). PRs
+      # restore main's. companion-rs-build.yml, which builds what releases ship, uses no cache: those
+      # builds stay cold, from source.
+      - name: Restore cargo's output
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: apps/companion-rs -> target
+          key: ${{ matrix.target }}-${{ hashFiles('scripts/build-zsign.sh', 'scripts/zsign.patch', 'apps/companion-rs/build.rs', 'apps/companion-rs/zsign/**') }}
+          # build.rs and openssl-src read these (SP_ZSIGN_SRC, SP_KIT_SHA256, OPENSSL_SRC_PERL), so a
+          # change to one is a different build.
+          env-vars: SP_ OPENSSL
+          cache-workspace-crates: true
+          # Nothing here is installed with cargo install; ~/.cargo/bin holds only rustup's proxies.
+          cache-bin: false
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+      # A checkout stamps every file with the time it was written, and cargo reruns a build script when
+      # a file it watches (build.rs itself, and spzsign_host.cpp) is newer than its last run: on every
+      # run, then, rebuilding OpenSSL and zsign from scratch and wasting the cache. Both files' contents
+      # are in the cache's key above, so a cache this run restored was built from exactly these bytes, and
+      # an old fixed date is safe. The crate's own sources keep their times, so it recompiles as it should.
+      - name: Let the cached build script stand
+        run: touch -d '2000-01-01T00:00:00Z' apps/companion-rs/build.rs apps/companion-rs/zsign/spzsign_host.cpp
+
       - name: Fetch zsign's source
         run: scripts/build-zsign.sh source
 
