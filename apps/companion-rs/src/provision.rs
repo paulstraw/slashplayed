@@ -150,24 +150,46 @@ pub enum Eva {
     Refused(u16),
 }
 
+/// What the capabilities PATCH's status means. Observed on 2026-11-02 (iPhone 16 Pro, both teams): a free
+/// team gets 403 for the request with extended-virtual-addressing, a paid team a 2xx. Anything else (a 5xx,
+/// 401 for stale auth, 429, …) says nothing about the team, so the run stops with it rather than sign a paid
+/// team's app as a free one's.
+#[derive(Debug, PartialEq, Eq)]
+enum PatchAnswer {
+    Granted,
+    Refused,
+    Failed,
+}
+
+fn classify(status: u16) -> PatchAnswer {
+    match status {
+        200..=299 => PatchAnswer::Granted,
+        403 => PatchAnswer::Refused,
+        _ => PatchAnswer::Failed,
+    }
+}
+
 /// Capabilities, in one v1 bundleIds PATCH as Xcode sends them (isideload's own call can send only
 /// increased-memory-limit). Says whether extended-virtual-addressing was granted: Apple refuses it for a
-/// free team, which is then signed with increased-memory-limit alone (Signing.freeTeamDropped).
-///
-/// Any HTTP answer but a 2xx takes that path: which status a free team gets isn't recorded
-/// (research/isideload never sent EVA on one), and the free path is the one tested on a device, so no guess
-/// at the code may break it. A paid team can't be hidden by this: its profile isn't a free one, so
-/// `profiles()` stops with the status. Only a request that didn't go through at all fails here.
+/// free team (403, classify), which is then signed with increased-memory-limit alone
+/// (Signing.freeTeamDropped).
 pub async fn capabilities(session: &mut DeveloperSession, team: &DeveloperTeam, app_id: &AppId) -> Result<Eva, Report> {
     let status = patch_capabilities(session, team, app_id, &["INCREASED_MEMORY_LIMIT", "EXTENDED_VIRTUAL_ADDRESSING"]).await?;
-    if (200..300).contains(&status) {
-        return Ok(Eva::Granted);
+    match classify(status) {
+        PatchAnswer::Granted => Ok(Eva::Granted),
+        PatchAnswer::Refused => {
+            // The status alone (no body), so a run shows which answer it took.
+            say(&format!("Apple refused extended-virtual-addressing (HTTP {status}): signing with increased-memory-limit alone"));
+            session
+                .add_increased_memory_limit(team, app_id)
+                .await
+                .context("Apple refused the increased-memory-limit capability")?;
+            Ok(Eva::Refused(status))
+        }
+        PatchAnswer::Failed => bail!(
+            "Apple's capability service answered HTTP {status}, which isn't its refusal for a free team: try again in a few minutes"
+        ),
     }
-    session
-        .add_increased_memory_limit(team, app_id)
-        .await
-        .context("Apple refused the increased-memory-limit capability")?;
-    Ok(Eva::Refused(status))
 }
 
 async fn patch_capabilities(
@@ -390,6 +412,17 @@ mod tests {
             status: None,
             status_code: None,
             expiration_date: Some(exp.into()),
+        }
+    }
+
+    #[test]
+    fn only_a_403_means_a_free_team() {
+        for s in [200, 201, 204] {
+            assert_eq!(classify(s), PatchAnswer::Granted, "{s}");
+        }
+        assert_eq!(classify(403), PatchAnswer::Refused);
+        for s in [301, 400, 401, 404, 409, 429, 500, 503] {
+            assert_eq!(classify(s), PatchAnswer::Failed, "{s}");
         }
     }
 
