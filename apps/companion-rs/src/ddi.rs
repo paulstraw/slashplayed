@@ -13,7 +13,11 @@
 use rootcause::prelude::*;
 use sha2::{Digest, Sha256};
 
-use crate::{device, say};
+use crate::{
+    device,
+    kit::{http_client, http_error},
+    say,
+};
 
 pub const DEVICE_DIR: &str = "Library/spddi";
 
@@ -69,15 +73,18 @@ pub async fn send_if_needed(afc: &mut idevice::afc::AfcClient) -> Result<bool, R
         return Ok(false);
     }
     // All of it downloaded and checked before anything goes to the device.
+    let client = http_client()?;
     let mut files = Vec::new();
     for f in FILES {
-        let data = reqwest::get(url(f))
+        let data = client
+            .get(url(f))
+            .send()
             .await
             .and_then(|r| r.error_for_status())
-            .map_err(|e| report!("couldn't download the developer disk image's {} ({e})", f.path))?
+            .map_err(|e| report!("couldn't download the developer disk image's {} ({})", f.path, http_error(&e)))?
             .bytes()
             .await
-            .map_err(|e| report!("the developer disk image's {} download broke off ({e})", f.path))?;
+            .map_err(|e| report!("the developer disk image's {} download broke off ({})", f.path, http_error(&e)))?;
         verify(f, &data)?;
         files.push((f, data));
     }

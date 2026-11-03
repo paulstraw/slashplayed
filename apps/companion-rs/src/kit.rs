@@ -12,6 +12,7 @@
 use std::{
     io::Read,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use rootcause::prelude::*;
@@ -34,6 +35,38 @@ pub const HELPER: &str = "PlugIns/SPJitHelper.appex";
 /// The memory entitlement a free team's profile can't have (Signing.freeTeamDropped).
 pub const FREE_TEAM_DROPPED: &[&str] = &["com.apple.developer.kernel.extended-virtual-addressing"];
 
+/// How long a connection may take to open, and how long a download may go without a byte before it's
+/// given up on (the read timeout resets on every read, so a slow but moving download of the tens-of-MB kit
+/// never trips it, where a total timeout would on a slow link).
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+const STALL_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// The one HTTP client for every download (the kit, ddi.rs's disk image): bare `reqwest::get` has no
+/// timeout at all, so a stalled connection hung the run forever. TLS is rustls with the ring provider
+/// main.rs installs as the process default (reqwest is built with rustls-no-provider), so this is only
+/// called after that, never from a unit test.
+pub fn http_client() -> Result<reqwest::Client, Report> {
+    reqwest::Client::builder()
+        .connect_timeout(CONNECT_TIMEOUT)
+        .read_timeout(STALL_TIMEOUT)
+        .build()
+        .map_err(|e| report!("couldn't set up HTTPS: {e}"))
+}
+
+/// A download error in words, saying plainly when it was one of http_client's timeouts: reqwest's own
+/// Display for one ("error sending request for url (…)") doesn't.
+pub fn http_error(e: &reqwest::Error) -> String {
+    if e.is_timeout() {
+        format!(
+            "it timed out (no connection in {} s, or no data for {} s)",
+            CONNECT_TIMEOUT.as_secs(),
+            STALL_TIMEOUT.as_secs()
+        )
+    } else {
+        e.to_string()
+    }
+}
+
 pub fn pinned_sha256() -> Option<&'static str> {
     option_env!("SP_KIT_SHA256")
 }
@@ -50,13 +83,15 @@ pub async fn fetch(path: Option<&Path>) -> Result<(Vec<u8>, String), Report> {
     };
     let tag = release_tag();
     let url = format!("https://github.com/{REPO}/releases/download/{tag}/{ASSET}");
-    let bytes = reqwest::get(&url)
+    let bytes = http_client()?
+        .get(&url)
+        .send()
         .await
         .and_then(|r| r.error_for_status())
-        .map_err(|e| report!("couldn't download the device kit from {url}: {e}"))?
+        .map_err(|e| report!("couldn't download the device kit from {url}: {}", http_error(&e)))?
         .bytes()
         .await
-        .map_err(|e| report!("the device kit's download from {url} broke off: {e}"))?
+        .map_err(|e| report!("the device kit's download from {url} broke off: {}", http_error(&e)))?
         .to_vec();
     let got = hex::encode(Sha256::digest(&bytes));
     if got != want {
