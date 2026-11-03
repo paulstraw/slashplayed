@@ -717,6 +717,10 @@ file checked against a pinned SHA-256. Slashplayed never hosts it. The files go 
 `DeveloperDiskImage.swift` puts Xcode's, with `version.txt` last.
 - The pin is the mirror's image as published: Xcode 27 beta's build 27A5228h. The owner chose it over
   waiting for 27B52 to be published.
+- On a device the Mac companion set up, `version.txt` names Xcode's image, so the tool replaces that copy
+  with the mirror's, which may be older (27A5228h in place of a local Xcode's 27B52). That's fine: the
+  helper mounts only when no image is installed, and the mirror's mounts on every iOS version that Xcode 27
+  supports. The next Play from the Mac copies Xcode's back.
 - The device still trusts only Apple's signature. The helper has the image personalized by Apple's TSS
   for the device before mounting it.
 - Checked on the iPhone 16 Pro (iOS 27.0.1, 2026-11-02): with no image installed, the helper mounted the
