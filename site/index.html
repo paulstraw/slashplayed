@@ -245,7 +245,7 @@
     /* Forever, the newest game, gets a row of its own above the others, in a moonlit night sky rather
        than the start screen's gold: loosely its marketing's (the skybound Zephras Isle, Ashenvale's
        moonlight, the launch week's violet dust). */
-    .games-feature { grid-column: 1 / -1; }
+    .games-feature { grid-column: 1 / -1; justify-self: center; width: 100%; max-width: 480px; }
     .tile-forever { --sky-line: #9fb4dc; min-height: 104px; flex-direction: column; gap: 4px; font-size: 2.25rem; color: #eef2fb; }
     .tile-forever::before { background: linear-gradient(90deg, #6f6aa8, var(--sky-line) 50%, #6f6aa8); }
     .tile-forever::after { background: radial-gradient(ellipse at 50% 0%, #34406e 0%, #1c2341 55%, #141a30 100%); }
