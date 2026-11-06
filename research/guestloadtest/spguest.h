@@ -20,6 +20,9 @@ typedef struct {
     void *context;
     // Maps a library path the guest names to the one to open (the shims' rewrite map); NULL: as is.
     const char *(*rewrite)(const char *install_name, void *context);
+    // Answers an import (its name, leading underscore included) before the libraries do, or NULL: for a host
+    // without the shims (the Mac) that stands in for what they serve. NULL: the libraries answer.
+    void *(*symbol)(const char *name, void *context);
     void (*log)(const char *line);
 } SPGuestOptions;
 

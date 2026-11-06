@@ -153,13 +153,12 @@ int main(int argc, char **argv) {
         check(strlen("lazy") == 4 && getpid() == getpid(), "lazy-bound libSystem calls");
 
         // 6. The guest knows itself.
-        void *self = dlsym(RTLD_MAIN_ONLY, "sp_toy_exported");
-        check(self == (void *)sp_toy_exported, "dlsym(RTLD_MAIN_ONLY) finds the guest's own export");
         Dl_info info;
         check(dladdr((void *)sp_toy_exported, &info) && info.dli_fbase == (void *)&_mh_execute_header, "dladdr names the guest's header");
         check(_dyld_get_image_header(0) == (const struct mach_header *)&_mh_execute_header, "_dyld_get_image_header(0) is the guest");
         char exe[1024]; uint32_t sz = sizeof exe;
-        check(_NSGetExecutablePath(exe, &sz) == 0 && argc > 0 && strstr(exe, "toy") != NULL, "_NSGetExecutablePath is the guest's path");
+        // The host's, as the dyld-loaded client gets the launcher's: the client finds its install root from it.
+        check(_NSGetExecutablePath(exe, &sz) == 0 && argc > 0 && strstr(exe, "toy") == NULL, "_NSGetExecutablePath is the host's path");
         say("     image 0 name: %s, slide %#lx\n", _dyld_get_image_name(0), (long)_dyld_get_image_vmaddr_slide(0));
         void *bt[8];
         check(backtrace(bt, 8) > 0, "backtrace works from guest frames");

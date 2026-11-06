@@ -55,7 +55,7 @@ struct SPGuest {
     bool linked;
 };
 
-static SPGuest *the_guest;  // one guest per process: dyld queries, dladdr and dlsym hooks answer for it
+static SPGuest *the_guest;  // one guest per process: the dyld queries and dladdr answer for it
 
 static double now(void) {
     struct timespec t;
@@ -376,12 +376,6 @@ static const char *guest_dyld_get_image_name(uint32_t i) { return i == 0 ? the_g
 static intptr_t guest_dyld_get_image_vmaddr_slide(uint32_t i) {
     return i == 0 ? the_guest->slide : _dyld_get_image_vmaddr_slide(i);
 }
-static int guest_NSGetExecutablePath(char *buf, uint32_t *size) {
-    uint32_t need = strlen(the_guest->path) + 1;
-    if (*size < need) { *size = need; return -1; }
-    memcpy(buf, the_guest->path, need);
-    return 0;
-}
 static int guest_dladdr(const void *addr, Dl_info *info) {
     if (spguest_contains(the_guest, addr)) {
         *info = (Dl_info){.dli_fname = the_guest->path, .dli_fbase = (void *)the_guest->header};
@@ -389,45 +383,17 @@ static int guest_dladdr(const void *addr, Dl_info *info) {
     }
     return dladdr(addr, info);
 }
-// The services the client's startup rewrite looks up with dlsym (shims/system/spsystem.c does the same for
-// the dyld-loaded client): __TEXT is prepared and aliased already, so mprotect on it is a no-op and
-// memcpy into it goes through the writable alias. Nothing makes __TEXT writable in place.
-static int guest_mprotect(void *addr, size_t len, int prot) {
-    SPGuest *g = the_guest;
-    uintptr_t a = (uintptr_t)addr, t = (uintptr_t)g->base + g->text_off;
-    if (a >= t && a < t + g->text_size) return 0;
-    return mprotect(addr, len, prot);
-}
-static void *guest_memcpy(void *dst, const void *src, size_t n) {
-    SPGuest *g = the_guest;
-    uintptr_t a = (uintptr_t)dst, t = (uintptr_t)g->base + g->text_off;
-    if (a >= t && a + n <= t + g->text_size) {
-        memcpy(g->text_w + (a - t), src, n);
-        return dst;
-    }
-    return memcpy(dst, src, n);
-}
-static void *guest_dlsym(void *handle, const char *name) {
-    if (the_guest->opt.prepare_text && (handle == RTLD_DEFAULT || handle == RTLD_NEXT)) {
-        if (!strcmp(name, "mprotect")) return (void *)guest_mprotect;
-        if (!strcmp(name, "memcpy")) return (void *)guest_memcpy;
-        if (!strcmp(name, "pthread_jit_write_protect_np")) return NULL;  // no MAP_JIT memory under TXM
-    }
-    // RTLD_MAIN_ONLY (-5) and RTLD_SELF (-3) mean the guest, for a program that was the main executable.
-    if (handle == RTLD_MAIN_ONLY || handle == RTLD_SELF) {
-        char u[512];
-        snprintf(u, sizeof u, "_%s", name);
-        void *r = (void *)guest_symbol(the_guest, u);
-        if (r) return r;
-    }
-    return dlsym(handle, name);
-}
 static void guest_stub_binder(void) {
     static const char m[] = "spguest: dyld_stub_binder called; lazy pointers are bound at load\n";
     write(2, m, sizeof m - 1);
     abort();
 }
 
+// What the guest binds to the loader instead of a library: what only the loader can answer (its
+// thread-locals, where it put the guest). dlsym and _NSGetExecutablePath are left to the guest's libraries:
+// under the launcher those are the shims, whose dlsym serves mprotect and memcpy through the alias
+// (sp_set_client) and whose executable path is the launcher's, which the client's install root and the
+// shim's path redirect are worked out from, as for the dyld-loaded client.
 static void *hook(const char *n) {
 #define H(s, f) if (!strcmp(n, s)) return (void *)f
     H("__tlv_bootstrap", spguest_tlv_bootstrap);
@@ -436,9 +402,7 @@ static void *hook(const char *n) {
     H("__dyld_get_image_header", guest_dyld_get_image_header);
     H("__dyld_get_image_name", guest_dyld_get_image_name);
     H("__dyld_get_image_vmaddr_slide", guest_dyld_get_image_vmaddr_slide);
-    H("__NSGetExecutablePath", guest_NSGetExecutablePath);
     H("_dladdr", guest_dladdr);
-    H("_dlsym", guest_dlsym);
     return NULL;
 #undef H
 }
@@ -467,6 +431,7 @@ static void *wr(SPGuest *g, uint64_t vmaddr) {
 static bool resolve(SPGuest *g, BindState *b, uintptr_t *out) {
     const char *name = b->symbol;
     void *p = hook(name);
+    if (!p && g->opt.symbol) p = g->opt.symbol(name, g->opt.context);
     if (!p && b->weak_stream) {  // weak definitions coalesce: the guest's own wins, then any other image's
         p = (void *)guest_symbol(g, name);
         if (!p) p = dlsym(RTLD_DEFAULT, name + 1);
@@ -667,9 +632,9 @@ int spguest_run(SPGuest *g, int argc, const char **argv, const char **envp, cons
                                           : ((const uintptr_t *)at(g, g->init_addr))[i];
             ((void (*)(int, const char **, const char **, const char **))f)(argc, argv, envp, apple);
         }
-        glog(g, "ran %llu initializers", (unsigned long long)n);
     }
     g->t_init = now() - t0;
+    glog(g, "ran %llu initializers in %.3f s; calling main", (unsigned long long)(g->init_size / (g->init_offsets ? 4 : 8)), g->t_init);
     int (*m)(int, const char **, const char **, const char **) = (void *)((uintptr_t)g->header + g->entry);
     return m(argc, argv, envp, apple);
 }

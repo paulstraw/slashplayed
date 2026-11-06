@@ -1,7 +1,9 @@
 // The launcher side of guestloadtest on the Mac: loads the toy with spguest and runs it.
 // Usage: host <toy> [args]. The device host (device.c) shares spguest.c.
 #include "spguest.h"
+#include <dlfcn.h>
 #include <mach/mach.h>
+#include <sys/mman.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,11 +23,41 @@ static void *alias(void *text, size_t size, void *context) {
     return kr ? NULL : (void *)w;
 }
 
+// What libspSystem's dlsym does for the client on the device (sp_set_client), which the Mac host has no shims
+// for: mprotect on the guest's __TEXT is a no-op, and memcpy into it goes through the alias.
+static SPGuest *guest;
+
+static bool in_text(const void *a, size_t n, uintptr_t *off) {
+    uintptr_t t;
+    size_t size;
+    spguest_text_alias(guest, &t, &size);
+    *off = (uintptr_t)a - t;
+    return (uintptr_t)a >= t && n <= size && *off <= size - n;
+}
+static int host_mprotect(void *a, size_t n, int prot) {
+    uintptr_t off;
+    return in_text(a, n, &off) ? 0 : mprotect(a, n, prot);
+}
+static void *host_memcpy(void *dst, const void *src, size_t n) {
+    uintptr_t off;
+    if (in_text(dst, n, &off)) {
+        memcpy((char *)spguest_text_alias(guest, NULL, NULL) + off, src, n);
+        return dst;
+    }
+    return memcpy(dst, src, n);
+}
+static void *host_dlsym(void *handle, const char *name) {
+    if (handle == RTLD_DEFAULT && !strcmp(name, "mprotect")) return (void *)host_mprotect;
+    if (handle == RTLD_DEFAULT && !strcmp(name, "memcpy")) return (void *)host_memcpy;
+    return dlsym(handle, name);
+}
+static void *symbol(const char *name, void *context) { return strcmp(name, "_dlsym") ? NULL : (void *)host_dlsym; }
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: host <guest> [args]\n"); return 2; }
     char err[512];
-    SPGuestOptions o = {.log = say, .prepare_text = alias};
-    SPGuest *g = spguest_load(argv[1], &o, err, sizeof err);
+    SPGuestOptions o = {.log = say, .prepare_text = alias, .symbol = symbol};
+    SPGuest *g = guest = spguest_load(argv[1], &o, err, sizeof err);
     if (!g) { fprintf(stderr, "load: %s\n", err); return 3; }
     if (!spguest_link(g, err, sizeof err)) { fprintf(stderr, "link: %s\n", err); return 4; }
     const char *apple[] = {argv[1], NULL};
