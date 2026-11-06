@@ -104,6 +104,18 @@ static void image_added(const struct mach_header *h, intptr_t slide) {
 // For the other shims' caller offsets.
 __attribute__((visibility("default"))) uintptr_t sp_client_text(void) { return text; }
 
+// The client when a loader of our own maps it instead of dyld (research/guestloadtest): dyld never lists
+// it, so the loader says where it is. Its __TEXT was prepared before the loader copied it in, and `alias`
+// is the RW alias it copied through, so sp_mprotect has nothing left to prepare and sp_memcpy writes there.
+static const char *client_name;  // for crash reports, which list only dyld's images otherwise
+__attribute__((visibility("default"))) void sp_set_client(const struct mach_header *h, intptr_t slide, const char *name,
+                                                          uintptr_t alias) {
+    find_text(h, slide, 0);
+    text_w = alias;
+    client_name = name;
+    vlog("client image %p (not dyld's), __TEXT %p+0x%lx, alias %p\n", (void *)h, (void *)text, text_len, (void *)alias);
+}
+
 static int in_text(uintptr_t a, size_t len) { return a >= text && len <= text_len && a - text <= text_len - len; }
 
 static int traced(void) {
@@ -1211,6 +1223,11 @@ kern_return_t sp_task_threads(task_t task, thread_act_array_t *list, mach_msg_ty
             const char *name = _dyld_get_image_name(k);
             if (name && image_text(_dyld_get_image_header(k), &crash_images[crash_nimages].start, &crash_images[crash_nimages].len))
                 crash_images[crash_nimages++].name = name;
+        }
+        if (client_name && crash_nimages < CRASH_IMAGES) {
+            crash_images[crash_nimages].start = text;
+            crash_images[crash_nimages].len = text_len;
+            crash_images[crash_nimages++].name = client_name;
         }
         crash_say("[sp:System] crash: the client's exception handler (+0x%lx) is running; %u threads:\n", CALLER, *count);
         if (n > CRASH_IMAGES) crash_say("[sp:System] crash: only the first %u of %u images are listed\n", CRASH_IMAGES, n);
