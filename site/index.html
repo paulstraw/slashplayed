@@ -220,7 +220,7 @@
     .device img { display: block; width: 100%; height: auto; aspect-ratio: 1065 / 490; border-radius: var(--corner); }
 
     /* The games */
-    .games { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 24px; }
+    .games { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 24px; }
     .tile {
       --c: 12px;
       position: relative;
@@ -242,6 +242,15 @@
     .tile .side { position: absolute; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; background: var(--gold); transform: rotate(45deg); }
     .tile .side.l { left: -4px; }
     .tile .side.r { right: -4px; }
+    /* Forever, the newest game, gets a row of its own above the others, in a moonlit night sky rather
+       than the start screen's gold: loosely its marketing's (the skybound Zephras Isle, Ashenvale's
+       moonlight, the launch week's violet dust). */
+    .games-feature { grid-column: 1 / -1; }
+    .tile-forever { --sky-line: #9fb4dc; min-height: 104px; flex-direction: column; gap: 4px; font-size: 2.25rem; color: #eef2fb; }
+    .tile-forever::before { background: linear-gradient(90deg, #6f6aa8, var(--sky-line) 50%, #6f6aa8); }
+    .tile-forever::after { background: radial-gradient(ellipse at 50% 0%, #34406e 0%, #1c2341 55%, #141a30 100%); }
+    .tile-forever .side { background: #c9b8f0; }
+    .tile-eyebrow { font-family: var(--body); font-size: .75rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: #c9b8f0; }
     .tile-note { margin: 12px 4px 0; font-size: .9375rem; line-height: 1.5; color: var(--text-2); text-align: center; }
     .soon { max-width: 40rem; margin: 56px auto 0; }
     .soon-h { display: flex; align-items: center; gap: 16px; margin: 0 0 20px; white-space: nowrap; }
@@ -365,6 +374,7 @@
         <h2 class="h2" id="games-title">The games</h2>
         <p class="lede">The Mac clients, as Blizzard ships them.</p>
         <ul class="games">
+          <li class="games-feature"><div class="tile tile-forever" title="World of Warcraft: Forever"><span class="tile-eyebrow">New</span>Forever<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div></li>
           <li>
             <div class="tile">Classic Era<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div>
             <p class="tile-note">Includes Hardcore and Season of Discovery: switch the game mode in game.</p>
@@ -372,7 +382,6 @@
           <li><div class="tile">TBC Anniversary<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div></li>
           <li><div class="tile">MoP Classic<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div></li>
           <li><div class="tile">Retail<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div></li>
-          <li><div class="tile" title="World of Warcraft: Forever">Forever<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div></li>
         </ul>
         <div class="soon">
           <h3 class="soon-h"><span class="soon-rule" aria-hidden="true"></span>Coming soon<span class="soon-rule" aria-hidden="true"></span></h3>
