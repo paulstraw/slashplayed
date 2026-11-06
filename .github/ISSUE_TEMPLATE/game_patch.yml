@@ -17,7 +17,7 @@ body:
     id: flavor
     attributes:
       label: Flavor
-      placeholder: Classic Era, TBC Anniversary, MoP Classic, or Retail
+      placeholder: Classic Era, TBC Anniversary, MoP Classic, Retail, or Forever
     validations:
       required: true
   - type: input
@@ -39,7 +39,7 @@ body:
     id: companion-version
     attributes:
       label: Companion version
-      placeholder: 1.3.0
+      placeholder: 1.4.0
     validations:
       required: true
   - type: textarea

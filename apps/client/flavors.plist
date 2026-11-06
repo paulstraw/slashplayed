@@ -103,7 +103,7 @@ another -initialgamemode, but the game switches between them in the one running 
 		<key>client</key>
 		<string>World of Warcraft.app/Contents/MacOS/World of Warcraft</string>
 		<key>name</key>
-		<string>WoW: Forever</string>
+		<string>Forever</string>
 		<key>arguments</key>
 		<array>
 			<string>-launcherlogin</string>

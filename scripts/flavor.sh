@@ -1,6 +1,6 @@
 # Which WoW flavor the tools work on. Sourced by the build, seed, run and addon scripts.
 # SP_FLAVOR picks it: classic_era, anniversary (TBC Anniversary), classic (MoP Classic, in
-# _classic_), retail, or forever (WoW: Forever, in _forever_). If it isn't set, the flavor
+# _classic_), retail, or forever (World of Warcraft: Forever, in _forever_). If it isn't set, the flavor
 # last run by apps/client/run.sh is used (work/clienttest/last-flavor), so seed.sh, install.sh and
 # grab-token.sh follow it; with no run yet, classic_era.
 # SP_INSTALL (scripts/config.sh) is the game install, /Applications/World of Warcraft unless set.

@@ -10,7 +10,7 @@ enum Flavor: String, CaseIterable, Identifiable {
     /// classic_era).
     case classic
     case retail
-    /// WoW: Forever: Battle.net's _forever_ folder and wowf product (the Mac client is the same
+    /// Forever (World of Warcraft: Forever): Battle.net's _forever_ folder and wowf product (the Mac client is the same
     /// World of Warcraft.app executable Retail has, in its own folder).
     case forever
 
