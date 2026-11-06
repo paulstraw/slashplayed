@@ -66,6 +66,9 @@ fi
 [ -n "$SP_LOADING_DRILL" ] && export DEVICECTL_CHILD_SP_LOADING_DRILL=$SP_LOADING_DRILL
 [ -n "$SP_SKIP_INTRO" ] && export DEVICECTL_CHILD_SP_SKIP_INTRO=$SP_SKIP_INTRO
 [ -n "$SP_SCENE_CONNECT_LATE" ] && export DEVICECTL_CHILD_SP_SCENE_CONNECT_LATE=$SP_SCENE_CONNECT_LATE
+# SP_GUEST_CLIENT=<path in the app's home>: the unchanged client there loads with the launcher's own loader
+# instead of the bundled image (spguestlaunch.m, research/guestloadtest); copy it in with devicectl first.
+[ -n "$SP_GUEST_CLIENT" ] && export DEVICECTL_CHILD_SP_GUEST_CLIENT=$SP_GUEST_CLIENT
 if [ -n "$SP_START_DRILL" ]; then
   xcrun devicectl device process launch --device "$SP_DEVICE" --terminate-existing -- $BUNDLE_ID "$@"
   echo "start screen drill $SP_START_DRILL launched: screenshot with xcrun devicectl device capture screenshot --device $SP_DEVICE"
@@ -79,11 +82,11 @@ CONSOLE=$!
 # Follow the launch to the end of the prepare (ClientLauncher.swift reads the same lines): 180 s covers a
 # disk image mount, which the helper does when the device has none.
 for i in $(seq 900); do
-  grep -q -e '\[sp:System\] detached' -e "\[sp:launch\] can't prepare" $OUT/console.txt && break
+  grep -q -e '\[sp:System\] detached' -e '\[sp:launch\] guest: detached' -e "\[sp:launch\] can't prepare" $OUT/console.txt && break
   kill -0 $CONSOLE 2>/dev/null || break
   sleep 0.2
 done
-grep -E '\[sp:launch\] (jit:|vpn:|can.t prepare)|\[sp:System\] (preparing|detached)|ERROR' $OUT/console.txt || true
-grep -q '\[sp:System\] detached' $OUT/console.txt || { echo "the client wasn't prepared (log: $OUT/console.txt)"; kill $CONSOLE 2>/dev/null; exit 1; }
+grep -E '\[sp:launch\] (jit:|vpn:|can.t prepare|guest:)|\[sp:System\] (preparing|detached)|ERROR' $OUT/console.txt || true
+grep -q -e '\[sp:System\] detached' -e '\[sp:launch\] guest: detached' $OUT/console.txt || { echo "the client wasn't prepared (log: $OUT/console.txt)"; kill $CONSOLE 2>/dev/null; exit 1; }
 wait $CONSOLE || true
 cat $OUT/console.txt

@@ -59,6 +59,7 @@ static void say(NSString *s) {
 void sp_launch_say(NSString *s) { say(s); }  // spjit.m, sppair.m, and spvpn.m log through it
 NSString *sp_jit_attach(void (^pump)(double));  // spjit.m
 NSString *sp_device_noun(void);  // spjit.m
+int sp_guest_main(NSString *relative, int argc, char **argv);  // spguestlaunch.m
 void sp_login_clear(NSArray<NSString *> *flavors);  // splogin.m
 NSMutableData *sp_login_prepare(BOOL token, void (^*pump)(double), NSString **problem);
 BOOL sp_login_write(NSString *flavor, NSMutableData *bytes);
@@ -812,6 +813,14 @@ int main(int argc, char **argv) {
     // loaded: build_info_for_image). Before the sign-in, so nobody signs in to then
     // be told, and before the helper attaches. It never stops the launch. Not after an install just now:
     // that image is the current build.
+    // $SP_GUEST_CLIENT (spguestlaunch.m, a dev switch): the unchanged client in the app's home loads instead,
+    // the bundled image's build, so no newer build is looked for.
+    NSString *guest = NSProcessInfo.processInfo.environment[@"SP_GUEST_CLIENT"];
+    if (guest.length && !path) {
+        if (!bundled) fail_launch(@"SP_GUEST_CLIENT needs the game's bundled image: the unchanged client is that build");
+        path = bundled;
+        say([NSString stringWithFormat:@"guest: SP_GUEST_CLIENT=%@ stands in for the bundled image; no patch check", guest]);
+    }
     if (!path) {
         path = sp_patch_check(flavor, bundled, bundledStamp, library, libraryStamp, choice, &pump);
         if ([path isEqual:library]) libraryStamp = image_build(library, flavor);
@@ -851,6 +860,7 @@ int main(int argc, char **argv) {
         if (import) import();
         else say([NSString stringWithFormat:@"login: can't import the relayed token: %s", dlerror()]);
     }
+    if (guest.length) return sp_guest_main(guest, argc, argv);
     double t = CFAbsoluteTimeGetCurrent();
     void *h = dlopen(path.fileSystemRepresentation, RTLD_NOW);
     if (!h && [path isEqual:library]) {
