@@ -38,8 +38,11 @@ In-game voice chat isn't supported on the device yet
   Mac and turning on Developer Mode.
 - A **Battle.net account** with an active World of Warcraft subscription. The game doesn't need to be
   installed on the Mac.
-- A **hardware keyboard** for typing in the game, which has no on-screen keyboard. On an iPhone, a
-  mouse needs AssistiveTouch on.
+- On iPhone and iPad, **drag on either half** for floating sticks, tap to click, and hold still to
+  right-click. Configure sticks and custom buttons in **Settings > Touch Controls**.
+  **Tap with four fingers together** for the keyboard and a text box with copy/paste.
+  Vision Pro needs a hardware keyboard for game text. On an iPhone, a mouse needs
+  AssistiveTouch on.
 - **[LocalDevVPN](https://apps.apple.com/app/id6755608044)**, free on the App Store, turned on when
   the game starts.
 - **Free space** on the device:
@@ -64,7 +67,8 @@ In-game voice chat isn't supported on the device yet
 3. Open Slashplayed on the device and tap a game. The first start takes a few minutes while the game
    downloads its data from Blizzard; after that, it fetches each zone as you reach it.
 4. Sign in with your Battle.net email and password. Slashplayed keeps them in the device's keychain,
-   so you sign in once. Type an authenticator code on the hardware keyboard.
+   so you sign in once. For an authenticator code on iPhone or iPad, tap with four fingers together,
+   type or paste the code, and tap Return. A hardware keyboard works too.
 5. From then on, play from the device alone. Turn on **Update Games on This Device** in the
    companion's Settings, and the device installs Blizzard's patches itself, too.
 

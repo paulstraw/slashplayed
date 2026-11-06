@@ -71,5 +71,8 @@ void sp_start_settings(UIViewController *screen, NSString *drill);
 
 UIViewController *sp_settings_sheet(NSArray<NSString *> *flavors, NSString *_Nullable drill);
 void sp_settings_hide_email(void);
+#if !TARGET_OS_VISION
+UIViewController *_Nullable sp_touch_settings_screen(void);
+#endif
 
 NS_ASSUME_NONNULL_END

@@ -190,6 +190,16 @@ jobs:
       - name: Test the companion
         run: apps/companion/test.sh
 
+      # The input fixture uses the actual AppKit shim in a UIKit app, without a game or credentials.
+      # A fresh simulator keeps saved layouts and keyboard focus from a prior run out of the replay.
+      - name: Replay iOS touch and text input
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          simulator=$(xcrun simctl create "Slashplayed Input Tests" com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro)
+          trap 'xcrun simctl shutdown "$simulator" >/dev/null 2>&1 || true; xcrun simctl delete "$simulator" >/dev/null 2>&1 || true' EXIT
+          research/textinput/test.sh "$simulator"
+
   # The host tool, slashplayed-companion (apps/companion-rs), on the two systems it's for: its unit tests and a
   # release build, from source as a volunteer would build it. zsign's patched source comes from
   # scripts/build-zsign.sh source (git only); build.rs compiles it with OpenSSL from openssl-src. On

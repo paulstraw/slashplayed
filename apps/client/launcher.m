@@ -115,6 +115,16 @@ void (^sp_launch_uikit(void))(double) {
     return pump;
 }
 
+#if !TARGET_OS_VISION
+// The shim owns the editor used both at launch and over the game, so layout and validation agree.
+UIViewController *sp_touch_settings_screen(void) {
+    NSString *path = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Frameworks/libspAppKit.dylib"];
+    void *handle = dlopen(path.fileSystemRepresentation, RTLD_NOW);
+    UIViewController *(*make)(void) = handle ? (UIViewController *(*)(void))dlsym(handle, "sp_uikit_touch_settings") : NULL;
+    return make ? make() : nil;
+}
+#endif
+
 // One container-relative path per line. Only paths in Documents/Data/ are deleted.
 static void delete_listed(void) {
     NSString *home = NSHomeDirectory();

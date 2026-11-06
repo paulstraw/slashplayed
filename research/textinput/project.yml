@@ -1,0 +1,31 @@
+name: TextInputHarness
+options:
+  deploymentTarget:
+    iOS: "26.0"
+targets:
+  TextInputHarness:
+    type: application
+    platform: iOS
+    sources: [main.m]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.strawdynamics.textinput-harness
+        CLANG_ENABLE_OBJC_ARC: YES
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ARCHS: arm64
+        OTHER_CFLAGS: -Wno-objc-root-class
+    info:
+      path: Generated/Info.plist
+      properties:
+        UILaunchScreen: {}
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Text Input
+                UISceneDelegateClassName: SPTextHarnessSceneDelegate
+    scheme: {}

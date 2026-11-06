@@ -984,11 +984,44 @@ and scroll events and `NSTextInputClient`), with no event taps. `spevent.m`:
   to Mac key code, AppKit function-key characters, device-dependent modifier bits; modifier keys
   become `flagsChanged`). Key repeat is synthesized, since UIKit doesn't repeat. `interpretKeyEvents:`
   sends text to `insertText:replacementRange:` and editing keys to `doCommandBySelector:`.
+- **Text composer (iPhone and iPad).** A four-finger tap reserves the chord before it emits a mouse
+  event, and opens `sptextinput.m`'s native text view. A third finger waits another 80 ms for a fourth;
+  lifting still resolves a three-finger click immediately. Four-finger holds, drags, and cancellations
+  emit no mouse click. UIKit owns editing, marked text, and the system Paste control. Insert queues a
+  private text commit, which `nextEventMatchingMask:` consumes on the client's coroutine stack via
+  `insertText:replacementRange:`. It never becomes a fabricated physical letter key. Return queues a
+  commit before a normal Return down/up pair. Opening releases held game keys and stops repeat;
+  closing restores UIKit focus to the input view. Drafts are neither logged nor saved, and losing app
+  focus discards them. The keyboard overlays the game without changing its rendering viewport.
 - **Pointer and touch.** Touches and pinches become left clicks and drags, a secondary-button mask a
   right click; hover becomes mouse moves; a scroll pan becomes precise `scrollWheel:`. Each change in
   a pointer touch's button mask is a press or release, and GameController's `GCMouse` reports buttons
   too, because UIKit's mask misses a button released while another is held (both-button autorun).
-- **Finger chords (iPhone and iPad).** Fingers that land within `SP_CHORD_MS` (50 ms) of each other
+- **Configurable touch controls (iPhone and iPad).** `sptouchcontrols.m` draws a transparent overlay,
+  hit-testing only its buttons. Real world touches route there before the legacy chord path; pointer,
+  pencil, and AssistiveTouch events retain that path. A short tap emits a left click on release;
+  movement past 10 points claims a floating stick on that half, with radial dead-zone normalization;
+  a stationary hold emits right-down, then right-drag and right-up. Four simultaneous candidates
+  reserve the keyboard gesture without emitting clicks. The hidden `GCVirtualController` exposes
+  axes and buttons through native GameController, using a `GCEventViewController` root on iOS.
+  Button sources aggregate ownership of keys, modifiers, gamepad buttons, and mouse buttons.
+  Physical keyboard and mouse owners are kept separate. Cancellation neutralizes the corresponding
+  stick or hold; backgrounding, configuration changes, and opening an editor release all touch input.
+  `sptouchsettings.m` validates and saves a versioned property list in device defaults, and supplies
+  one native editor to the launcher's Settings and the in-game composer. Positions are normalized
+  to the game area; arrangement is an explicit mode that sends no game input.
+  Button glyphs are removed from a filled pill with destination-out compositing. The default visual
+  is 40 by 22 points inside a minimum 44-point touch target. Button and stick opacity are independent.
+- **Multi-touch gestures.** Two undecided touches on the same half form one gesture pair. Distance
+  change becomes a phased scroll-wheel sequence for pinch zoom; parallel motion becomes a mouse
+  drag anchored at the first finger's original position. When only one finger has moved, a 50 ms
+  arbitration interval lets the second finger join a pan before classifying a stationary-finger
+  pinch. All points in a delivered frame are read before recognition. The gesture keeps its chosen
+  mode until either finger lifts or is cancelled, suppresses the remaining finger, and never takes
+  over an active stick. The other half can continue driving a stick. A second tap within 0.3 s and
+  24 points reserves one-finger motion for a left drag. Four-finger taps supersede undecided pairs;
+  cancellation, backgrounding, and modal presentation terminate phases and release mouse ownership.
+- **Finger chords (iPhone and iPad, touch controls off).** Fingers that land within `SP_CHORD_MS` (50 ms) of each other
   press one button: one left, two right, three middle, held while they're down, so a two-finger drag is
   mouselook. No button goes down until the window closes (a press can't be taken back), so a left click
   waits out the window. The press is at the leftmost finger, or the rightmost with Settings > Touch.

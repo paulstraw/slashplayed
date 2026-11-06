@@ -11,6 +11,10 @@
 #import <GameController/GameController.h>
 #include <objc/message.h>
 
+#if !TARGET_OS_VISION
+#include "sptextinput.m"
+#endif
+
 __asm__(".linker_option \"-framework\", \"GameController\"");
 __asm__(".linker_option \"-framework\", \"CoreGraphics\"");  // the cursor image
 
@@ -38,6 +42,7 @@ enum {
     CGPoint location;  // in the window
     unsigned short keyCode;
     NSString *characters, *charactersIgnoringModifiers;
+    NSString *committedText;  // an internal text commit, consumed on the client's event-pump stack
     BOOL isARepeat;
     NSInteger buttonNumber, clickCount;
     CGFloat deltaX, deltaY, scrollingDeltaX, scrollingDeltaY;
@@ -87,6 +92,8 @@ enum {
 static NSMutableArray<SPEvent *> *sp_events;
 static CGPoint sp_mouse;               // AppKit window coordinates
 static NSUInteger sp_mod_flags;        // device-independent and device-dependent bits
+static NSUInteger sp_touch_mod_flags;  // independent owners; physical key-up cannot clear a touch combo
+static NSMutableSet<NSNumber *> *sp_touch_keys;
 static NSUInteger sp_mouse_buttons;    // bit per button number, like +pressedMouseButtons
 static SPEvent *sp_current_event;
 static NSMutableArray *sp_local_monitors;  // [mask, handler] pairs
@@ -107,7 +114,7 @@ static CGPoint sp_to_uikit(CGPoint p) {
 static SPEvent *sp_event(NSUInteger type) {
     SPEvent *e = [[SPEvent alloc] init];
     e->type = type;
-    e->modifierFlags = sp_mod_flags;
+    e->modifierFlags = sp_mod_flags | sp_touch_mod_flags;
     e->timestamp = NSProcessInfo.processInfo.systemUptime;
     e->location = sp_mouse;
     return e;
@@ -116,6 +123,7 @@ static SPEvent *sp_event(NSUInteger type) {
 static void sp_post(SPEvent *e) {
     if (!sp_events) sp_events = [NSMutableArray array];
     [sp_events addObject:e];
+    if (e->committedText) return;  // drafts and pasted text never enter the input log
     // Only the first events are logged, so a session's log stays small; a diagnosis that happens later
     // in a session (a key that stops working after login) needs more: SP_INPUT_LOG_MAX raises the cap,
     // 0 for none. The lines carry typed characters, chat included, so keep it to diagnosis runs.
@@ -236,6 +244,7 @@ static void sp_set_modifier(NSUInteger flag, NSUInteger dev, BOOL down) {
 
 // Key repeat, as macOS does it (UIKit sends one press per key, no repeats).
 static SPEvent *sp_repeat_key;
+static NSMutableDictionary<NSNumber *, SPEvent *> *sp_held_keys;
 static NSTimeInterval sp_repeat_at;
 static const NSTimeInterval sp_repeat_delay = 0.42, sp_repeat_interval = 0.083;
 
@@ -271,14 +280,57 @@ static void sp_key(UIKey *key, BOOL down) {
         e->charactersIgnoringModifiers = key.charactersIgnoringModifiers ?: e->characters;
     }
     if (sp_is_keypad(mac) || (mac >= 0x7B && mac <= 0x7E)) e->modifierFlags |= SPNumericPad;
-    sp_post(e);
+    if (![sp_touch_keys containsObject:@(usage)]) sp_post(e);
     if (down) {
+        if (!sp_held_keys) sp_held_keys = [NSMutableDictionary dictionary];
+        sp_held_keys[@(mac)] = e;
         sp_repeat_key = e;
         sp_repeat_at = e->timestamp + sp_repeat_delay;
-    } else if (sp_repeat_key && sp_repeat_key->keyCode == mac) {
-        sp_repeat_key = nil;
+    } else {
+        [sp_held_keys removeObjectForKey:@(mac)];
+        if (sp_repeat_key && sp_repeat_key->keyCode == mac) sp_repeat_key = nil;
     }
 }
+
+#if !TARGET_OS_VISION
+// Opening a UIKit editor must release any movement key still down in the game, and stop repeats.
+// AppKit's first responder is independent of UIKit's, so it remains the target of later text commits.
+static void sp_keyboard_release(void) {
+    for (SPEvent *held in sp_held_keys.allValues) {
+        SPEvent *up = sp_event(SPKeyUp);
+        up->keyCode = held->keyCode;
+        up->characters = up->charactersIgnoringModifiers = @"";
+        up->modifierFlags = 0;
+        sp_post(up);
+    }
+    [sp_held_keys removeAllObjects];
+    sp_repeat_key = nil;
+    if (sp_mod_flags) {
+        sp_mod_flags = 0;
+        SPEvent *flags = sp_event(SPFlagsChanged);
+        flags->keyCode = 0x38;
+        sp_post(flags);
+    }
+}
+
+static void sp_commit_text(NSString *text) {
+    if (!text.length) return;
+    SPEvent *e = sp_event(SPKeyDown);
+    e->modifierFlags = 0;
+    e->committedText = [text copy];
+    sp_post(e);
+}
+
+static void sp_keyboard_return(void) {
+    for (NSNumber *type in @[@(SPKeyDown), @(SPKeyUp)]) {
+        SPEvent *e = sp_event(type.unsignedIntegerValue);
+        e->keyCode = 0x24;
+        e->modifierFlags = 0;
+        e->characters = e->charactersIgnoringModifiers = @"\r";
+        sp_post(e);
+    }
+}
+#endif
 
 static void sp_key_repeats(void) {
     if (!sp_repeat_key) return;
@@ -383,7 +435,7 @@ static void sp_set_mouse_frozen(BOOL frozen) {
 
 // Ignores a down for a button already down and an up for one already up: buttons can be reported
 // by both the touch's button mask and GCMouse.
-static void sp_mouse_button(NSInteger button, BOOL down, CGPoint p) {
+static void sp_mouse_emit(NSInteger button, BOOL down, CGPoint p) {
     if (!!(sp_mouse_buttons & (1u << button)) == down) return;
     if (p.x != sp_pointer.x || p.y != sp_pointer.y) sp_mouse_moved_to(p, sp_motion_type(), YES);
     p = sp_mouse;  // differs while frozen
@@ -406,6 +458,12 @@ static void sp_mouse_button(NSInteger button, BOOL down, CGPoint p) {
     e->buttonNumber = button;
     e->clickCount = sp_click_count;
     sp_post(e);
+}
+
+static NSUInteger sp_physical_mouse_buttons, sp_touch_mouse_buttons;
+static void sp_mouse_button(NSInteger button, BOOL down, CGPoint p) {
+    if (down) sp_physical_mouse_buttons |= 1u << button; else sp_physical_mouse_buttons &= ~(1u << button);
+    sp_mouse_emit(button, !!((sp_physical_mouse_buttons | sp_touch_mouse_buttons) & (1u << button)), p);
 }
 
 // ---- look highlights
@@ -460,6 +518,7 @@ static SPHoverLayer *sp_hover_layer;
 static void sp_game_moved(CGRect game) {
     sp_hover_layer.frame = game;
     sp_cursor_update();
+    [sp_window.rootViewController.view setNeedsLayout];
 }
 
 // rects: fractions of the window, origin bottom left.
@@ -577,7 +636,11 @@ static void sp_pointer_lock_update(void) {
     if (sp_pointer_lock_wanted()) [sp_window.rootViewController setNeedsUpdateOfPrefersPointerLocked];
 }
 
+#if TARGET_OS_VISION
 @interface SPRootViewController : UIViewController
+#else
+@interface SPRootViewController : GCEventViewController
+#endif
 @end
 @implementation SPRootViewController
 - (BOOL)prefersPointerLocked {
@@ -663,6 +726,45 @@ static double sp_chord_window(void) {
     if (w < 0) w = (getenv("SP_CHORD_MS") ? atof(getenv("SP_CHORD_MS")) : 50) / 1000;
     return w;
 }
+
+static void sp_touch_key(NSUInteger usage, BOOL down) {
+    if (!sp_touch_keys) sp_touch_keys = [NSMutableSet set];
+    if (down) [sp_touch_keys addObject:@(usage)]; else [sp_touch_keys removeObject:@(usage)];
+    unsigned short mac = usage < 256 ? sp_hid_to_mac[usage] : 0;
+    NSUInteger flag, dev;
+    if (sp_modifier_bits(mac, &flag, &dev)) {
+        if (down) sp_touch_mod_flags |= flag | dev; else sp_touch_mod_flags &= ~(flag | dev);
+        SPEvent *e = sp_event(SPFlagsChanged); e->keyCode = mac; sp_post(e);
+        return;
+    }
+    if (sp_held_keys[@(mac)]) return;  // the physical key still owns its down
+    SPEvent *e = sp_event(down ? SPKeyDown : SPKeyUp); e->keyCode = mac;
+    unichar fc = sp_function_char(mac);
+    NSString *plain = @"";
+    if (fc) {
+        plain = [NSString stringWithCharacters:&fc length:1];
+        if (fc >= 0xF700) e->modifierFlags |= SPFunction;
+    } else if (usage >= 4 && usage <= 29) {
+        unichar c = 'a' + usage - 4; plain = [NSString stringWithCharacters:&c length:1];
+    } else if (usage >= 30 && usage <= 39) plain = [@"1234567890" substringWithRange:NSMakeRange(usage - 30, 1)];
+    else if (usage == 44) plain = @" ";
+    else {
+        NSDictionary *chars = @{@45: @"-", @46: @"=", @47: @"[", @48: @"]", @49: @"\\", @51: @";",
+                                 @52: @"'", @53: @"`", @54: @",", @55: @".", @56: @"/"};
+        plain = chars[@(usage)] ?: @"";
+    }
+    if (e->modifierFlags & SPShift) {
+        NSString *unshifted = @"1234567890-=[]\\;'`,./", *shifted = @"!@#$%^&*()_+{}|:\"~<>?";
+        NSRange r = plain.length == 1 ? [unshifted rangeOfString:plain] : NSMakeRange(NSNotFound, 0);
+        plain = r.location != NSNotFound ? [shifted substringWithRange:r] : plain.uppercaseString;
+    }
+    e->charactersIgnoringModifiers = plain;
+    e->characters = plain;
+    if (mac >= 0x7B && mac <= 0x7E) e->modifierFlags |= SPNumericPad;
+    sp_post(e);
+}
+
+#include "sptouchcontrols.m"
 #endif
 
 @implementation SPInputView {
@@ -675,6 +777,14 @@ static double sp_chord_window(void) {
     UIEventButtonMask _mask;              // the buttons reported down
     CGPoint _scroll_last;
     BOOL _hover_in_game;                  // the hover is over the game, and entered it
+#if !TARGET_OS_VISION
+    NSMutableSet<UITouch *> *_keyboard_touches;
+    NSMapTable<UITouch *, NSValue *> *_keyboard_at;
+    NSTimeInterval _keyboard_began;
+    BOOL _keyboard_cancelled;
+    __weak SPTextComposer *_text_composer;
+    SPTouchControls *_controls;
+#endif
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -686,6 +796,10 @@ static double sp_chord_window(void) {
     _chord = [NSMutableArray array];
     _chord_at = [NSMapTable strongToStrongObjectsMapTable];
     _finger_button = [NSMapTable strongToStrongObjectsMapTable];
+#if !TARGET_OS_VISION
+    _keyboard_touches = [NSMutableSet set];
+    _keyboard_at = [NSMapTable strongToStrongObjectsMapTable];
+#endif
     UIHoverGestureRecognizer *hover = [[UIHoverGestureRecognizer alloc] initWithTarget:self action:@selector(hover:)];
     [self addGestureRecognizer:hover];
     // Scroll wheel and two-finger trackpad scrolls, without touches.
@@ -708,6 +822,33 @@ static double sp_chord_window(void) {
     sp_cursor_view.hidden = YES;
     sp_cursor_view.layer.zPosition = 2000;
     [self addSubview:sp_cursor_view];
+#if !TARGET_OS_VISION
+    _controls = [[SPTouchControls alloc] initWithFrame:self.bounds];
+    _controls.layer.zPosition = 1500;
+    _controls.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    __weak SPInputView *weak = self;
+    _controls.keyEvent = ^(NSUInteger usage, BOOL down) { sp_touch_key(usage, down); };
+    _controls.mouseEvent = ^(NSInteger button, BOOL down, CGPoint at) {
+        CGPoint p = isfinite(at.x) ? sp_from_uikit(CGPointMake(at.x + sp_game_rect().origin.x, at.y + sp_game_rect().origin.y)) : sp_pointer;
+        if (down) sp_touch_mouse_buttons |= 1u << button; else sp_touch_mouse_buttons &= ~(1u << button);
+        sp_mouse_emit(button, !!((sp_touch_mouse_buttons | sp_physical_mouse_buttons) & (1u << button)), p);
+    };
+    _controls.mouseMove = ^(CGPoint at) {
+        sp_mouse_moved_to(sp_from_uikit(CGPointMake(at.x + sp_game_rect().origin.x, at.y + sp_game_rect().origin.y)), sp_motion_type(), NO);
+    };
+    _controls.scrollEvent = ^(CGFloat delta, CGPoint at, NSUInteger phase) {
+        CGPoint p = sp_from_uikit(CGPointMake(at.x + sp_game_rect().origin.x, at.y + sp_game_rect().origin.y));
+        sp_mouse_moved_to(p, SPMouseMoved, NO);
+        SPEvent *e = sp_event(SPScrollWheel);
+        e->deltaY = delta; e->scrollingDeltaY = delta * 10;
+        e->precise = YES; e->phase = phase;
+        sp_post(e);
+    };
+    _controls.keyboard = ^{ [weak sp_show_text_composer]; };
+    _controls.settings = ^{ [weak sp_show_touch_settings]; };
+    _controls.arranged = ^{ [weak becomeFirstResponder]; };
+    [self addSubview:_controls];
+#endif
     if (!getenv("SP_CURSOR_SYSTEM")) [self addInteraction:[[UIPointerInteraction alloc] initWithDelegate:self]];
     [NSNotificationCenter.defaultCenter addObserverForName:UIPointerLockStateDidChangeNotification object:nil queue:nil
                                                 usingBlock:^(NSNotification *n) {
@@ -756,6 +897,33 @@ static double sp_chord_window(void) {
     [super didMoveToWindow];
     if (self.window) [self becomeFirstResponder];
 }
+
+#if !TARGET_OS_VISION
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGRect game = sp_game_rect();
+    _controls.frame = game.size.width > 0 ? game : self.bounds;
+}
+
+- (NSSet<UITouch *> *)sp_route_controls:(NSSet<UITouch *> *)touches phase:(NSInteger)phase {
+    if (!sp_client_window || !touches.count) return touches;
+    NSSet *handled = [_controls route:touches phase:phase inView:self];
+    if (!handled.count) return touches;
+    sp_pointer_inside = NO; sp_cursor_update();
+    NSMutableSet *remaining = [touches mutableCopy]; [remaining minusSet:handled]; return remaining;
+}
+
+- (void)sp_show_touch_settings {
+    UIViewController *root = self.window.rootViewController;
+    if (!root || root.presentedViewController) return;
+    [_controls releaseAll]; sp_keyboard_release();
+    SPTouchSettings *settings = [[SPTouchSettings alloc] init];
+    __weak SPInputView *weak = self;
+    settings.closed = ^{ [weak becomeFirstResponder]; };
+    settings.arrange = ^{ SPInputView *view = weak; if (view) { view->_controls.arranging = YES; [view becomeFirstResponder]; } };
+    [root presentViewController:[[UINavigationController alloc] initWithRootViewController:settings] animated:YES completion:nil];
+}
+#endif
 
 - (void)sp_pointer_entered:(CGPoint)p {
     sp_pointer = p;
@@ -865,6 +1033,15 @@ static double sp_chord_window(void) {
 }
 
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+#if !TARGET_OS_VISION
+    touches = [self sp_route_controls:touches phase:0]; if (!touches.count) return;
+    if (_keyboard_touches.count) {
+        // A fifth finger cancels the gesture; it still must not leak a mouse press into the game.
+        _keyboard_cancelled = YES;
+        [_keyboard_touches unionSet:touches];
+        return;
+    }
+#endif
     for (UITouch *t in touches) {
         // A pinch has no pointer to draw a cursor at.
         if (!_touches.count) {
@@ -877,25 +1054,87 @@ static double sp_chord_window(void) {
         if (sp_finger(t) && (_chord.count || _touches.count == 1)) {
             [_chord addObject:t];
             [_chord_at setObject:[NSValue valueWithCGPoint:[t locationInView:self]] forKey:t];
-            if (_chord.count == 1) {
-                NSUInteger gen = _chord_gen;
-                __weak SPInputView *weak = self;
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(sp_chord_window() * NSEC_PER_SEC)),
-                               dispatch_get_main_queue(), ^{
-                    SPInputView *me = weak;
-                    if (me && me->_chord_gen == gen) [me sp_chord_resolve];
-                });
-            }
+            if (_chord.count == 1) [self sp_chord_after:sp_chord_window()];
         }
 #endif
     }
 #if !TARGET_OS_VISION
-    if (_chord.count >= 3) [self sp_chord_resolve];
+    if (_chord.count >= 4) {
+        [self sp_keyboard_reserve];
+        return;
+    }
+    // A third finger leaves a brief chance for a fourth. One- and two-finger latency is unchanged;
+    // lifting a three-finger tap still resolves it immediately, as every chord does on release.
+    if (_chord.count == 3) [self sp_chord_after:0.08];
 #endif
     [self sp_buttons:[self sp_mask:event touches:touches] at:[self sp_location:[self sp_mover:touches]]];
 }
 
 #if !TARGET_OS_VISION
+- (void)sp_chord_after:(NSTimeInterval)delay {
+    NSUInteger gen = ++_chord_gen;
+    __weak SPInputView *weak = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        SPInputView *me = weak;
+        if (me && me->_chord_gen == gen) [me sp_chord_resolve];
+    });
+}
+
+// Four fingers are reserved before the chord emits a mouse event. Only a short, still tap opens the
+// composer; a drag or hold is ignored, rather than turning into a delayed middle click.
+- (void)sp_keyboard_reserve {
+    _chord_gen++;
+    _keyboard_began = NSProcessInfo.processInfo.systemUptime;
+    _keyboard_cancelled = _chord.count != 4;
+    for (UITouch *t in _chord) {
+        [_keyboard_touches addObject:t];
+        [_keyboard_at setObject:[_chord_at objectForKey:t] forKey:t];
+        _keyboard_began = MIN(_keyboard_began, t.timestamp);
+    }
+    [_touches removeObjectsInArray:_chord];
+    [_chord removeAllObjects];
+    [_chord_at removeAllObjects];
+}
+
+- (void)sp_keyboard_touches:(NSSet<UITouch *> *)touches ended:(BOOL)ended cancelled:(BOOL)cancelled {
+    _keyboard_cancelled |= cancelled;
+    for (UITouch *t in touches) {
+        NSValue *start = [_keyboard_at objectForKey:t];
+        if (start) {
+            CGPoint p = [t locationInView:self], at = start.CGPointValue;
+            CGFloat dx = p.x - at.x, dy = p.y - at.y;
+            if (dx * dx + dy * dy > 20 * 20) _keyboard_cancelled = YES;
+        }
+        if (ended) [_keyboard_touches removeObject:t];
+    }
+    if (!ended || _keyboard_touches.count) return;
+    BOOL tap = !_keyboard_cancelled && NSProcessInfo.processInfo.systemUptime - _keyboard_began <= 0.4;
+    [_keyboard_at removeAllObjects];
+    if (tap) [self sp_show_text_composer];
+}
+
+- (void)sp_show_text_composer {
+    UIViewController *root = self.window.rootViewController;
+    if (!sp_client_window || !root || root.presentedViewController) return;
+    [_controls releaseAll];
+    sp_keyboard_release();
+    SPTextComposer *composer = [[SPTextComposer alloc] init];
+    composer.insertText = ^(NSString *text) { sp_commit_text(text); };
+    composer.pressReturn = ^{ sp_keyboard_return(); };
+    __weak SPInputView *weak = self;
+    composer.controls = ^{ [weak sp_show_touch_settings]; };
+    composer.closed = ^{
+        SPInputView *view = weak;
+        if (view) {
+            view->_text_composer = nil;
+            [view becomeFirstResponder];
+        }
+    };
+    _text_composer = composer;
+    [root presentViewController:composer animated:YES completion:nil];
+}
+
 // The chord's fingers press their button: down where the lead landed, then a drag to where it is now, so
 // a press that moved in the window still starts where it began.
 - (void)sp_chord_resolve {
@@ -966,6 +1205,13 @@ static double sp_chord_window(void) {
 }
 
 - (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+#if !TARGET_OS_VISION
+    touches = [self sp_route_controls:touches phase:1]; if (!touches.count) return;
+    if (_keyboard_touches.count) {
+        [self sp_keyboard_touches:touches ended:NO cancelled:NO];
+        return;
+    }
+#endif
     if (!_touches.count || ![touches intersectsSet:[NSSet setWithArray:_touches]]) return;
     if (_chord.count) return;  // the press, and the moves after it, wait for the chord (sp_chord_resolve)
     UITouch *mover = [self sp_mover:touches];
@@ -976,6 +1222,11 @@ static double sp_chord_window(void) {
 
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
 #if !TARGET_OS_VISION
+    touches = [self sp_route_controls:touches phase:2]; if (!touches.count) return;
+    if (_keyboard_touches.count) {
+        [self sp_keyboard_touches:touches ended:YES cancelled:NO];
+        return;
+    }
     // A finger lifting in the window resolves the chord first, so a quick tap is a click.
     if ([touches intersectsSet:[NSSet setWithArray:_chord]]) [self sp_chord_resolve];
 #endif
@@ -987,6 +1238,13 @@ static double sp_chord_window(void) {
 // When the last touch is cancelled, buttons it had down stay down while GCMouse says they're held (it
 // reports their ups): locking the pointer may cancel the touch mid-mouselook.
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+#if !TARGET_OS_VISION
+    touches = [self sp_route_controls:touches phase:3]; if (!touches.count) return;
+    if (_keyboard_touches.count) {
+        [self sp_keyboard_touches:touches ended:YES cancelled:YES];
+        return;
+    }
+#endif
     CGPoint p = [self sp_location:[self sp_mover:touches]];
     [self sp_remove:touches];
     if (_touches.count) {
@@ -1009,11 +1267,17 @@ static double sp_chord_window(void) {
 }
 
 - (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+#if !TARGET_OS_VISION
+    if (_text_composer) { [super pressesBegan:presses withEvent:event]; return; }
+#endif
     for (UIPress *p in presses)
         if (p.key) sp_key(p.key, YES);
 }
 
 - (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+#if !TARGET_OS_VISION
+    if (_text_composer) { [super pressesEnded:presses withEvent:event]; return; }
+#endif
     for (UIPress *p in presses)
         if (p.key) sp_key(p.key, NO);
 }
@@ -1039,7 +1303,7 @@ static UIViewController *sp_make_root_view_controller(void) {
     return sp_mouse;
 }
 + (NSUInteger)modifierFlags {
-    return sp_mod_flags;
+    return sp_mod_flags | sp_touch_mod_flags;
 }
 + (NSUInteger)pressedMouseButtons {
     return sp_mouse_buttons;
@@ -1355,6 +1619,19 @@ static char sp_app_delegate_key;
     sp_key_repeats();
     for (NSUInteger i = 0; i < sp_events.count; i++) {
         SPEvent *e = sp_events[i];
+        if (e->committedText) {
+            // UIKit callbacks run on its coroutine stack. A text-input callback must run here, on the
+            // game's stack, in order with prior events. It isn't an NSEvent to peek or dispatch: deliver
+            // once at the queue head even when the client is only peeking for physical events.
+            if (i != 0) return nil;
+            [sp_events removeObjectAtIndex:i];
+            id target = [sp_client_window firstResponder] ?: [sp_client_window contentView];
+            if ([target respondsToSelector:@selector(insertText:replacementRange:)])
+                ((void (*)(id, SEL, id, NSRange))objc_msgSend)(target, @selector(insertText:replacementRange:),
+                                                           e->committedText, NSMakeRange(NSNotFound, 0));
+            i--;
+            continue;
+        }
         if (!(mask & (1ull << e->type))) continue;
         if (dequeue) [sp_events removeObjectAtIndex:i];
         return e;

@@ -423,6 +423,9 @@ struct SettingsView: View {
     // Finger chords (spevent.m): two fingers right-click, three middle-click, at one finger's spot.
     private var touch: some View {
         Section {
+            Button("Touch Controls…") {
+                if let screen = sp_touch_settings_screen() { settings.host?.present(screen, animated: true) }
+            }
             LabeledContent("Click With") {
                 Picker("Click With", selection: Binding(get: { settings.now.chordRightFinger },
                                                         set: { setChordRightFinger($0); settings.reload() })) {
@@ -436,7 +439,7 @@ struct SettingsView: View {
         } header: {
             Text("Touch")
         } footer: {
-            Text("Press with two fingers together to right-click, or three to middle-click. The click is where the left or right finger is. With Accessibility Zoom on, three-finger presses lag.")
+            Text("Configure floating sticks, long-press right-click, and custom buttons in Touch Controls. With touch controls off, press with two fingers to right-click, or three to middle-click. Click With selects the finger used for those chords.")
         }
     }
     #endif

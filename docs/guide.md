@@ -39,7 +39,8 @@ each zone needs while the game is on screen.
 
 The first time, Slashplayed asks for your **Battle.net email and password**. It keeps them in the
 device's keychain (that device only, never synced) and signs the game in with them at every start.
-If your account has an authenticator, type its code on the hardware keyboard. To sign in with another
+If your account has an authenticator, use the four-finger text composer on iPhone or iPad, or type its
+code on a hardware keyboard. To sign in with another
 account, tap **Forget My Sign-In** in Settings on Slashplayed's start screen (the gear).
 
 If the device's sign-in stops working and the game is installed on the Mac, **Play with My Mac's
@@ -130,6 +131,42 @@ A paid **Apple Developer Program** membership signs for a year, with none of tho
 - **The device** (the gear on Slashplayed's start screen): the saved sign-in, the signing identity,
   each game's build, Open in Files, Reset Game Settings, and Display (the render scale).
 
+## Touch controls on iPhone and iPad
+
+Drag anywhere on the left or right half of the game to start a floating thumbstick. Each stick
+appears where your finger landed and disappears when you lift. Short taps still click action bars
+and game menus. Hold still for about half a second to right-click; keep holding and move to right-drag.
+
+For mouse gestures, place **two fingers on the same half** before moving. Pinch apart to zoom in,
+or together to zoom out. Move both fingers together to orbit the camera, or to drag an item or UI
+element under the first finger. Two-finger tap right-clicks. One finger on each half still controls
+the two sticks, and a movement stick can stay active while the other half handles a gesture.
+Lift both gesture fingers before starting another gesture.
+
+For precise dragging with one finger, **tap, then touch the same spot again within 0.3 seconds and
+drag**. This sends a normal left-button drag instead of starting a stick. Action-bar locks still
+apply: unlock the bar or hold the modifier the game requires using a custom touch button.
+
+The small pill buttons use solid backdrops and cutout icons, with larger invisible touch targets.
+The **LB** and **RB** buttons start in Toggle mode: tap to hold, then tap again to release.
+The two upper buttons send the controller's **View** and **Menu** inputs as short taps. The game's
+controller bindings decide what these do, just as with an Xbox controller.
+
+Open **Settings > Touch > Touch Controls** before playing, or **four-finger tap > Controls** in game.
+You can turn each stick off, change its radius and dead zone, adjust stick and button opacity
+separately, change button size, and change the long-press delay. With a stick off, a drag on that half
+acts as a mouse drag.
+
+Pinch zoom, two-finger right-click, and double-tap dragging can each be turned off. **Two-Finger
+Drag > Turn Character** makes the gesture a right-button camera drag; **Orbit / Drag Items** uses
+the left button. **Zoom Sensitivity** adjusts the pinch's mouse-wheel input.
+
+Each button has an editable label, position, binding, and **Hold**, **Tap**, or **Toggle** behavior.
+**Add Button** supports gamepad buttons, keys or combinations such as `Shift+1` or `Ctrl+Alt+R`,
+mouse clicks, **Keyboard**, and **Controls**. Keyboard and Controls always open on a tap.
+Use **Arrange Buttons** in game to drag buttons into place, then tap **Done Arranging**.
+Preferences stay on this device. Opening an editor or leaving the app releases held touch inputs.
+
 ## Updates
 
 The companion checks for its own updates (turn that off in Settings), or use **Slashplayed
@@ -146,8 +183,8 @@ update". If no update is out, the companion's **Report It…** opens a pre-fille
 - **LocalDevVPN has to be on at every start.** Slashplayed's helper attaches to the game for a second
   or two to prepare its code, and reaches the device's developer services through LocalDevVPN. If
   it's off, Slashplayed opens LocalDevVPN and starts the game once it's on.
-- **No on-screen keyboard in the game.** Chat and authenticator codes need a hardware keyboard.
-  [Details](troubleshooting.md#no-on-screen-keyboard).
+- **Typing in the game:** on iPhone and iPad, tap with four fingers together for the text composer;
+  Vision Pro needs a hardware keyboard. [Details](troubleshooting.md#no-on-screen-keyboard).
 - **A mouse on an iPhone needs AssistiveTouch** for its cursor.
   [Details](troubleshooting.md#no-cursor-with-a-mouse-on-an-iphone).
 - **No intro movie on a game's first launch.** On an empty device the intro never plays, so

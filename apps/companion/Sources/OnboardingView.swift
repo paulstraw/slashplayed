@@ -196,11 +196,11 @@ private struct StepPage: View {
                 }
             }
             PairingHelp()
-            // What an iPhone needs that nothing on the Mac can check: iOS gives an app no pointer without
-            // AssistiveTouch, and the game shows no on-screen keyboard.
+            // The mouse setting can't be checked from the Mac; the keyboard gesture needs explaining
+            // because it deliberately leaves no button over the game.
             if setup.devices.contains(where: { $0.device.kind == .iPhone && $0.supported }) {
                 HStack(spacing: 4) {
-                    Text("iPhone: turn on AssistiveTouch to use a mouse (Settings > Accessibility > Touch), and use a hardware keyboard to type.")
+                    Text("iPhone: turn on AssistiveTouch to use a mouse (Settings > Accessibility > Touch). Tap with four fingers together for the keyboard and text composer.")
                         .fixedSize(horizontal: false, vertical: true)
                     Link("More…", destination: Self.iPhoneMouseHelp)
                 }

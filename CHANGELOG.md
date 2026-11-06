@@ -6,6 +6,22 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- On iPhone and iPad, pinch with two fingers on the same half of the screen to zoom, or drag them
+  together to orbit the camera and move UI items. Tap, then touch again and drag for precise
+  one-finger item dragging. Two-finger taps right-click. Configure each gesture, zoom sensitivity,
+  and whether a two-finger drag orbits the camera or turns the character in Touch Controls.
+- On iPhone and iPad, floating thumbsticks start wherever you drag on either half of the screen.
+  Short taps still click the game, and holding still right-clicks. Touch Controls lets you adjust
+  the sticks, appearance, and layout, and add buttons for gamepad inputs, keys or combinations,
+  mouse clicks, the keyboard, or the controls editor. Each button supports Hold, Tap, or Toggle.
+  Buttons are compact filled pills with cutout icons, comfortable invisible touch targets, and
+  independent opacity controls.
+- On iPhone and iPad, tap with four fingers together to open a native text composer and keyboard.
+  Paste, edit, and copy text there; Insert types into the focused game field, Return submits it,
+  and Done dismisses the remaining draft. Nothing stays over the game when the composer is closed.
+
 ## [1.4.0] - 2026-11-06
 
 ### Added

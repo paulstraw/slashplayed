@@ -615,8 +615,8 @@ jetsam reports). Export Diagnostics and file a bug if it repeats.
   or password Slashplayed saved. Open Slashplayed, tap the gear on its start screen, tap **Forget My
   Sign-In**, then **Sign In…**, and sign in again. (Typing them into the game's own login screen doesn't work: it fails
   with the same error even when they're right.)
-- **Stuck at the authenticator prompt**: the game asks for the code in its own window, and takes typing
-  only from a hardware keyboard. Connect one, type the code, and press Return.
+- **Stuck at the authenticator prompt**: on iPhone or iPad, tap with four fingers together, type or
+  paste the code in the composer, and tap Return. A hardware keyboard works too; Vision Pro needs one.
 - **"Unlock this iPad/iPhone, then open Slashplayed again"**: the saved sign-in is in the keychain,
   which can't be read while the device is locked (a launch from the companion with the device asleep).
 - **Using the Mac's Battle.net instead**: **Play with My Mac's Battle.net** in the menu by Play signs
@@ -671,10 +671,19 @@ connected. Touch and a hardware keyboard work without AssistiveTouch.
 
 ### No on-screen keyboard
 
-Tapping the chat box (or any text field) brings up no on-screen keyboard: the game takes typing only
-from a hardware keyboard, so chat, and an authenticator's code at sign-in, need one. Tested on the
-iPhone; a Bluetooth keyboard works, chat included. (Slashplayed's own screens, such as the sign-in
-screen, do get the on-screen keyboard.)
+On iPhone and iPad, tap with **four fingers together** to open the native keyboard and text composer.
+Tap a game text field first, or use the composer's **Return** with an empty draft to open chat.
+Type or paste, then tap **Insert** to put the text in the field without submitting it, or **Return**
+to insert it and press Return. **Done**, or a tap outside the composer, discards the remaining draft
+and restores the game's keyboard focus. The text box has the standard selection, copy, and cut menu,
+and a system Paste button. Drafts are not saved or logged, and are discarded when the app loses focus.
+
+The composer's **Controls** button opens the touch layout editor. Add a button with the **Keyboard**
+action if you prefer a button for typing. The four fingers must land together and lift within
+0.4 seconds, without moving more than 20 points. With touch controls off, a three-finger tap is a
+middle click. Accessibility Zoom and VoiceOver can reserve multi-finger
+gestures at the system level. A hardware keyboard is also supported; Vision Pro still needs one for
+game text. Copying existing text out of a game field is separate from copying text in the composer.
 
 ### Closing the window
 
