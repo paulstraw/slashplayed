@@ -103,5 +103,19 @@ asked for.
 
 The first try named the guest by the bundled image's path (for `dladdr` and image 0); something in the
 client's start then had dyld load that image too: a second client, every Objective-C class twice, and a hang
-on the loading screen. Named by its own file, which dyld can't load, it runs. The AppKit shim's stats name the
-client's threads `?`, probably because the shims' `dladdr` doesn't know the guest (not checked).
+on the loading screen. Named by its own file, which dyld can't load, it runs. The AppKit shim's stats name
+most of the client's threads `?` as they do for the dyld-loaded client (the threads are unnamed), but its
+stall stacks show the client's frames as bare addresses where the dyld-loaded client's read
+`wow-<flavor>+offset`: the shims' `dladdr` doesn't know the guest.
+
+iPhone 16 Pro (iOS 27), Retail 12.1.5.70688, 2026-11-06: **in the world**, past character select, with no
+change to the loader. The app needs Retail's bundled image only for its stamp; an iOS app built with Classic
+Era alone took the companion's visionOS Retail image, retargeted to iOS with `vtool -set-build-version` and
+signed (never loaded), with `spbuild-retail` beside it. The helper attached 1.41 s after launch; the prepare
+covered `__TEXT` (3,268 pages, 51 MB) in 0.093 s, detach 0.018 s, load 0.145 s with both, link 0.074 s (every
+import bound, none unresolved), 13,072 initializers in 0.122 s, `main` 2.55 s after launch. One client
+image, no class loaded twice. The first frame came 15.9 s after the client was asked for (the main thread
+waits in the client's own startup for most of it, a stall reported every 3 s from 6.6 s to 15.6 s), the
+client opened and deleted `login.txt` at 19.8 s, and once in the world it held 60 fps (worst frame 18 to
+42 ms) at about 4.2 GB footprint, 1.9 GB left, thermal fair, as large as the dyld-loaded Retail on the
+headset.
