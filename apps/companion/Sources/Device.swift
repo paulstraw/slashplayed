@@ -1,7 +1,7 @@
 import Foundation
 
-/// A device the client runs on (a Vision Pro, an M1-or-later iPad or an iPhone 15 Pro or later), and the
-/// client app's data container
+/// A device the client runs on (a Vision Pro, an M1-or-later iPad or the A17 Pro iPad mini, or an
+/// iPhone 15 Pro or later), and the client app's data container
 /// on it, through `xcrun devicectl`. The devices are the ones paired with this Mac (Device.paired). Each
 /// has its own platform (scripts/platform.sh's SP_PLATFORM), build (Paths.clientDir) and the games
 /// (flavors) the user chose to hold on it (File > Games on).
@@ -54,14 +54,16 @@ struct Device: Identifiable, Hashable {
     func unsupportedReason(model: String?) -> String? {
         guard !isSupported(model: model) else { return nil }
         return kind == .iPhone ? "Not supported: Slashplayed needs an iPhone 15 Pro or later."
-            : "Not supported: Slashplayed needs an iPad with an M1 chip or later."
+            : "Not supported: Slashplayed needs an iPad with an M1 chip or later, or the A17 Pro iPad mini."
     }
 
     /// What onboarding and the companion's log say about a model that's allowed but has never been run
-    /// (Device.isUntestedIPad, the M1 iPads); nil for every other model. It doesn't stop anything.
+    /// (Device.isUntestedIPad: the M1 iPads and the A17 Pro iPad mini); nil for every other model. It
+    /// doesn't stop anything.
     func untestedNote(model: String?) -> String? {
-        guard kind == .iPad, Self.isUntestedIPad(model: model) else { return nil }
-        return "Untested: Slashplayed hasn't been tried on an M1 iPad yet. Please tell us how it goes with Help > Report an Issue… and the zip from Help > Export Diagnostics…."
+        guard kind == .iPad, let model, Self.isUntestedIPad(model: model) else { return nil }
+        let iPad = model.hasPrefix("iPad16,") ? "the A17 Pro iPad mini" : "an M1 iPad"
+        return "Untested: Slashplayed hasn't been tried on \(iPad) yet. Please tell us how it goes with Help > Report an Issue… and the zip from Help > Export Diagnostics…."
     }
 
     /// The device an action works on: `target` (the one it was started for), else `pin` (the Device menu's
@@ -469,27 +471,31 @@ struct Device: Identifiable, Hashable {
         return details
     }
 
-    /// Whether an iPad model (productType) has an M1 or later, which the client needs: iPad14 and up,
-    /// less the A-chip iPads numbered among them (mini 6 and 7, the 11th-generation iPad), and the M1
-    /// iPads (isUntestedIPad). The Mac client is built for the M1's instruction set, so the M1 runs every
-    /// instruction it has; the A14 iPads numbered iPad13 (the 4th-generation Air, the 10th-generation
-    /// iPad) and the A12X/A12Z Pros don't. True for an unknown model, so only a known older one is warned
-    /// about.
+    /// Whether an iPad model (productType) can run the client: iPad14 and up (M2 or later, and the A17 Pro
+    /// iPad mini, iPad16,1 and 16,2, untested), less the A-chip iPads with under 8 GB numbered among them,
+    /// plus the M1 iPads (isUntestedIPad). Two limits, as isSupportedIPhone's: the Mac client is built for the M1's
+    /// instruction set, which the A12X/A12Z Pros lack (the client stopped at an undefined instruction on
+    /// one), and it needs 8 GB, as the M2 iPads have, which the mini 6 (iPad14,1 and 14,2, A15, 4 GB), the
+    /// 11th-generation iPad (iPad15,7 and 15,8, A16, 6 GB), and the A14 iPads numbered iPad13 (the
+    /// 4th-generation Air, the 10th-generation iPad, 4 GB) lack. The mini 7 has the iPhone 15 Pro's A17 Pro
+    /// and 8 GB, so it meets both. True for an unknown model, so only a known older one is warned about.
     static func isSupportedIPad(model: String?) -> Bool {
         guard let model, let m = model.firstMatch(of: /^iPad(\d+),(\d+)$/), let major = Int(m.1) else { return true }
-        let aChips: Set<String> = ["iPad14,1", "iPad14,2", "iPad15,7", "iPad15,8", "iPad16,1", "iPad16,2"]
-        return (major >= 14 && !aChips.contains(model)) || isUntestedIPad(model: model)
+        let under8GB: Set<String> = ["iPad14,1", "iPad14,2", "iPad15,7", "iPad15,8"]
+        return (major >= 14 && !under8GB.contains(model)) || isUntestedIPad(model: model)
     }
 
     /// The M1 iPads: the 11-inch 3rd-generation Pro (iPad13,4 to 13,7), the 12.9-inch 5th-generation Pro
     /// (iPad13,8 to 13,11), and the 5th-generation Air (iPad13,16 and 13,17), as Xcode's simulator device
     /// types list them. They're allowed but untested: the M1 predates TXM (it protects code with PPL), and
     /// the JIT path (debugger-prepare plus the RW alias, docs/architecture.md) has only been run on TXM
-    /// devices (an M2 iPad, an iPhone 16 Pro, Vision Pro). All have 8 GB or more, as the M2 iPads do.
+    /// devices (an M2 iPad, an iPhone 16 Pro, Vision Pro). All have 8 GB or more, as the M2 iPads do. And the
+    /// A17 Pro iPad mini (iPad16,1 and 16,2): a TXM device with 8 GB and the iPhone 15 Pro's chip, which no
+    /// iPad has been played on.
     static func isUntestedIPad(model: String?) -> Bool {
         guard let model else { return false }
         return ["iPad13,4", "iPad13,5", "iPad13,6", "iPad13,7", "iPad13,8", "iPad13,9", "iPad13,10", "iPad13,11",
-                "iPad13,16", "iPad13,17"].contains(model)
+                "iPad13,16", "iPad13,17", "iPad16,1", "iPad16,2"].contains(model)
     }
 
     /// Whether an iPhone model (productType) is an iPhone 15 Pro or later: iPhone16,1 and up (15 Pro and

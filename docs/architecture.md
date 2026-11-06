@@ -1,6 +1,6 @@
 # How Slashplayed works
 
-Slashplayed runs the unmodified Mac World of Warcraft clients (Classic Era, TBC Anniversary, MoP Classic, and Retail) on M1-or-later iPads (iPadOS; untested on M1), iPhone 15 Pro and later (iOS), and Apple Vision Pro (visionOS). It's a
+Slashplayed runs the unmodified Mac World of Warcraft clients (Classic Era, TBC Anniversary, MoP Classic, and Retail) on M1-or-later iPads and the A17 Pro iPad mini (iPadOS; untested on M1 and the mini), iPhone 15 Pro and later (iOS), and Apple Vision Pro (visionOS). It's a
 compatibility layer: the client's own arm64 code runs natively on the device, and a set of shim
 libraries stands in for the macOS frameworks it expects (AppKit, CoreGraphics, Carbon, CoreAudio,
 Security, …), translating to UIKit, RemoteIO and friends. No game code is changed beyond Mach-O

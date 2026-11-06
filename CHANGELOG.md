@@ -6,6 +6,13 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- The iPad mini (A17 Pro) was refused as an iPad that can't run the game, though it has the iPhone
+  15 Pro's chip and 8 GB of memory. It can now be picked and played on. It hasn't been played on yet,
+  so the companion marks it untested, as it does M1 iPads: if you try one, please report how it goes,
+  working or not, on GitHub with the zip from Help > Export Diagnostics….
+
 ## [1.4.0] - 2026-11-06
 
 ### Added

@@ -39,8 +39,9 @@ final class OnboardingTests: XCTestCase {
             XCTAssertTrue(Device.isSupportedIPad(model: model), model)
             XCTAssertFalse(Device.isUntestedIPad(model: model), model)
         }
-        // Air 4 and the 10th generation (A14), mini 6, the 11th generation, mini 7, the 2018 Pro.
-        for model in ["iPad13,1", "iPad13,2", "iPad13,18", "iPad13,19", "iPad14,1", "iPad15,7", "iPad16,2", "iPad8,1"] {
+        // Under 8 GB: Air 4 and the 10th generation (A14), mini 6 (A15), the 11th generation (A16). And the
+        // 2018 Pro (A12X), short of the M1's instruction set.
+        for model in ["iPad13,1", "iPad13,2", "iPad13,18", "iPad13,19", "iPad14,1", "iPad14,2", "iPad15,7", "iPad15,8", "iPad8,1"] {
             XCTAssertFalse(Device.isSupportedIPad(model: model), model)
             XCTAssertFalse(Device.isUntestedIPad(model: model), model)
         }
@@ -63,6 +64,14 @@ final class OnboardingTests: XCTestCase {
         for model in ["iPad13,1", "iPad13,2", "iPad13,18", "iPad13,19"] {
             XCTAssertFalse(Device.isSupportedIPad(model: model), model)
         }
+        // The A17 Pro mini 7 (8 GB, the iPhone 15 Pro's chip) is allowed, untested, and named as itself.
+        for model in ["iPad16,1", "iPad16,2"] {
+            XCTAssertTrue(Device.isSupportedIPad(model: model), model)
+            XCTAssertTrue(Device.isUntestedIPad(model: model), model)
+            XCTAssertNil(iPad.unsupportedReason(model: model), model)
+            XCTAssertEqual(iPad.untestedNote(model: model)?.contains("the A17 Pro iPad mini"), true, model)
+        }
+        XCTAssertEqual(iPad.untestedNote(model: "iPad13,16")?.contains("an M1 iPad"), true)
         XCTAssertNil(iPad.untestedNote(model: "iPad14,5"))
         XCTAssertNil(iPad.untestedNote(model: nil))
         XCTAssertNil(Device(name: "", udid: "", kind: .iPhone).untestedNote(model: "iPad13,16"))
@@ -95,7 +104,7 @@ final class OnboardingTests: XCTestCase {
 
     func testUnsupportedReason() {
         let iPad = Device(name: "", udid: "", kind: .iPad), iPhone = Device(name: "", udid: "", kind: .iPhone)
-        XCTAssertEqual(iPad.unsupportedReason(model: "iPad8,1"), "Not supported: Slashplayed needs an iPad with an M1 chip or later.")
+        XCTAssertEqual(iPad.unsupportedReason(model: "iPad8,1"), "Not supported: Slashplayed needs an iPad with an M1 chip or later, or the A17 Pro iPad mini.")
         XCTAssertEqual(iPhone.unsupportedReason(model: "iPhone15,4"), "Not supported: Slashplayed needs an iPhone 15 Pro or later.")
         XCTAssertNil(iPad.unsupportedReason(model: "iPad14,5"))
         XCTAssertNil(iPad.unsupportedReason(model: nil))

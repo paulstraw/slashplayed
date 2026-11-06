@@ -20,7 +20,7 @@ You install the games on the device itself: open Slashplayed and tap one.
 
 ## Before you start
 
-- **Your device:** an iPad with M1 or later, or an iPhone 15 Pro or later, on iPadOS 26 or iOS 26 or
+- **Your device:** an iPad with M1 or later or the A17 Pro iPad mini, or an iPhone 15 Pro or later, on iPadOS 26 or iOS 26 or
   later, with a USB cable.
 - **Apple's device driver.**
   - **Windows:** install **Apple Devices** from the Microsoft Store (or iTunes from apple.com).

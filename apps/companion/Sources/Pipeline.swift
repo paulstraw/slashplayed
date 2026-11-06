@@ -664,7 +664,7 @@ final class Pipeline {
                 throw StepFailure(.device, reason + " Pick another device in the device menu.",
                                   title: "\(self.device.name) can't run Slashplayed")
             }
-            // An M1 iPad goes ahead, but its log says it's a first run on that chip, so a report says so.
+            // An untested iPad (M1, A17 Pro mini) goes ahead, but its log says it's a first run there, so a report says so.
             if let note = self.device.untestedNote(model: self.models[self.device.udid]) {
                 self.appendLog("[companion] \(self.device.name) (\(self.models[self.device.udid] ?? "?")): \(note)")
             }

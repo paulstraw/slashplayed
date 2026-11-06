@@ -40,8 +40,8 @@ struct USBLink: Equatable {
     }
 
     /// Whether the device can do USB 3 with a USB 3 cable, by model (productType), so the line isn't shown
-    /// to a device that can't do better. Every M-chip iPad can (USB 3 up to 10 Gbit/s on the Airs,
-    /// Thunderbolt on the Pros), and so can the Pro iPhones from the 15 Pro on, numbered N,1 and N,2
+    /// to a device that can't do better. Every iPad the client supports can (USB 3 up to 10 Gbit/s on
+    /// the Airs and the A17 Pro mini, Thunderbolt on the Pros), and so can the Pro iPhones from the 15 Pro on, numbered N,1 and N,2
     /// (iPhone16,1 and 16,2, 17,1 and 17,2, 18,1 and 18,2). The other iPhones the client supports (the 16,
     /// 16 Plus, 16e, 17, and Air) are USB 2 only. The headset has no USB to copy over. False for an
     /// unknown model: better no line than a wrong one.
