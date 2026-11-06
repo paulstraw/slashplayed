@@ -3,6 +3,7 @@
 // what a loader has to get right and logs ok/FAIL for each. The client is never touched.
 #import <Foundation/Foundation.h>
 #include <dlfcn.h>
+#include <objc/runtime.h>
 #include <execinfo.h>
 #include <fcntl.h>
 #include <mach-o/dyld.h>
@@ -72,7 +73,39 @@ static void thrower(int n) { if (n == 0) throw std::runtime_error("boom"); throw
 
 // 7. The game's startup rewrite: a code page of the guest changed through the memory functions it gets
 // from dlsym, then called. `patch_me` returns 1 until patched to return 2.
-extern "C" __attribute__((noinline, optnone, used, section("__TEXT,__sppatch"))) int patch_me(void) { return 1; }
+extern "C" __attribute__((noinline, optnone, used, section("__TEXT,__sppatch,regular,pure_instructions"))) int patch_me(void) { return 1; }
+
+// 8. A client-sized __TEXT: ~44 MB of filler (Classic Era's __TEXT is about that), so the prepare and the
+// load are timed at the client's scale. The first pair returns 7, the last 8: a page left unprepared or
+// uncopied at either end shows up.
+#define SP_FILL 0x2c10000u
+__asm__(".section __TEXT,__spfill,regular,pure_instructions\n"
+        ".p2align 14\n"
+        ".globl _sp_fill\n"
+        "_sp_fill:\n"
+        "mov w0, #7\n"
+        "ret\n"
+        ".fill 0xb03ffc, 4, 0xd503201f\n"  // SP_FILL / 4 - 4 nops
+        "mov w0, #8\n"
+        "ret\n"
+        ".text\n");
+extern "C" int sp_fill(void);
+
+// 9. With the client's imports (build.sh's SP_GUEST_REFS: gen_refs.py's refs.c, names only, from the local
+// recon): every symbol the client imports, from the same library, so the binds go through the shims at the
+// client's breadth; and a subclass of an AppKit class, which on the device is the AppKit shim's.
+#ifdef SP_REFS
+#import <AppKit/AppKit.h>
+extern "C" const void *const sp_refs[];
+extern "C" const char *const sp_ref_names[];
+extern "C" const size_t sp_ref_count;
+@interface SPToyView : NSView
++ (int)spToyKind;
+@end
+@implementation SPToyView
++ (int)spToyKind { return 11; }
+@end
+#endif
 
 int main(int argc, char **argv) {
     @autoreleasepool {
@@ -147,6 +180,25 @@ int main(int argc, char **argv) {
         say("     mprotect(rwx) = %d, mprotect %p memcpy %p, patch_me %p\n", r, (void *)mp, (void *)cp, (void *)patch_me);
         int (*volatile call)(void) = patch_me;  // volatile: the compiler knows what patch_me returned at build time
         check(r == 0 && call() == 2, "own code rewritten through mprotect/memcpy, then called");
+
+        // 8
+        int (*volatile last)(void) = (int (*)(void))((char *)sp_fill + SP_FILL - 8);
+        check(sp_fill() == 7 && last() == 8, "both ends of a 44 MB __TEXT section run");
+
+#ifdef SP_REFS
+        // 9. A weak import may be absent (NULL); the link already failed on any other unresolved one.
+        size_t absent = 0;
+        for (size_t i = 0; i < sp_ref_count; i++)
+            if (!sp_refs[i]) { absent++; say("     absent: %s\n", sp_ref_names[i]); }
+        say("     %zu client imports, %zu absent\n", sp_ref_count, absent);
+        check(absent == 0, "every client import bound");
+        check([SPToyView superclass] == objc_getClass("NSView") && [SPToyView spToyKind] == 11 &&
+                  [SPToyView instancesRespondToSelector:@selector(resetCursorRects)],
+              "subclass of AppKit's NSView: registered, dispatches, inherits");
+        // The shims' base for their caller offsets (libspSystem's sp_client_text, told by the loader): the guest.
+        uintptr_t (*client_text)(void) = (uintptr_t (*)(void))dlsym(RTLD_DEFAULT, "sp_client_text");
+        if (client_text) check(client_text() == (uintptr_t)&_mh_execute_header, "libspSystem's client __TEXT is the guest");
+#endif
 
         say("=== done, %d failure(s)\n", failures);
     }
