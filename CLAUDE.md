@@ -39,7 +39,10 @@ the push, the export), `SlashplayedCertificate.swift` (a paid team's own certifi
   tested in the companion's tests), `spassemble.m` (the client image made on the device from that
   slice: install_name_tool's, vtool's, and retype.py's steps, ported), `spsign.m` (signing on the device:
   the identity the Mac pushes, into the keychain, and zsign through `spzsign.cpp`, and which certificate an
-  update's image is signed with against the profiles the app can see; tested in the companion's tests), `flavors.plist` (each game's
+  update's image is signed with against the profiles the app can see; tested in the companion's tests), `spapple.m` (the
+  Apple token: the one file that holds it, and the app's renewed profiles from Apple through `spapple/`, a Rust
+  static library on the vendored isideload, `scripts/build-spapple.sh`; the helper installs them through misagent,
+  `spjit.m`'s `sp_jit_profiles`), `flavors.plist` (each game's
   name, `.build.info` product, client path, Battle.net arguments, and addon number: the one list, read by the
   launcher, the companion's `Flavor.swift`, and `scripts/flavor.sh`),
   `helper/` (the
@@ -47,7 +50,7 @@ the push, the export), `SlashplayedCertificate.swift` (a paid team's own certifi
   `build-helper.sh`; jittest builds the same source), Info.plist and
   entitlements templates, `icons/` (the app icon catalogs, compiled by `build-icons.sh`),
   `signing/` (stub project for the explicit-App-ID profile), and
-  dev scripts (`build.sh`, `run.sh`, `seed.sh`, `pull-logs.sh`, `grab-token.sh`, `push-identity.sh`,
+  dev scripts (`build.sh`, `run.sh`, `seed.sh`, `pull-logs.sh`, `grab-token.sh`, `push-identity.sh`, `push-apple-token.sh`,
   `retype.py`, `casc_archives.py`). `build.sh`, `ClientAssembly.swift`, and `spassemble.m` (the launcher's assembly
   of a newer build's image on the device, tested in the companion's tests) must produce byte-identical
   unsigned client images: change all three together.
@@ -88,6 +91,7 @@ the push, the export), `SlashplayedCertificate.swift` (a paid team's own certifi
 scripts/build-idevice.sh macos             # once (and after re-pinning): the companion links it
 scripts/build-idevice.sh ios; scripts/build-idevice.sh xros   # the JIT helper links these
 scripts/build-zsign.sh                     # once: zsign + OpenSSL (ios, xros: the launcher; macos: the tests)
+scripts/build-spapple.sh                   # once (and after changing apps/client/spapple): the launcher links it
 scripts/fetch-font.sh                      # once: the start screen's font and its license, into work/fonts/
 shims/build.sh <xros|ios>                  # build/<platform>/*.dylib + exports.json
 apps/companion/build.sh                    # build/companion/Slashplayed Companion.app (needs xcodegen)
@@ -153,6 +157,13 @@ again (over an hour for Retail on the headset). Don't change it casually.
   is ever installed (isideload's logs would carry account data). The person types it; test runs use the
   owner's own Terminal. The tool's signing key goes only to the OS credential store and, as a .p12, to the
   device. It never revokes a certificate a Slashplayed tool didn't make.
+- **The Apple token is a credential.** The device keeps one Apple token (the `xcode.auth` app token, its
+  adsid, and the anisette server and machine identity it was made on), and only `spapple.m` handles it: in
+  the keychain (this device only, never synced), imported from `Library/spappletoken.json`, which is zeroed
+  and deleted at once, and handed to `spapple` in memory, zeroed after. Its screen keeps nothing. Never the
+  password or the GrandSlam token. Logs give the stated expiry's date only, never the token, its fields, or
+  its size; `spapple`'s errors never carry it. `push-apple-token.sh` (dev) and `slashplayed-companion` are
+  the only things that push one.
 - **Never read, print or log values from `net.battle` prefs** or the exported credentials file. Sizes
   and timestamps only, as `TokenRelay.swift` does.
 - **The Battle.net sign-in is a credential too.** Only the launcher's sign-in (`splogin.m`, and its

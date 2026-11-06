@@ -55,7 +55,8 @@ struct License: Hashable {
     static func all() -> [License] {
         let dir = (Bundle.main.bundlePath as NSString).appendingPathComponent("licenses")
         let known = [("zsign.txt", "zsign"), ("openssl.txt", "OpenSSL"), ("idevice.txt", "idevice"),
-                     ("rust-std.html", "Rust Standard Library"), ("goodmountain.txt", "Goodmountain")]
+                     ("rust-std.html", "Rust Standard Library"), ("spapple.txt", "isideload"),
+                     ("goodmountain.txt", "Goodmountain")]
         var files = ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).sorted()
         var list: [License] = []
         for (file, name) in known where files.contains(file) {

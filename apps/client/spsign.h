@@ -100,7 +100,23 @@ NSArray<NSData *> *sp_image_certificates(NSString *path);
 // predicts what the system decides at dlopen, which still has the last word.
 NSArray<NSData *> *sp_profile_certificates(NSData *profile, NSDate *now);
 
-// The certificates the profiles this app can see list: its own embedded.mobileprovision's, and those of
+// A provisioning profile's plist (the file as installed: inside a CMS envelope, whose signature isn't
+// checked), nil when it can't be read.
+NSDictionary *_Nullable sp_profile_plist(NSData *_Nullable profile);
+
+// A profile's application-identifier entitlement (<team>.<bundle ID>), nil when it has none.
+NSString *_Nullable sp_profile_app_id(NSData *_Nullable profile);
+
+// This app's App ID, from its embedded.mobileprovision (expired or not: which app it's for doesn't change).
+NSString *_Nullable sp_app_id(void);
+
+// Copies of the profiles the app's renewals installed (Library/spprofiles/*.mobileprovision, spapple.m): iOS
+// checks the app against every installed profile, but the app can't read the device's list on its own, so
+// these are what it knows it has.
+NSArray<NSString *> *sp_profile_copies(void);
+
+// The certificates the profiles this app can see list: its own embedded.mobileprovision's, the profiles its
+// own renewals installed (copies in Library/spprofiles, spapple.m), and those of
 // Library/spprofile.mobileprovision, a copy of the profile the companion installed on the device for the
 // Slashplayed certificate (a paid team's, B; the app's own profile lists it only once Xcode has made one since
 // that certificate existed). The system's list is device-wide, but the app can't read it.

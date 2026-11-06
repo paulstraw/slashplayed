@@ -36,7 +36,7 @@ process outright), chosen by the first argument. Background and full results:
 | `h2` | The helper opens the RemotePairing tunnel (idevice) and reports the endpoint, TXM, and the mounted developer disk image |
 | `h3` | `e4d` with the helper as the debugger: it mounts the disk image if needed, attaches to the app, prepares, and detaches |
 | `h4` | `e7` (the real shim, 44 MB) with the helper as the debugger |
-| `h5` | misagent through the helper's tunnel: lists the device's provisioning profiles and installs `Documents/spjit-profile.mobileprovision` if it's there. Needs idevice built with the `misagent` feature (`SP_IDEVICE_DIR`) and `SP_MISAGENT=1` at build time; the shipping helper leaves it out |
+| `h5` | misagent through the helper's tunnel: lists the device's provisioning profiles and installs `Documents/spjit-profile.mobileprovision` if it's there. The shipping helper has this op since step 4's build (the launcher's `sp_jit_profiles`) |
 | `p1` | The app makes its own RemotePairing record: a fresh one through 10.7.0.1:49152, pair-setup with the PIN the device shows (from `Documents/spjit-pin`) |
 | `p2` | The same through visionOS's manual pairing service (Settings > General > Remote Devices open), then a tunnel with the new record; runs under UIKit |
 

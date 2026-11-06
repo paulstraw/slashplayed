@@ -1,0 +1,40 @@
+# spapple: the device app's side of Apple's developer services, a static library the launcher links
+# (scripts/build-spapple.sh builds it into work/spapple/<platform>/). With the Apple token the device keeps,
+# it fetches the app's and its helper's renewed provisioning profiles, which the JIT helper installs
+# (spjit.m's sp_jit_profiles), so the app keeps opening with no computer. The protocol is isideload's
+# (the companion-rs copy, vendored with its LGPL signer left out: apps/companion-rs/vendor/VENDORED.md).
+# Built with Rust 1.99.0 and --locked, like idevice: Cargo.lock is committed.
+[package]
+name = "spapple"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+# Its own workspace: nothing above it is a Cargo project.
+[workspace]
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# The sign-in, anisette, and developer services. install: isideload's lib.rs names idevice's error type
+# whatever is enabled (VENDORED.md). tokio-mt: anisette's provisioning websocket. No keyring: the token
+# lives in the launcher's keychain item (spappletoken.m), never in isideload's storage.
+isideload = { path = "../../companion-rs/vendor/isideload", default-features = false, features = ["install", "tokio-mt"] }
+tokio = { version = "1.49", features = ["rt-multi-thread", "time"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+plist = "1.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22.1"
+rootcause = "0.12.1"
+zeroize = "1.8"
+
+[patch.crates-io]
+idevice = { git = "https://github.com/jkcoxson/idevice", rev = "d32c8189c51c2789496b0768039419c3705498c3" }
+
+# No LTO: a thin-LTO staticlib put ~190 duplicate symbols in the archive (each crate's generic glue
+# emitted into several of its objects), which the launcher's link refuses. idevice's build uses none either.
+[profile.release]
+debug = false

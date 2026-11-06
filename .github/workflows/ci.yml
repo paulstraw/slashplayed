@@ -37,7 +37,7 @@ env:
   # static.rust-lang.org publishes next to the binary (rustup-init.sha256).
   RUSTUP_VERSION: 1.29.2
   RUSTUP_SHA256: f7c7e11eb2e07f006e532a8aaac77b32f4527d305ac386c0c633ca6133d35ca9
-  # What the idevice and zsign caches hold (.github/actions/companion-deps, Restore idevice), shared by
+  # What the idevice, zsign, and spapple caches hold (.github/actions/companion-deps, Restore idevice), shared by
   # each one's restore and save in both companion jobs.
   IDEVICE_CACHE_PATHS: |
     work/idevice/BUILD.txt
@@ -52,6 +52,10 @@ env:
     work/zsign/ios
     work/zsign/xros
     work/zsign/macos
+  SPAPPLE_CACHE_PATHS: |
+    work/spapple/BUILD.txt
+    work/spapple/ios
+    work/spapple/xros
 
 jobs:
   # Greps only, so a scrub or hardcoding slip fails in seconds rather than after the builds.

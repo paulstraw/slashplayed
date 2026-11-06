@@ -193,9 +193,10 @@ enum ClientAssembly {
 
     /// The device app's licenses/, as bundle-resources.sh bundles them and apps/client/build.sh copies them:
     /// the launcher's signer links zsign (MIT) and OpenSSL (Apache-2.0) (scripts/build-zsign.sh), and the JIT
-    /// helper idevice (MIT) with its Rust crates and the Rust standard library (scripts/build-idevice.sh); and
-    /// the start screen's face, Goodmountain, ships with its license (scripts/fetch-font.sh).
-    static let licenseFiles = ["zsign.txt", "openssl.txt", "idevice.txt", "rust-std.html", "goodmountain.txt"]
+    /// helper idevice (MIT) with its Rust crates and the Rust standard library (scripts/build-idevice.sh); the
+    /// launcher spapple, with isideload (MIT) and its Rust crates (scripts/build-spapple.sh); and the start
+    /// screen's face, Goodmountain, ships with its license (scripts/fetch-font.sh).
+    static let licenseFiles = ["zsign.txt", "openssl.txt", "idevice.txt", "rust-std.html", "spapple.txt", "goodmountain.txt"]
 
     /// The start screen's face (apps/client/spstart.m), in the app's root, unmodified: its license forbids
     /// changing or renaming the file (scripts/fetch-font.sh, bundle-resources.sh).

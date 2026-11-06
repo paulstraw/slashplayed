@@ -171,7 +171,7 @@ async fn install(args: &Args) -> Result<(), Report> {
     }
     let anisette = args.opt("--anisette").unwrap_or(account::DEFAULT_ANISETTE);
     say(&format!("signing in, with anisette from {anisette}"));
-    let mut session = account::sign_in(&apple_id, anisette, args.flag("--server-client-info")).await?;
+    let (mut session, device_token) = account::sign_in(&apple_id, anisette, args.flag("--server-client-info")).await?;
     let team = provision::pick_team(&mut session, args.opt("--team")).await?;
     say(&format!("team {} ({})", team.name.as_deref().unwrap_or("?"), team.team_id));
     let bundle_id = args.opt("--bundle-id").map(str::to_string).unwrap_or_else(|| format!("{}.slashplayed", team.team_id));
@@ -237,6 +237,16 @@ async fn install(args: &Args) -> Result<(), Report> {
     drop(p12);
     drop(password);
     say("sent the signing identity, for installing and updating games on the device");
+    // The Apple token last: with it the app gets its own renewed profiles from Apple (apps/client/spapple.m),
+    // so it keeps opening with no computer. The launcher imports it into its keychain and deletes the file.
+    match device_token {
+        Some(t) => {
+            device::put(&mut afc, "Library/spappletoken.json", &t).await?;
+            drop(t);
+            say("sent the Apple token, for the app to renew its own profiles");
+        }
+        None => say("no Apple token sent (--server-client-info): the app can't renew its own profiles"),
+    }
 
     eprintln!();
     eprintln!("Slashplayed is on {}.", d.name);

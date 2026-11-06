@@ -413,17 +413,33 @@ NSArray<NSData *> *sp_image_certificates(NSString *path) {
     return @[];
 }
 
-NSArray<NSData *> *sp_profile_certificates(NSData *profile, NSDate *now) {
-    if (!profile) return @[];
+NSDictionary *sp_profile_plist(NSData *profile) {
+    if (!profile) return nil;
     NSRange start = [profile rangeOfData:[@"<?xml" dataUsingEncoding:NSUTF8StringEncoding] options:0 range:NSMakeRange(0, profile.length)];
-    if (start.location == NSNotFound) return @[];
+    if (start.location == NSNotFound) return nil;
     NSRange end = [profile rangeOfData:[@"</plist>" dataUsingEncoding:NSUTF8StringEncoding] options:0
                                  range:NSMakeRange(start.location, profile.length - start.location)];
-    if (end.location == NSNotFound) return @[];
+    if (end.location == NSNotFound) return nil;
     NSDictionary *plist = [NSPropertyListSerialization
         propertyListWithData:[profile subdataWithRange:NSMakeRange(start.location, NSMaxRange(end) - start.location)]
                      options:NSPropertyListImmutable format:NULL error:nil];
-    if (![plist isKindOfClass:NSDictionary.class]) return @[];
+    return [plist isKindOfClass:NSDictionary.class] ? plist : nil;
+}
+
+NSString *sp_profile_app_id(NSData *profile) {
+    NSDictionary *entitlements = sp_profile_plist(profile)[@"Entitlements"];
+    NSString *appid = [entitlements isKindOfClass:NSDictionary.class] ? entitlements[@"application-identifier"] : nil;
+    return [appid isKindOfClass:NSString.class] ? appid : nil;
+}
+
+NSString *sp_app_id(void) {
+    NSString *app = app_dir();
+    return app ? sp_profile_app_id([NSData dataWithContentsOfFile:[app stringByAppendingPathComponent:@"embedded.mobileprovision"]]) : nil;
+}
+
+NSArray<NSData *> *sp_profile_certificates(NSData *profile, NSDate *now) {
+    NSDictionary *plist = sp_profile_plist(profile);
+    if (!plist) return @[];
     NSDate *expires = plist[@"ExpirationDate"];
     if (![expires isKindOfClass:NSDate.class] || [expires compare:now] != NSOrderedDescending) return @[];
     NSMutableArray<NSData *> *certs = [NSMutableArray array];
@@ -432,11 +448,21 @@ NSArray<NSData *> *sp_profile_certificates(NSData *profile, NSDate *now) {
     return certs;
 }
 
+NSArray<NSString *> *sp_profile_copies(void) {
+    NSString *dir = home(@"Library/spprofiles");
+    NSMutableArray *paths = [NSMutableArray array];
+    for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil])
+        if ([name.pathExtension isEqual:@"mobileprovision"]) [paths addObject:[dir stringByAppendingPathComponent:name]];
+    return paths;
+}
+
 NSArray<NSData *> *sp_listed_certificates(void) {
     NSMutableArray<NSData *> *listed = [NSMutableArray array];
     NSString *app = app_dir();
-    for (NSString *path in @[app ? [app stringByAppendingPathComponent:@"embedded.mobileprovision"] : @"",
-                             home(@"Library/spprofile.mobileprovision")])
+    NSMutableArray *paths = [NSMutableArray arrayWithArray:@[app ? [app stringByAppendingPathComponent:@"embedded.mobileprovision"] : @"",
+                                                             home(@"Library/spprofile.mobileprovision")]];
+    [paths addObjectsFromArray:sp_profile_copies()];
+    for (NSString *path in paths)
         if (path.length) [listed addObjectsFromArray:sp_profile_certificates([NSData dataWithContentsOfFile:path], [NSDate date])];
     return listed;
 }

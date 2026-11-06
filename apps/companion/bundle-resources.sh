@@ -53,6 +53,7 @@ for p in xros ios; do
   rm -rf "${STAGE:?}/$p" && mkdir -p "$STAGE/$p/licenses"
   cp "$ROOT/work/zsign/licenses/zsign.txt" "$ROOT/work/zsign/licenses/openssl.txt" "$STAGE/$p/licenses/"
   cp "$ROOT/work/idevice/$p/licenses/idevice.txt" "$ROOT/work/idevice/$p/licenses/rust-std.html" "$STAGE/$p/licenses/"
+  cp "$ROOT/work/spapple/$p/licenses/spapple.txt" "$STAGE/$p/licenses/"
   cp "$FONT/LICENSE.md" "$STAGE/$p/licenses/goodmountain.txt"
   cp "$FONT/Goodmountain-Regular.otf" "$STAGE/$p/"
 done
@@ -128,6 +129,8 @@ cp "$ROOT/work/idevice/macos/licenses/idevice.txt" "$ROOT/work/idevice/macos/lic
 cp "$ROOT/work/zsign/licenses/zsign.txt" "$ROOT/work/zsign/licenses/openssl.txt" "$ACK/"
 cp "$ROOT/work/idevice/ios/licenses/idevice.txt" "$ACK/idevice-ios.txt"
 cp "$ROOT/work/idevice/xros/licenses/idevice.txt" "$ACK/idevice-visionos.txt"
+cp "$ROOT/work/spapple/ios/licenses/spapple.txt" "$ACK/spapple-ios.txt"
+cp "$ROOT/work/spapple/xros/licenses/spapple.txt" "$ACK/spapple-visionos.txt"
 cp "$FONT/LICENSE.md" "$ACK/goodmountain.txt"
 cat > "$ACK/README.txt" <<'EOF'
 Slashplayed Companion is MIT-licensed (Copyright (c) 2026 Straw Dynamics) and includes these
@@ -143,6 +146,8 @@ The Slashplayed app it builds for your device also includes:
   zsign and OpenSSL   signing a game update on the device             zsign.txt, openssl.txt
   idevice             the JIT helper, with its Rust crates and the    idevice-ios.txt,
                       Rust standard library (rust-std.html)           idevice-visionos.txt
+  isideload           renewing the app's provisioning profiles, in    spapple-ios.txt,
+                      spapple, with its Rust crates                   spapple-visionos.txt
   Goodmountain        the start screen's typeface, by Hermann S       goodmountain.txt
                       Designs (shipped unmodified)
 

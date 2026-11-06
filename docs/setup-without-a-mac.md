@@ -15,6 +15,7 @@ It does what the Mac companion does with Xcode:
 - Signs Slashplayed and installs it over USB.
 - Gets the app ready to install games: its pairing record for starting games without a computer, the
   developer disk image, and its signing identity.
+- Gives the app an Apple token, so it can renew its own signing profiles from Apple.
 
 You install the games on the device itself: open Slashplayed and tap one.
 
@@ -81,7 +82,8 @@ do this within 7 days of the last run, or the app won't open until you do.
   Slashplayed made. It never removes a certificate made by Xcode or another app; if those fill every
   slot, it says so and stops.
 - **On the device:** the app, its pairing record, the developer disk image, and its signing identity,
-  in Slashplayed's own data.
+  in Slashplayed's own data. The Apple token goes into the app's keychain, on that device only. It's a
+  token Apple gives for the developer services, not your password, which the device never sees.
 
 ## Testing it
 

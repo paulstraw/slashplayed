@@ -16,8 +16,11 @@ use std::{
 };
 
 use isideload::{
-    anisette::{AnisetteClientInfo, remote_v3::RemoteV3AnisetteProvider},
-    auth::apple_account::{AppleAccount, TwoFactorCallbackParams, TwoFactorCallbackResponse},
+    anisette::{
+        AnisetteClientInfo,
+        remote_v3::{ANISETTE_STATE_KEY, RemoteV3AnisetteProvider},
+    },
+    auth::apple_account::{AppToken, AppleAccount, TwoFactorCallbackParams, TwoFactorCallbackResponse},
     dev::developer_session::DeveloperSession,
     util::storage::SideloadingStorage,
 };
@@ -90,11 +93,27 @@ async fn two_factor(params: TwoFactorCallbackParams) -> Result<TwoFactorCallback
     })
 }
 
-/// Signs in and returns a developer session. The password is read here, with no echo, and dropped
-/// (zeroed) as soon as the login call returns.
-pub async fn sign_in(apple_id: &str, anisette_url: &str, server_client_info: bool) -> Result<DeveloperSession, Report> {
+/// What the device keeps of this sign-in, as the launcher's spapple.m stores it and spapple's Token reads it
+/// (apps/client/spapple/src/lib.rs): the xcode.auth app token, the adsid it goes with, and the anisette
+/// server and machine identity it was made on. Pushed as Library/spappletoken.json, so the device can get its
+/// own renewed profiles from Apple with no computer. A credential: never logged, not even its size.
+pub fn device_token(token: &AppToken, adsid: &str, anisette_url: &str, anisette_state: &str) -> Result<Zeroizing<Vec<u8>>, Report> {
+    Ok(Zeroizing::new(serde_json::to_vec(&serde_json::json!({
+        "token": token.token, "expiry": token.expiry, "duration": token.duration, "adsid": adsid,
+        "anisette_url": anisette_url, "anisette_state": anisette_state,
+    }))?))
+}
+
+/// Signs in and returns a developer session, and the device's token (device_token). The password is read
+/// here, with no echo, and dropped (zeroed) as soon as the login call returns. With the server's client
+/// identity (--server-client-info) there's no device token: the device always claims the override's.
+pub async fn sign_in(
+    apple_id: &str,
+    anisette_url: &str,
+    server_client_info: bool,
+) -> Result<(DeveloperSession, Option<Zeroizing<Vec<u8>>>), Report> {
     let storage = MemoryStorage::default();
-    let provider = RemoteV3AnisetteProvider::new(anisette_url, Box::new(storage), "0".into())?
+    let provider = RemoteV3AnisetteProvider::new(anisette_url, Box::new(storage.clone()), "0".into())?
         .set_client_info_override((!server_client_info).then(client_info_override));
     let mut account = AppleAccount::builder(apple_id).anisette_provider(provider).build().await?;
     let password = Zeroizing::new(
@@ -115,5 +134,28 @@ pub async fn sign_in(apple_id: &str, anisette_url: &str, server_client_info: boo
         .and_then(|v| v.as_string())
         .ok_or_else(|| report!("signed in, but Apple sent no session data"))?
         .to_string();
-    Ok(DeveloperSession::new(token, adsid, account.grandslam_client.clone(), account.anisette_generator.clone()))
+    let device = if server_client_info {
+        None
+    } else {
+        let state = Zeroizing::new(storage.retrieve(ANISETTE_STATE_KEY)?.unwrap_or_default());
+        Some(device_token(&token, &adsid, anisette_url, &state)?)
+    };
+    Ok((DeveloperSession::new(token, adsid, account.grandslam_client.clone(), account.anisette_generator.clone()), device))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The pushed file has exactly the fields spapple's Token reads (apps/client/spapple/src/lib.rs), with
+    /// Apple's numbers as numbers: the launcher (spapple.m) refuses one that doesn't.
+    #[test]
+    fn device_token_is_spapples_token() {
+        let t = AppToken { token: "t".into(), duration: 31_536_000, expiry: 1_825_113_229_999 };
+        let v: serde_json::Value = serde_json::from_slice(&device_token(&t, "a", "https://anisette.example", "s").unwrap()).unwrap();
+        let mut keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["adsid", "anisette_state", "anisette_url", "duration", "expiry", "token"]);
+        assert!(v["expiry"].is_u64() && v["duration"].is_u64());
+    }
 }

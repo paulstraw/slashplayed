@@ -12,6 +12,9 @@
 //   spisideload sign-quick    --apple-id <id> --profiles <dir> --app <Slashplayed.app> --report <file>
 //   spisideload check-session --apple-id <id> --log <file.jsonl>
 //   spisideload forget        --apple-id <id>
+//   spisideload export-token  --apple-id <id> --out <file>
+//                             (the stored xcode token as the device keeps it, apps/client/spapple.m: a 0600
+//                             file for apps/client/push-apple-token.sh, which pushes and then deletes it)
 //
 // No tracing subscriber is installed, so nothing isideload logs (at any level) reaches any output; the
 // README has the audit of what it would log. Errors are printed as their chain of contexts only, never
@@ -195,7 +198,26 @@ async fn run(args: &Args, log: &mut Log) -> Result<(), Report> {
             let had = store::forget(&id)?;
             eprintln!("{}", if had { "forgot the stored login" } else { "no stored login to forget" });
         }
-        _ => bail!("commands: login, teams, provision, sign-quick, check-session, forget (see the README)"),
+        "export-token" => {
+            use std::os::unix::fs::OpenOptionsExt;
+            let id = args.get("--apple-id")?;
+            let stored = store::load(&id)?.ok_or_else(|| report!("no stored login for that Apple ID"))?;
+            if stored.server_client_info {
+                bail!("this login sent the server's client identity; the device always sends the override (session.rs)");
+            }
+            // spapple's Token (apps/client/spapple/src/lib.rs), field for field.
+            let blob = zeroize::Zeroizing::new(serde_json::to_vec(&json!({
+                "token": stored.xcode_token, "expiry": stored.xcode_token_expiry,
+                "duration": stored.xcode_token_duration, "adsid": stored.adsid,
+                "anisette_url": stored.anisette_url, "anisette_state": stored.anisette_state,
+            }))?);
+            let out = PathBuf::from(args.get("--out")?);
+            let mut f = fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&out)
+                .map_err(|e| report!("couldn't create {} (it mustn't exist yet): {e}", out.display()))?;
+            f.write_all(&blob)?;
+            log.step("export-token", json!({ "xcode_token_stated_expiry": stored.xcode_token_expiry }));
+        }
+        _ => bail!("commands: login, teams, provision, sign-quick, check-session, forget, export-token (see the README)"),
     }
     Ok(())
 }

@@ -24,6 +24,11 @@
 # sploading.m), showing "Loading…" or the data setup's progress at that percent, for screenshots.
 # SP_SCENE_CONNECT_LATE=1 holds the scene's connect until the client has set its layer (the AppKit shim's
 # spwindow.m), as a launch held until the headset is put on can do; the game must still come on screen.
+# SP_PROFILES_DRILL=1 has the launcher install every Documents/spprofiles/*.mobileprovision through the JIT
+# helper's misagent before it attaches (copy them in with devicectl), or list the app's profiles with none
+# there (launcher.m's profiles_drill). SP_RENEW=now has the launcher renew the app's profiles from Apple with the
+# device's Apple token (push-apple-token.sh) however long they have left, SP_RENEW=off never (spapple.m's
+# sp_profiles_renew; it otherwise renews in their last 3 days).
 # SP_SKIP_INTRO=1 starts the game without its intro movie or Retail's Screen Narrator question (launcher.m
 # skip_intro), for runs nobody watches. It sets them in the device's Config.wtf, so they stay skipped there.
 # SP_START=1 launches without naming a game, as the home screen does, so the start screen shows (spstart.m)
@@ -64,6 +69,8 @@ fi
 [ -n "$SP_REGION_COUNTRY" ] && export DEVICECTL_CHILD_SP_REGION_COUNTRY=$SP_REGION_COUNTRY
 [ -n "$SP_REGION_LANGUAGES" ] && export DEVICECTL_CHILD_SP_REGION_LANGUAGES=$SP_REGION_LANGUAGES
 [ -n "$SP_LOADING_DRILL" ] && export DEVICECTL_CHILD_SP_LOADING_DRILL=$SP_LOADING_DRILL
+[ -n "$SP_PROFILES_DRILL" ] && export DEVICECTL_CHILD_SP_PROFILES_DRILL=$SP_PROFILES_DRILL
+[ -n "$SP_RENEW" ] && export DEVICECTL_CHILD_SP_RENEW=$SP_RENEW
 [ -n "$SP_SKIP_INTRO" ] && export DEVICECTL_CHILD_SP_SKIP_INTRO=$SP_SKIP_INTRO
 [ -n "$SP_SCENE_CONNECT_LATE" ] && export DEVICECTL_CHILD_SP_SCENE_CONNECT_LATE=$SP_SCENE_CONNECT_LATE
 if [ -n "$SP_START_DRILL" ]; then

@@ -242,7 +242,7 @@ final class ClientAssemblyTests: XCTestCase {
                               "sproots.plist", "PlugIns", "PlugIns/SPJitHelper.appex", "PlugIns/SPJitHelper.appex/SPJitHelper",
                               "PlugIns/SPJitHelper.appex/Info.plist", "flavors.plist", "wow.icns",
                               "exports.json", "rewrite-map.txt", "licenses", "licenses/zsign.txt", "licenses/openssl.txt",
-                              "licenses/idevice.txt", "licenses/rust-std.html", "licenses/goodmountain.txt",
+                              "licenses/idevice.txt", "licenses/rust-std.html", "licenses/spapple.txt", "licenses/goodmountain.txt",
                               "Goodmountain-Regular.otf", "addons", "addons/SPMovie", "addons/SPHover"])
                        .union(ClientAssembly.addonFiles.map { "addons/" + $0 }))
         // The addons the launcher places (sp_addons_place), byte for byte as addon/ has them.

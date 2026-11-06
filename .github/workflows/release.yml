@@ -127,6 +127,14 @@ jobs:
       - name: Fetch the start screen's font
         run: scripts/fetch-font.sh
 
+      # The launcher's profile renewal links spapple (apps/client/spapple, with the vendored isideload), from
+      # source by scripts/build-spapple.sh at its committed Cargo.lock.
+      - name: Build spapple (visionOS)
+        run: scripts/build-spapple.sh xros
+
+      - name: Build spapple (iPadOS and iOS)
+        run: scripts/build-spapple.sh ios
+
       # The launcher's on-device signer (apps/client/spsign.m) links zsign and OpenSSL, and the companion's
       # tests run it on the Mac: built from source by scripts/build-zsign.sh, each at a pinned commit that
       # the script checks after cloning (a moved tag fails the build), a step per platform.

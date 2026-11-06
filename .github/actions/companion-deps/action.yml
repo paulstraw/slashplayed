@@ -4,10 +4,10 @@
 # because the two jobs share the caches only while their paths and keys are identical (actions/cache
 # derives a cache's version from its paths too), and copies drift. The pins come from the calling
 # workflow's env: XCODE_APP, XCODEGEN_VERSION, XCODEGEN_SHA256, RUSTUP_VERSION, and RUSTUP_SHA256, and
-# what the caches hold from IDEVICE_CACHE_PATHS and ZSIGN_CACHE_PATHS, each listed once there for its
-# restore and its save.
+# what the caches hold from IDEVICE_CACHE_PATHS, ZSIGN_CACHE_PATHS, and SPAPPLE_CACHE_PATHS, each listed
+# once there for its restore and its save.
 name: Companion dependencies
-description: Selects the pinned Xcode and installs XcodeGen, then restores or builds idevice and zsign.
+description: Selects the pinned Xcode and installs XcodeGen, then restores or builds idevice, zsign, and spapple.
 runs:
   using: composite
   steps:
@@ -53,10 +53,21 @@ runs:
         path: ${{ env.IDEVICE_CACHE_PATHS }}
         key: idevice-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODE_APP }}-${{ hashFiles('scripts/build-idevice.sh', 'scripts/crate-notices.py', 'scripts/crate-licenses/**') }}
 
-    # rustup, pinned and checked like XcodeGen: scripts/build-idevice.sh installs the Rust toolchain it
-    # pins (1.99.0) and the targets through it. Nothing else needs Rust, so a cache hit skips it.
+    # The launcher links spapple (apps/client/spapple: the app's profile renewal, through the vendored
+    # isideload), built by scripts/build-spapple.sh for each device platform. Cached like idevice, on every
+    # file the build reads: the crate, its lockfile, and the vendored isideload.
+    - name: Restore spapple
+      id: spapple-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ env.SPAPPLE_CACHE_PATHS }}
+        key: spapple-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODE_APP }}-${{ hashFiles('scripts/build-spapple.sh', 'scripts/crate-notices.py', 'scripts/crate-licenses/**', 'apps/client/spapple/**', 'apps/companion-rs/vendor/isideload/**') }}
+
+    # rustup, pinned and checked like XcodeGen: scripts/build-idevice.sh and scripts/build-spapple.sh install
+    # the Rust toolchain they pin (1.99.0) and the targets through it. Nothing else here needs Rust, so cache
+    # hits for both skip it.
     - name: Install rustup
-      if: steps.idevice-cache.outputs.cache-hit != 'true'
+      if: steps.idevice-cache.outputs.cache-hit != 'true' || steps.spapple-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         curl -fsSL -o "$RUNNER_TEMP/rustup-init" \
@@ -91,6 +102,23 @@ runs:
       with:
         path: ${{ env.IDEVICE_CACHE_PATHS }}
         key: ${{ steps.idevice-cache.outputs.cache-primary-key }}
+
+    - name: Build spapple (visionOS)
+      if: steps.spapple-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: scripts/build-spapple.sh xros
+
+    - name: Build spapple (iPadOS and iOS)
+      if: steps.spapple-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: scripts/build-spapple.sh ios
+
+    - name: Save spapple
+      if: steps.spapple-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ env.SPAPPLE_CACHE_PATHS }}
+        key: ${{ steps.spapple-cache.outputs.cache-primary-key }}
 
     # The launcher's on-device signer (apps/client/spsign.m) links zsign and OpenSSL, which the companion
     # bundles the device platforms' licenses of, and the companion's tests run it on the Mac: built from

@@ -303,11 +303,12 @@ func sp_helper_profiles(_ out: SPLog) -> Int32 {
         let path = NSHomeDirectory() + "/Documents/spjit-profile.mobileprovision"
         var request: [String: Any] = ["op": "profiles", "pairing": session.pairing, "endpoints": session.endpoints]
         if let profile = FileManager.default.contents(atPath: path) {
-            request["profile"] = profile
+            request["install"] = [profile]
             log.say("installing \(path) (\(profile.count) bytes)")
         }
         guard let reply = await helperRequest(request, log) else { return 1 }
         log.say("profiles: \(reply["ok"] as? Bool == true ? "" : "FAIL: ")\(reply["summary"] ?? "?")")
+        for p in reply["profiles"] as? [[String: Any]] ?? [] { log.say("  \(p["uuid"] ?? "?") \(p["appid"] ?? "?") until \(p["expires"] ?? "?")") }
         return reply["ok"] as? Bool == true ? 0 : 1
     }
 }

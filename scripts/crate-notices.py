@@ -5,8 +5,8 @@
         --target <triple> [--target <triple>...] --title <text> --out <notices.txt> \
         [--own <crate>] [--deny-copyleft]
 
---own names the crate being built when it's this repository's own (apps/companion-rs's slashplayed-companion): it's
-MIT under the repository's LICENSE, so it's listed without a text of its own. --deny-copyleft fails when a
+--own names the crate being built when it's this repository's own (apps/companion-rs's slashplayed-companion,
+apps/client/spapple): it's MIT under the repository's LICENSE, which is its text. --deny-copyleft fails when a
 linked crate can only be had under a GPL-family license (GPL, LGPL, AGPL): the host tool links statically,
 so one would bind the whole binary (apps/companion-rs/vendor/isideload/VENDORED.md says why its signer is left out).
 
@@ -115,6 +115,10 @@ def main():
             copyleft.append(f"{name} {version} ({p.get('license')})")
         if a.own and name == a.own and p["source"] is None:
             crates.append((f"{name} {version}", "MIT (this repository's LICENSE)", "https://github.com/paulstraw/slashplayed"))
+            # Its text too, so every crate listed has one (AcknowledgementsTests checks that).
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "LICENSE"), encoding="utf-8") as fh:
+                body = fh.read().strip("\n")
+            texts.setdefault(hashlib.sha256(body.encode()).hexdigest(), (body, []))[1].append(f"{name} {version}")
             continue
         directory = os.path.dirname(p["manifest_path"])
         files = license_files(directory)

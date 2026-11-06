@@ -1,7 +1,7 @@
 #!/bin/bash
 # Builds idevice's C library (https://github.com/jkcoxson/idevice, MIT) from source at a pinned release,
 # for the on-device JIT helper (apps/client/helper): the RemotePairing tunnel through LocalDevVPN,
-# debugserver over RSD, and mounting the developer disk image. Never a prebuilt archive.
+# debugserver over RSD, mounting the developer disk image, and installing provisioning profiles. Never a prebuilt archive.
 #
 #   scripts/build-idevice.sh [ios|xros]...     (default: both)
 #
@@ -24,8 +24,9 @@
 #   archive's load commands as a platform it wasn't built for.
 # - Only the features each use needs. The helper: tunnel_tcp_stack (RemotePairing tunnel, RSD, the
 #   userspace TCP stack), debug_proxy (debugserver), cryptexd (the DDI cryptex install and its TSS
-#   personalization) and mobile_image_mounter (checking for an image mounted the pre-26.4 way). The
-#   companion: usbmuxd (the device and its lockdown pair record, held in memory, never logged) and
+#   personalization), mobile_image_mounter (checking for an image mounted the pre-26.4 way) and
+#   misagent (installing the app's renewed provisioning profiles, so the device keeps itself signed).
+#   The companion: usbmuxd (the device and its lockdown pair record, held in memory, never logged) and
 #   remote_pairing (pairing through remotepairingdeviced's lockdown service).
 # - rustls with the pure-Rust rustcrypto provider, not the crate's default aws-lc: nothing on the
 #   helper's path opens a TLS session (the RemotePairing tunnel encrypts on its own, RSD services skip
@@ -44,7 +45,7 @@ COMMIT=d32c8189c51c2789496b0768039419c3705498c3
 REPO=https://github.com/jkcoxson/idevice
 TOOLCHAIN=1.99.0
 TLS=${SP_IDEVICE_TLS:-rustcrypto}
-DEVICE_FEATURES="tunnel_tcp_stack debug_proxy cryptexd mobile_image_mounter $TLS"
+DEVICE_FEATURES="tunnel_tcp_stack debug_proxy cryptexd mobile_image_mounter misagent $TLS"
 MAC_FEATURES="usbmuxd remote_pairing $TLS"
 OUT=$ROOT/work/idevice
 PLATFORMS=${*:-ios xros macos}
