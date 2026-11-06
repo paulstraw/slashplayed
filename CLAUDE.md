@@ -213,9 +213,11 @@ again (over an hour for Retail on the headset). Don't change it casually.
   `.github/actionlint.yaml` so `actionlint` accepts it). And the addon's test, `addon/test/test.sh`,
   on Linux with Lua 5.1. Keep `actionlint` clean. CodeQL runs from `.github/workflows/codeql.yml`
   (advanced setup, so fork PRs are scanned too; the ruleset requires its results), with default setup off.
-- **Version**: `MARKETING_VERSION` in `apps/companion/project.yml` is the source of truth. A release
-  needs a `## [X.Y.Z] - <date>` section in `CHANGELOG.md` with a real date (the signed build refuses
-  `XX` placeholders) and the real Sparkle key in `SP_SPARKLE_PUBLIC_KEY`.
+- **Version**: `MARKETING_VERSION` in `apps/companion/project.yml` is the source of truth;
+  `apps/companion-rs/Cargo.toml`'s version (and its `Cargo.lock` entry) must equal it (check-tree). A
+  release needs its own dated `## [X.Y.Z]` section in `CHANGELOG.md` and the real Sparkle key in
+  `SP_SPARKLE_PUBLIC_KEY`. To bump it ("prepare X.Y.Z"), follow
+  `.agents/skills/preparing-releases/SKILL.md`; the tag stays the owner's.
 - **Release** (`.github/workflows/release.yml`): the owner pushes tag `vX.Y.Z` (it must equal
   `v$MARKETING_VERSION`) and approves the `release` environment. The job imports the Developer ID
   identity into a throwaway keychain, runs `scripts/release/release.sh` (build, sign, notarize, staple,
@@ -231,7 +233,7 @@ again (over an hour for Retail on the headset). Don't change it casually.
   `SP_RELEASE_COMPANION_RS` to `true`; then it rides the same release. `release.sh` makes the device kit
   (`scripts/release/device-kit.sh`, attached as `slashplayed-device-kit.zip`), then `release.yml` builds the
   tool against its hash (`companion-rs-build.yml`) and attaches the Windows and Linux archives, their attestations,
-  and their SHA256SUMS lines. `apps/companion-rs/Cargo.toml`'s version must equal `MARKETING_VERSION` (check-tree).
+  and their SHA256SUMS lines.
   Volunteer prereleases: `companion-rs-prerelease.yml` (run by hand on a branch, which it builds), published only after the owner
   approves the `prerelease` environment.
 - **Locally**: `scripts/release/release.sh --unsigned` smoke-tests the whole script with no certificate.
