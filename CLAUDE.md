@@ -211,7 +211,8 @@ again (over an hour for Retail on the headset). Don't change it casually.
   no-hardcoding greps; run it before committing), shims for both platforms, the unsigned companion,
   its tests, with idevice built from source first (rustup-init pinned by version and checksum). Runner `xcode-27` (GitHub's hosted image, Xcode 27.1 selected; listed in
   `.github/actionlint.yaml` so `actionlint` accepts it). And the addon's test, `addon/test/test.sh`,
-  on Linux with Lua 5.1. Keep `actionlint` clean.
+  on Linux with Lua 5.1. Keep `actionlint` clean. CodeQL runs from `.github/workflows/codeql.yml`
+  (advanced setup, so fork PRs are scanned too; the ruleset requires its results), with default setup off.
 - **Version**: `MARKETING_VERSION` in `apps/companion/project.yml` is the source of truth. A release
   needs a `## [X.Y.Z] - <date>` section in `CHANGELOG.md` with a real date (the signed build refuses
   `XX` placeholders) and the real Sparkle key in `SP_SPARKLE_PUBLIC_KEY`.

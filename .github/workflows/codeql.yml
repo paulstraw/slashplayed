@@ -1,0 +1,66 @@
+# CodeQL code scanning, as an advanced setup (this workflow) rather than GitHub's default setup.
+#
+# Why a workflow: the main ruleset requires CodeQL results on every PR, and default setup never scans a
+# PR from a fork, so an outside contributor's PR could never merge. The pull_request event does run for
+# fork PRs (read-only token, no secrets), and code scanning accepts uploads from pull_request runs even
+# then, so this scans them too. Never switch it to pull_request_target: that would run fork code with a
+# write token.
+#
+# Default setup must be off (Settings > Code security > CodeQL analysis) for this to work: while it's on,
+# GitHub rejects this workflow's uploads. The languages and query suite match what default setup ran.
+#
+# Every language is build-mode none, as under default setup: nothing is compiled, so it all runs on Linux.
+# Swift isn't scanned, as under default setup either, since it would need a macOS build.
+name: CodeQL
+
+on:
+  # No paths filter on any trigger: the ruleset wants CodeQL results on every PR, so a skipped run would
+  # leave the PR blocked.
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Weekly, as default setup did: new queries in a CodeQL release find things in unchanged code.
+  schedule:
+    - cron: "23 6 * * 1"
+
+permissions: {}
+
+# As ci.yml: a newer push to a PR cancels its older run; main's push and scheduled runs always finish,
+# since they're what the Security tab and every PR's comparison read.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # GitHub's CodeQL template's set: security-events to upload, actions and packages to read the
+    # workflow run and CodeQL packs, contents for the checkout.
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+      packages: read
+    strategy:
+      # One language's failure shouldn't cancel the others' uploads.
+      fail-fast: false
+      matrix:
+        language: [actions, c-cpp, python, rust]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          # No queries input: the default suite, as default setup ran.
+      - name: Analyze
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          # Default setup's categories, so existing alerts carry over instead of reopening as new ones.
+          category: /language:${{ matrix.language }}
