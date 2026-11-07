@@ -9,8 +9,11 @@
 //   assembled image's rewritten load commands do;
 // - libspSystem is told where the client is (sp_set_client), since dyld never lists it, so its stubs'
 //   caller offsets, the __TEXT services (the client's dlsym'd mprotect and memcpy), and crash reports name it;
-// - the client is known by its file's path (dladdr, image 0's name), not the bundled image's: something in
-//   the client's start dlopens the path it's known by, and the bundled image's loaded a second client.
+// - the client is known by its file's path (dladdr, image 0's name), not the bundled image's: once, early in
+//   main, the client dlopens (RTLD_NOW) the path dladdr gives for its own code. Under dyld that's the loaded
+//   image's handle; for the guest's own file, an MH_EXECUTE, dyld refuses ("cannot dlopen a main
+//   executable") and the client goes on with NULL, as every game does through the world. Named by the
+//   bundled image's path, that dlopen loaded a second client.
 // Never set by the companion or a person; nothing here runs without it.
 #import <Foundation/Foundation.h>
 #include <dlfcn.h>

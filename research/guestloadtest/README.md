@@ -103,7 +103,17 @@ asked for.
 
 The first try named the guest by the bundled image's path (for `dladdr` and image 0); something in the
 client's start then had dyld load that image too: a second client, every Objective-C class twice, and a hang
-on the loading screen. Named by its own file, which dyld can't load, it runs. The AppKit shim's stats name
+on the loading screen. Named by its own file, which dyld can't load, it runs. What does it, found
+2026-11-07 on the iPhone (Classic Era, a scratch build that logged the guest's `dlopen` and a backtrace at
+dyld's add-image callback): once, early in `main` (under a `pthread_once`), the client asks `dladdr` for its
+own code's image and `dlopen`s that path with `RTLD_NOW`. Of the three names the guest can carry, only the
+loader's (`dladdr`, `_dyld_get_image_name`, Objective-C) matters; libspSystem's (`sp_set_client`) and
+`apple[0]` don't. Under dyld the `dlopen` returns the loaded image's handle. For the guest's own file, an
+unchanged `MH_EXECUTE`, dyld refuses every time ("cannot dlopen a main executable") and the client goes on
+with NULL; named by the bundled image (an `MH_BUNDLE`), dyld loads it. The handle isn't used for `dlsym`
+up to character select on either path (the same six `dlsym(RTLD_DEFAULT, …)` calls with `SP_SYSTEM_TRACE`),
+and every game has played into the world with NULL, so what the client keeps it for is unknown (its code
+is rewritten at startup, so it can't be read from the file). The AppKit shim's stats name
 most of the client's threads `?` as they do for the dyld-loaded client (the threads are unnamed), but its
 stall stacks showed the client's frames as bare addresses where the dyld-loaded client's read
 `wow-<flavor>+offset`: dyld's `dladdr` has no image for the guest. libspSystem's `sp_dladdr` now names them
