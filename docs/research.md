@@ -221,7 +221,8 @@ is described in [architecture.md](architecture.md):
 Also checked on the Mac before any of it ran on a device: `shims/system/test-mac.sh` runs the
 user's own thinned client through a macOS build of the libSystem shim, with lldb and `jit.py`
 servicing the prepare stop, and confirms its startup code rewrite goes through the alias the same way
-(it exits offline, as the unmodified client does with no game data).
+(it exits offline, as the unmodified client does with no game data). It went with libspSystem's own prepare
+once the launcher loaded the client with spguest, whose loader prepares `__TEXT` itself; it's in git history.
 
 ## iPhone, update checks and login without Battle.net (2026-10-21)
 

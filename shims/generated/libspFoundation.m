@@ -13,7 +13,7 @@ static void sp_stub_log(const char *what) {
     fprintf(stderr, "[sp:Foundation] stub hit: %s\n", what);
 }
 
-// The client's load address: libspSystem knows it (under the flavor launcher the client isn't image 0).
+// The client's load address: libspSystem knows it (the launcher's loader maps the client, and dyld never lists it).
 static unsigned long sp_client_base(void) {
     static unsigned long (*f)(void);
     if (!f) f = (unsigned long (*)(void))dlsym(RTLD_DEFAULT, "sp_client_text");

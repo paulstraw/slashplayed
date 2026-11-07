@@ -38,7 +38,7 @@ echo "toy covers all $(wc -l < $OUT/client-imports.txt | tr -d ' ') client impor
   "extra: $(comm -13 $OUT/client-imports.txt $OUT/toy-imports.txt | tr '\n' ' ')"
 
 if [ "$1" = mac ]; then
-  # Link libSystem through the macOS build of the shim, as test-mac.sh does for the client.
+  # Link libSystem through the macOS build of the shim, as shims/system/test-mac.sh did for the client.
   ../../shims/system/build.sh macos $OUT @executable_path/
   install_name_tool -change /usr/lib/libSystem.B.dylib @executable_path/libspSystem.dylib $OUT/sploader-macos
   codesign -f -s - $OUT/sploader-macos $OUT/*.dylib

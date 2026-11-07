@@ -1,23 +1,18 @@
-// libspSystem: the client's libSystem on visionOS. Re-exports the real libSystem and adds what the
+// libspSystem: the client's libSystem on visionOS and iOS. Re-exports the real libSystem and adds what the
 // client needs to rewrite its own code at startup under TXM: the shim services that through an alias
 // mapping (research/jittest).
 //
 // The client looks up its memory functions for that rewrite with dlsym(RTLD_DEFAULT, ...). This dlsym:
 // - returns NULL for pthread_jit_write_protect_np (no MAP_JIT here), so the client falls back to
 //   mprotect and memcpy. The symbol is still exported, because the client also binds it directly.
-// - hands out sp_mprotect and sp_memcpy, which turn that into the pattern proven on device:
-//   a debugger prepares the image's own __TEXT once (pages stay r-x, max rwx), the debugger detaches,
-//   and every write goes through an RW alias made with vm_remap. __TEXT is never writable in place,
-//   which would kill execute for good.
+// - hands out sp_mprotect and sp_memcpy, which turn that into the pattern proven on device: a debugger
+//   prepares the client's __TEXT once (pages stay r-x, max rwx), the debugger detaches, and every write
+//   goes through an RW alias made with vm_remap. __TEXT is never writable in place, which would kill
+//   execute for good.
 //
-// The first sp_mprotect(rwx) inside the main executable's __TEXT prepares all of __TEXT in one
-// debugger stop and detaches straight away (alias writes still work after detach). Contents are copied
-// aside first and put back through the alias, so the debugger may write anything (zeros: jit.py
-// bulkz, the fastest). Later mprotects inside __TEXT just return 0.
-//
-// Debugger protocol (StikDebug-compatible, serviced by research/jittest/jit.py): brk #0xf00d, x16 = 1
-// prepares x0..x0+x1 (x2 = the first byte of each page, for debuggers that write those back);
-// x16 = 0 detaches. A brk without a debugger kills the process, so check P_TRACED first.
+// The launcher's loader (apps/client/spguest.c, spguestlaunch.m) does the prepare, in one stop of the
+// on-device JIT helper's before it copies __TEXT in, and names the client and its alias here
+// (sp_set_client), so mprotects inside __TEXT just return 0 and memcpys into it go through the alias.
 #include <dirent.h>
 #include <dispatch/dispatch.h>
 #include <dlfcn.h>
@@ -25,7 +20,6 @@
 #include <limits.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <libkern/OSCacheControl.h>
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
 #include <mach/mach.h>
@@ -71,46 +65,34 @@ static void vlog(const char *fmt, ...) {
     write(2, buf, n);
 }
 
-// The client's __TEXT, and its RW alias once prepared. The client is the main executable, or, under
-// the flavor launcher (apps/client/launcher.m), an executable retyped MH_BUNDLE that it dlopens.
+// The client's __TEXT, and the RW alias it was copied in through. The client is the game's unchanged
+// executable, which the launcher's loader maps itself (apps/client/spguest.c): dyld never lists it, so the
+// loader says where it is (sp_set_client), with __TEXT already prepared by the on-device JIT helper.
 static uintptr_t text, text_len, text_w;
 static int tracing;  // SP_SYSTEM_TRACE=1
 
-static int find_text(const struct mach_header *h, intptr_t slide, int bundle_only) {
+static void find_text(const struct mach_header *h, intptr_t slide) {
     const struct mach_header_64 *mh = (const void *)h;
-    if (bundle_only && mh->filetype != MH_BUNDLE) return 0;
-    uintptr_t t = 0, len = 0;
-    int has_main = 0;
     const struct load_command *lc = (const void *)(mh + 1);
     for (uint32_t i = 0; i < mh->ncmds; i++, lc = (const void *)((const char *)lc + lc->cmdsize)) {
         const struct segment_command_64 *seg = (const void *)lc;
         if (lc->cmd == LC_SEGMENT_64 && !strcmp(seg->segname, "__TEXT")) {
-            t = seg->vmaddr + slide;
-            len = seg->vmsize;
+            text = seg->vmaddr + slide;
+            text_len = seg->vmsize;
         }
-        has_main |= lc->cmd == LC_MAIN;
     }
-    if (bundle_only && !has_main) return 0;
-    text = t;
-    text_len = len;
-    return 1;
-}
-
-// dyld calls this before the image's initializers, so the client's startup mprotects see the right __TEXT.
-static void image_added(const struct mach_header *h, intptr_t slide) {
-    if (find_text(h, slide, 1)) vlog("client image %p, __TEXT %p+0x%lx\n", (void *)h, (void *)text, text_len);
 }
 
 // For the other shims' caller offsets.
 __attribute__((visibility("default"))) uintptr_t sp_client_text(void) { return text; }
 
-// The client when a loader of our own maps it instead of dyld (apps/client/spguest.c): dyld never lists
-// it, so the loader says where it is. Its __TEXT was prepared before the loader copied it in, and `alias`
-// is the RW alias it copied through, so sp_mprotect has nothing left to prepare and sp_memcpy writes there.
+// The client, from the loader that maps it (apps/client/spguest.c), before its first call into a shim. Its
+// __TEXT was prepared before the loader copied it in, and `alias` is the RW alias it copied through, so
+// sp_mprotect has nothing to prepare and sp_memcpy writes there.
 static const char *client_name;  // for crash reports, which list only dyld's images otherwise
 __attribute__((visibility("default"))) void sp_set_client(const struct mach_header *h, intptr_t slide, const char *name,
                                                           uintptr_t alias) {
-    find_text(h, slide, 0);
+    find_text(h, slide);
     text_w = alias;
     client_name = name;
     vlog("client image %p (not dyld's), __TEXT %p+0x%lx, alias %p\n", (void *)h, (void *)text, text_len, (void *)alias);
@@ -137,74 +119,6 @@ static int traced(void) {
     return sysctl(mib, 4, &kp, &len, NULL, 0) == 0 && (kp.kp_proc.p_flag & P_TRACED);
 }
 
-__attribute__((noinline)) static uintptr_t jit_cmd(uintptr_t cmd, uintptr_t a, uintptr_t b, uintptr_t c) {
-    register uintptr_t x0 __asm__("x0") = a;
-    register uintptr_t x1 __asm__("x1") = b;
-    register uintptr_t x2 __asm__("x2") = c;
-    register uintptr_t x16 __asm__("x16") = cmd;
-    __asm__ volatile("brk #0xf00d" : "+r"(x0) : "r"(x1), "r"(x2), "r"(x16) : "memory");
-    return x0;
-}
-
-// Prepares all of __TEXT, detaches, and maps the RW alias. Returns 0 or an errno value.
-static int prepare_text(void) {
-#if TARGET_OS_OSX
-    // Mac test only: SP_SYSTEM_NO_DEBUGGER=1 skips the debugger prepare. macOS allows the RW alias of
-    // __TEXT without it (no TXM; needs a copy without hardened runtime).
-    int skip = getenv("SP_SYSTEM_NO_DEBUGGER") != NULL;
-#else
-    int skip = 0;
-#endif
-    // Wait (up to 60 s) for the debugger to attach here rather than at launch: a debugger attached
-    // during dyld's startup stops on every image load, which costs ~70 s over Wi-Fi.
-    if (!skip && !traced()) {
-        vlog("waiting for a debugger\n");
-        for (int ms = 0; !traced() && ms < 60000; ms += 10) usleep(10000);
-    }
-    if (!skip && !traced()) {
-        vlog("__TEXT %p+0x%lx needs preparing, but no debugger is attached. Launch under one that "
-             "services brk #0xf00d (research/jittest/jit.py, StikDebug)\n", (void *)text, text_len);
-        return EACCES;
-    }
-    // Copy the contents aside: the debugger's writes may change them (bulkz zeroes everything).
-    void *orig = mmap(NULL, text_len, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
-    unsigned char *firsts = malloc(text_len / PAGE);
-    if (orig == MAP_FAILED || !firsts) return ENOMEM;
-    memcpy(orig, (void *)text, text_len);
-    for (size_t i = 0; i < text_len / PAGE; i++) firsts[i] = ((unsigned char *)text)[i * PAGE];
-
-    if (!skip) {
-        vlog("preparing __TEXT %p+0x%lx (%lu pages)\n", (void *)text, text_len, text_len / PAGE);
-        uintptr_t r = jit_cmd(1, text, text_len, (uintptr_t)firsts);
-        if (r != text) {
-            vlog("prepare returned %p, wanted %p\n", (void *)r, (void *)text);
-            return EACCES;
-        }
-        jit_cmd(0, 0, 0, 0);
-        // The debugger finishes detaching after we resume; wait for it (up to 5 s) so nothing after
-        // this runs while still traced.
-        for (int ms = 0; traced() && ms < 5000; ms += 10) usleep(10000);
-        vlog("detached (traced=%d)\n", traced());
-    }
-    free(firsts);
-
-    vm_address_t w = 0;
-    vm_prot_t cur, max;
-    kern_return_t kr = vm_remap(mach_task_self(), &w, text_len, 0, VM_FLAGS_ANYWHERE, mach_task_self(), text, FALSE,
-                                &cur, &max, VM_INHERIT_NONE);
-    if (!kr) kr = vm_protect(mach_task_self(), w, text_len, FALSE, VM_PROT_READ | VM_PROT_WRITE);
-    if (kr) {
-        vlog("RW alias of __TEXT failed: %s\n", mach_error_string(kr));
-        return EACCES;
-    }
-    memcpy((void *)w, orig, text_len);
-    munmap(orig, text_len);
-    sys_icache_invalidate((void *)text, text_len);
-    text_w = w;
-    vlog("__TEXT alias at %p, contents restored\n", (void *)w);
-    return 0;
-}
-
 static unsigned long long fnv(const void *p, size_t len) {
     uint64_t h = 0xcbf29ce484222325;
     for (const uint64_t *q = p, *e = (const void *)((const char *)p + (len & ~7ul)); q < e; q++)
@@ -215,12 +129,11 @@ static unsigned long long fnv(const void *p, size_t len) {
 // Handed out by dlsym as "mprotect".
 static int sp_mprotect(void *addr, size_t len, int prot) {
     if (!in_text((uintptr_t)addr, len)) return mprotect(addr, len, prot);
+    // No alias: the loader didn't name the client (sp_set_client), so there's nothing to write through.
     if (prot & PROT_WRITE && !text_w) {
-        int e = prepare_text();
-        if (e) {
-            errno = e;
-            return -1;
-        }
+        vlog("mprotect(%p, 0x%zx) for writing in __TEXT, but no alias: refused\n", addr, len);
+        errno = EACCES;
+        return -1;
     }
     // __TEXT stays r-x; writes go through the alias (sp_memcpy).
     vlog("mprotect(%p, 0x%zx, %c%c%c) in __TEXT: no-op\n", addr, len, prot & PROT_READ ? 'r' : '-',
@@ -1391,9 +1304,7 @@ __attribute__((constructor)) static void sp_init(void) {
     const void *offsets = dispatch ? sp_real_dlsym(dispatch, "dispatch_queue_offsets") : NULL;
     if (offsets) memcpy(dispatch_queue_offsets, offsets, sizeof dispatch_queue_offsets);
     tracing = getenv("SP_SYSTEM_TRACE") != NULL;
-    find_text(_dyld_get_image_header(0), _dyld_get_image_vmaddr_slide(0), 0);
-    vlog("loaded: main __TEXT %p+0x%lx, traced=%d\n", (void *)text, text_len, traced());
-    _dyld_register_func_for_add_image(image_added);
+    vlog("loaded, traced=%d\n", traced());
     if (tracing) {
         void *objc = dlopen("/usr/lib/libobjc.A.dylib", RTLD_NOLOAD | RTLD_LAZY);
         objc_preprocessor (*set)(objc_preprocessor) = objc ? sp_real_dlsym(objc, "objc_setExceptionPreprocessor") : NULL;
