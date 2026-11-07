@@ -383,6 +383,18 @@ static int guest_dladdr(const void *addr, Dl_info *info) {
     }
     return dladdr(addr, info);
 }
+// The client dlopens the path dladdr gives for its own code, once, early in main. dyld refuses that file
+// today ("cannot dlopen a main executable": it's an MH_EXECUTE) and the client goes on with NULL, as every
+// game has into the world. A later dyld that allowed it would load a second client from it, so the guest's
+// own path is answered with NULL here without asking dyld. Every other path is dyld's.
+static void *guest_dlopen(const char *path, int mode) {
+    if (path && !strcmp(path, the_guest->path)) {
+        static atomic_flag said = ATOMIC_FLAG_INIT;
+        if (!atomic_flag_test_and_set(&said)) glog(the_guest, "dlopen of the guest's own file: answered NULL, as dyld does");
+        return NULL;
+    }
+    return dlopen(path, mode);
+}
 static void guest_stub_binder(void) {
     static const char m[] = "spguest: dyld_stub_binder called; lazy pointers are bound at load\n";
     write(2, m, sizeof m - 1);
@@ -403,6 +415,7 @@ static void *hook(const char *n) {
     H("__dyld_get_image_name", guest_dyld_get_image_name);
     H("__dyld_get_image_vmaddr_slide", guest_dyld_get_image_vmaddr_slide);
     H("_dladdr", guest_dladdr);
+    H("_dlopen", guest_dlopen);
     return NULL;
 #undef H
 }
@@ -561,6 +574,15 @@ done:
     glog(g, "rebased %zu pointers", n);
     return true;
 #undef REBASE
+}
+
+bool spguest_check_hooks(char *error, size_t es) {
+    static const char *const names[] = {"__unw_add_find_dynamic_unwind_sections", "_objc_map_images", "_objc_load_image"};
+    char missing[256] = "";
+    for (size_t i = 0; i < sizeof names / sizeof *names; i++)
+        if (!dlsym(RTLD_DEFAULT, names[i])) snprintf(missing + strlen(missing), sizeof missing - strlen(missing), "%s%s", *missing ? ", " : "", names[i]);
+    if (!*missing) return true;
+    return fail(error, es, "no %s", missing);
 }
 
 bool spguest_link(SPGuest *g, char *error, size_t es) {

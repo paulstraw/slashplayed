@@ -19,13 +19,14 @@ The files below are named as they were here.
   bind, lazy, and weak opcode streams (lazy pointers bound at load), serves thread-locals through its own
   `__tlv_bootstrap`, registers unwind info (`__unw_add_find_dynamic_unwind_sections`) and Objective-C
   (`_objc_map_images`, `_objc_load_image`), runs initializers, and calls `main`. The guest's `dladdr` and `_dyld_*`
-  answer for the guest; with `prepare_text` set, `__TEXT` stays `r-x` and is written only through the alias
+  answer for the guest, and its `dlopen` of its own file is NULL without asking dyld; with `prepare_text` set, `__TEXT` stays `r-x` and is written only through the alias
   that callback returns. `dlsym` and `_NSGetExecutablePath` are the guest's libraries': on the device the
   shims', whose `dlsym("mprotect")` and `dlsym("memcpy")` write through that alias (`sp_set_client`), and
   whose executable path is the host's, as the dyld-loaded client sees the launcher's.
-- `toy.mm`: the guest. 20 checks (23 with `SP_GUEST_REFS`), logged ok or FAIL: constructor order, `+load`, a subclass, protocol and
+- `toy.mm`: the guest. 21 checks (24 with `SP_GUEST_REFS`), logged ok or FAIL: constructor order, `+load`, a subclass, protocol and
   category, C++ exceptions and NSExceptions across guest frames, thread-locals (template, per thread,
-  destructors), a missing weak import, lazy binds, the guest's self-queries, `backtrace`, rewriting its own
+  destructors), a missing weak import, lazy binds, the guest's self-queries (its own file's `dlopen`, NULL, as the
+  client's), `backtrace`, rewriting its own
   code through `dlsym`'d `mprotect`/`memcpy`, and both ends of a 44 MB `__TEXT` filler (Classic Era's size).
   With `SP_GUEST_REFS=<game>` (build.sh's default, `retail`; `none` skips it) it also imports every symbol
   that game's client does, from the same library (`research/loadertest/gen_refs.py`, symbol names only,

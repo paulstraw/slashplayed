@@ -156,6 +156,8 @@ int main(int argc, char **argv) {
         Dl_info info;
         check(dladdr((void *)sp_toy_exported, &info) && info.dli_fbase == (void *)&_mh_execute_header, "dladdr names the guest's header");
         check(_dyld_get_image_header(0) == (const struct mach_header *)&_mh_execute_header, "_dyld_get_image_header(0) is the guest");
+        // As the client does early in main: its own file by the name dladdr gave, which the loader answers NULL.
+        check(dlopen(info.dli_fname, RTLD_NOW) == NULL, "dlopen of the guest's own file is NULL");
         char exe[1024]; uint32_t sz = sizeof exe;
         // The host's, as the dyld-loaded client gets the launcher's: the client finds its install root from it.
         check(_NSGetExecutablePath(exe, &sz) == 0 && argc > 0 && strstr(exe, "toy") == NULL, "_NSGetExecutablePath is the host's path");

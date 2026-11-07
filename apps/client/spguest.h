@@ -26,6 +26,11 @@ typedef struct {
     void (*log)(const char *line);
 } SPGuestOptions;
 
+// Whether this process has the private hooks the loader registers the guest with (the unwinder's
+// __unw_add_find_dynamic_unwind_sections, Objective-C's _objc_map_images and _objc_load_image), so a host can
+// say before anything else that a new OS took one away. Returns false with the missing ones in `error`.
+bool spguest_check_hooks(char *error, size_t error_size);
+
 // Loads `path`. On failure returns NULL and writes a reason into `error`.
 SPGuest *spguest_load(const char *path, const SPGuestOptions *options, char *error, size_t error_size);
 
