@@ -177,3 +177,29 @@ so the character-select gap isn't the loader's: just after the client loads both
 gap opens while the client streams character select in (likely what it streams varies run to run; not checked). Thermal varied with the
 order of the runs, not the path. Every run: one client image, no class loaded twice. Loading through spguest
 costs nothing in play either.
+
+### Every game, and the Vision Pro
+
+The same switch, 2026-11-07, each game's unchanged arm64 slice from the companion's CDN cache (its `LC_UUID`
+the bundled image's), the game data that build. The headset's app was `build.sh`'s with `SP_NO_IMAGES=1`, the
+companion's visionOS images copied in for their stamps and the app signed again; the iPhone's took
+Anniversary's and MoP Classic's the way it took Retail's (above). Seconds on run.sh's clock; first frame is
+"after the client was asked for"; stats are the AppKit shim's, fps / worst frame / footprint:
+
+| Device, game | Attached | Prepare | Link | `main` | First frame | Then |
+|---|---|---|---|---|---|---|
+| Vision Pro, Retail 12.1.5.70688 | 1.59 s | 3,268 pages, 0.155 s | 0.103 s | 2.79 | 4.8 s | in the world: 114.7 / 377 ms / 4478 MB at 90 s, 107.5 / 105 ms / 4645 MB at 120 s, thermal nominal |
+| Vision Pro, Classic Era 1.15.9.70576 | 1.60 s | 2,817 pages, 0.165 s | 0.024 s | 2.64 | 4.5 s | in the world: 119.2 / 10 ms / 1253 MB at 65 and 95 s |
+| Vision Pro, Anniversary 2.5.6.70577 | 1.55 s | 2,818 pages, 0.134 s | 0.021 s | 3.33 | 4.3 s | in the world: 119.1 / 10 ms / 1280 MB at 65 s |
+| iPhone 16 Pro, MoP Classic 5.5.4.70631 | | 2,841 pages, 0.115 s | 0.067 s | 3.27 | 5.5 s | character creation (no character on the account): 44.7 fps at 31 s, still streaming |
+| iPhone 16 Pro, Anniversary 2.5.6.70577 | | 2,818 pages, 0.104 s | 0.078 s | 3.81 | none | the client's error #134 (below) |
+
+Every run signed in from the saved sign-in (`login.txt` opened and deleted by the client), bound every import
+(none unresolved), and had one client image with no class loaded twice. The headset's numbers are the iPhone's:
+attached about 1.6 s after launch, `main` under 3.5 s, first frame 4.3 to 4.8 s. Uncapped, the headset's
+119 fps is what the dyld-loaded client renders there (docs/architecture.md, Heat).
+
+Anniversary on the iPhone stopped at the loading screen with the client's own "Invalid schema
+WOWSTATIC_5_5_4_67732 for Table StartupFiles", the same error and stack as a dyld-loaded run on 2026-10-31:
+the game's data, not the loader (a wrong `_anniversary_/.flavor.info` there; fixed separately, on `main`). The
+same slice runs on the headset.
