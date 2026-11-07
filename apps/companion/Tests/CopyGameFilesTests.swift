@@ -232,6 +232,24 @@ final class CopyGameFilesTests: XCTestCase {
         XCTAssertFalse(sp_update_caught_up(["Version": "1.15.9.70003"], ["Build Key": "bbbb", "Version": "1.15.9.70003"]))
     }
 
+    /// The Mac copies a game's client when the device's stamp is missing or older than the build it sends,
+    /// and never over the same build or a newer one the device fetched itself.
+    func testCopiesTheClientOnlyOverAnOlderOrMissingOne() {
+        let mac = stamp("bbbb", "1.15.9.70003")
+        let cases: [(ClientAssembly.Stamp?, ClientBuild.ClientCopy)] = [
+            (stamp("aaaa", "1.15.9.69722"), .copy),            // older
+            (stamp("aaaa", "1.15.8.80000"), .copy),            // older, with a larger last part
+            (stamp("bbbb", "1.15.9.70003"), .upToDate),        // the same
+            (stamp("cccc", "1.15.9.70003"), .upToDate),        // the same version, another region's build
+            (stamp("dddd", "1.15.10.71000"), .newerOnDevice),  // the device updated itself past it
+            (stamp("eeee", "1.15.x"), .newerOnDevice),         // can't be told apart: kept
+            (nil, .copy),                                      // missing
+        ]
+        for (device, expected) in cases {
+            XCTAssertEqual(ClientBuild.clientCopy(device: device, mac: mac), expected, "\(String(describing: device))")
+        }
+    }
+
     /// A game the device updated past its image keeps the device's store whole, ahead of the other reasons.
     func testAnUpdateAheadKeepsTheStore() {
         XCTAssertEqual(GameFiles.storeKept(copy: true, newer: ["wow_classic_era"], differs: ["wow"], outranking: 3),

@@ -207,25 +207,87 @@ enum ClientBuild {
             || GameStore.isVersion(image.version, newerThan: update.version) ? .caughtUp : .ahead
     }
 
-    /// The device's own updates of its games: each Library/spgames stamp beside its image, pulled with
-    /// devicectl as GameFiles pulls .build.info. Empty when there are none (no Library/spgames).
-    static func deviceUpdates(_ device: Device) async throws -> [Flavor: ClientAssembly.Stamp] {
+    /// A game's client in the device's Library/spgames: the stamp beside wow-<flavor>, and whether this Mac
+    /// copied it there (copyClient: spsource-<flavor> is beside it, which an update on the device deletes)
+    /// rather than an update on the device making it.
+    struct DeviceClient: Equatable {
+        var stamp: ClientAssembly.Stamp
+        var fromMac: Bool
+    }
+
+    /// The device's clients of its games: each Library/spgames stamp beside its client, pulled with
+    /// devicectl as GameFiles pulls .build.info. Empty when there are none (no Library/spgames). An empty
+    /// stamp (copyClient's, while it copies) is none.
+    static func deviceClients(_ device: Device) async throws -> [Flavor: DeviceClient] {
         // devicectl fails on a folder that isn't there, so Library is listed whole (under a hundred files).
         let library = try await device.files(in: "Library", recursive: true)
-        var updates: [Flavor: ClientAssembly.Stamp] = [:]
+        var clients: [Flavor: DeviceClient] = [:]
         for flavor in Flavor.allCases {
             let stamp = "spgames/" + ClientAssembly.Stamp.fileName(flavor.rawValue)
-            guard library[stamp] != nil, library["spgames/wow-\(flavor.rawValue)"] != nil else { continue }
+            guard (library[stamp]?.size ?? 0) > 0, library["spgames/wow-\(flavor.rawValue)"] != nil else { continue }
             let url = FileManager.default.temporaryDirectory.appending(path: "spgames-\(device.udid)-\(flavor.rawValue)")
             try? FileManager.default.removeItem(at: url)
             defer { try? FileManager.default.removeItem(at: url) }
             try await Device.retrying { try await device.fetch("Library/" + stamp, to: url) }
             guard let text = try? String(contentsOf: url, encoding: .utf8),
                   let row = GameStore.BuildInfo(text)?.byProduct[flavor.product],
-                  let update = try? ClientAssembly.Stamp.from(product: flavor.product, row: row) else { continue }
-            updates[flavor] = update
+                  let client = try? ClientAssembly.Stamp.from(product: flavor.product, row: row) else { continue }
+            clients[flavor] = DeviceClient(stamp: client, fromMac: library["spgames/" + sourceFile(flavor)] != nil)
         }
-        return updates
+        return clients
+    }
+
+    // MARK: The game clients the Mac copies
+
+    /// What the Mac does about a game's client on the device (Library/spgames/wow-<flavor>), from the stamp
+    /// beside it (nil: none) and the build the Mac sends (`mac`): copy it when the device's is missing or
+    /// older. The device is the record, so this Mac keeps none of its own, and a newer build the device
+    /// fetched itself, or one whose version can't be told apart, is never replaced. The same build or
+    /// version is the same client, as sp_update_caught_up counts it: another region's build of a version
+    /// isn't copied over.
+    enum ClientCopy: Equatable {
+        case copy, upToDate, newerOnDevice
+    }
+
+    static func clientCopy(device: ClientAssembly.Stamp?, mac: ClientAssembly.Stamp) -> ClientCopy {
+        guard let device else { return .copy }
+        if device.buildKey == mac.buildKey || device.version == mac.version { return .upToDate }
+        return GameStore.isVersion(mac.version, newerThan: device.version) ? .copy : .newerOnDevice
+    }
+
+    /// Where a client in Library/spgames came from, one word: `mac` for copyClient's.
+    static func sourceFile(_ flavor: Flavor) -> String { "spsource-\(flavor.rawValue)" }
+
+    /// Copies `flavor`'s client of `version` into the device's Library/spgames, for the launcher that loads
+    /// the unchanged client with spguest (apps/client/spguest.c): the CDN's arm64 slice as wow-<flavor>, then its
+    /// .build.info row (spbuildinfo-<flavor>, as an update on the device keeps it), spsource-<flavor>
+    /// (`mac`), and the stamp last, so a stamp is only ever beside a whole client of its build. devicectl
+    /// can't delete, so a stamp already there (`replacing`) is emptied first: a copy cut short leaves no
+    /// stamp naming the old build beside the new client. Returns the slice's size.
+    @discardableResult
+    static func copyClient(_ flavor: Flavor, version: BlizzardCDN.Version, to device: Device, replacing: Bool,
+                           log: (String) -> Void) async throws -> Int64 {
+        let (slice, stamp) = try await clientSlice(flavor, latest: [flavor: version], log: log)
+        let cdn = try await cdn.connected(product: flavor.product, region: flavor.region)
+        guard let cdns = cdn.cdns else { throw Failure("Blizzard's patch service lists no CDN for \(flavor.name).") }
+        let row = GameStore.buildInfoText([BlizzardCDN.buildInfoLine(product: flavor.product, version: version, cdns: cdns,
+                                                                     tags: flavor.tags)])
+        let staging = FileManager.default.temporaryDirectory.appending(path: "spgames-copy-\(device.udid)-\(flavor.rawValue)")
+        try? FileManager.default.removeItem(at: staging)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: staging) }
+        func staged(_ name: String, _ text: String) throws -> URL {
+            let url = staging.appending(path: name)
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            return url
+        }
+        let dir = "Library/spgames/", stampPath = dir + ClientAssembly.Stamp.fileName(flavor.rawValue)
+        if replacing { try await device.copy(try staged("empty", ""), to: stampPath) }
+        try await device.copy(slice, to: dir + "wow-\(flavor.rawValue)")
+        try await device.copy(try staged("row", row), to: dir + "spbuildinfo-\(flavor.rawValue)")
+        try await device.copy(try staged("source", "mac\n"), to: dir + sourceFile(flavor))
+        try await device.copy(try staged("stamp", stamp.text), to: stampPath)
+        return Int64((try? slice.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
     }
 
     /// UserDefaults key of the device's updates that are ahead of its installed image, as the last action
