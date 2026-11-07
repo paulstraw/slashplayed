@@ -1,5 +1,5 @@
-// The launcher side of guestloadtest on the device: the on-device JIT helper (apps/client/helper, through
-// ../jittest/helper_host.swift) attaches, spguest reserves the toy's span and has the helper prepare
+// The launcher side of guesttest on the device: the on-device JIT helper (apps/client/helper, through
+// research/jittest/helper_host.swift) attaches, spguest reserves the toy's span and has the helper prepare
 // __TEXT in one `brk #0xf00d` stop, the helper detaches, and the toy's unchanged, unsigned __TEXT is
 // copied in through a read-write alias (E2 and E6 in research/jittest: memory the app mapped itself,
 // prepared, then written through an alias after the detach). Then fixups, registration, initializers, main.

@@ -1,6 +1,8 @@
 #!/bin/bash
-# guestloadtest.
-#   ./build.sh mac      builds the toy guest and the Mac host, and runs the toy on the Mac.
+# guesttest, spguest's test (../spguest.c, the launcher's loader; research/guestloadtest/README.md has the
+# research and the device runs).
+#   ./build.sh mac      builds the toy guest and the Mac host, and runs the toy on the Mac: exits non-zero on
+#                       any failed check.
 #   ./build.sh device   builds the toy and SPGuestLoadTest.app (the device host, with the on-device JIT helper,
 #                       PlugIns/SPJitHelper.appex), signs it, and installs it. The toy itself is never signed:
 #                       run.sh copies it into the app's Documents/.
@@ -25,11 +27,11 @@ case $MODE in mac|device) ;; *) echo "usage: build.sh mac|device" >&2; exit 1 ;;
 REFS=${SP_GUEST_REFS:-retail}
 TOY_EXTRA=(-framework Foundation)
 if [ "$REFS" != none ]; then
-  RECON=../../work/regen/${SP_PLATFORM:-xros}/$REFS/imports.json
-  CLIENT=../../work/$([ "$REFS" = classic_era ] || echo "$REFS/")wow-arm64
+  RECON=../../../work/regen/${SP_PLATFORM:-xros}/$REFS/imports.json
+  CLIENT=../../../work/$([ "$REFS" = classic_era ] || echo "$REFS/")wow-arm64
   [ -f "$RECON" ] && [ -f "$CLIENT" ] ||
     { echo "build.sh: no $RECON or $CLIENT for SP_GUEST_REFS=$REFS (scripts/recon/regen.sh; or SP_GUEST_REFS=none)" >&2; exit 1; }
-  python3 ../loadertest/gen_refs.py "$RECON" "$CLIENT" $OUT/refs.c
+  python3 ../../../research/loadertest/gen_refs.py "$RECON" "$CLIENT" $OUT/refs.c
   # The client's frameworks, in its order. The client's older SDK exported exp2/log2/modff from
   # CoreServices and today's .tbd doesn't, so link against a copy that does (loadertest's fix).
   SDK=$(xcrun --sdk macosx --show-sdk-path)
@@ -47,14 +49,14 @@ echo "toy: $(dyld_info -fixups $OUT/toy-guest | grep -c ' ') fixup lines (dyld-i
 
 if [ "$MODE" = mac ]; then
   # The host links the loader; it is a different program from the guest, so the guest is never dyld-loaded.
-  clang -arch arm64 -mmacosx-version-min=11.0 -O1 -Wall host.c spguest.c spguest_tlv.S -o $OUT/host
+  clang -arch arm64 -mmacosx-version-min=11.0 -O1 -Wall -I .. host.c ../spguest.c ../spguest_tlv.S -o $OUT/host
   codesign -f -s - $OUT/host
   rm -f $OUT/toy.log
   SP_GUEST_LOG=$OUT/toy.log $OUT/host $OUT/toy-guest
   exit
 fi
 
-. ../../scripts/platform.sh
+. ../../../scripts/platform.sh
 sp_need SP_TEAM SP_SIGN_ID
 BUNDLE_ID=${SP_GUEST_BUNDLE_ID:-com.strawdynamics.spguestloadtest}
 HELPER_ID=$BUNDLE_ID.helper
@@ -64,8 +66,8 @@ HELPER_ID=$BUNDLE_ID.helper
   { echo "build.sh: no development profile for $BUNDLE_ID or $HELPER_ID (apps/client/signing/regen.sh <device UDID>, or SP_GUEST_BUNDLE_ID)" >&2; exit 1; }
 APP=$OUT/SPGuestLoadTest.app
 HELPER=$APP/PlugIns/SPJitHelper.appex
-HELPER_SRC=../../apps/client/helper
-IDEVICE=../../work/idevice
+HELPER_SRC=../helper
+IDEVICE=../../../work/idevice
 [ -f "$IDEVICE/$SP_PLATFORM"/libidevice_ffi.a ] ||
   { echo "build.sh: no $IDEVICE/$SP_PLATFORM/libidevice_ffi.a: the helper needs idevice (scripts/build-idevice.sh $SP_PLATFORM)" >&2; exit 1; }
 NATIVE_LIBS=$(cat "$IDEVICE/$SP_PLATFORM"/native-libs.txt)
@@ -73,18 +75,18 @@ SWIFTC="xcrun --sdk $SP_SDK swiftc -target $SP_TARGET -O -parse-as-library"
 CC="xcrun --sdk $SP_SDK clang -target $SP_TARGET -O1 -Wall"
 
 rm -rf $APP && mkdir -p $APP $HELPER
-$CC -c device.c -o $OUT/device.o
-$CC -c spguest.c -o $OUT/spguest.o
-$CC -c spguest_tlv.S -o $OUT/spguest_tlv.o
+$CC -I .. -c device.c -o $OUT/device.o
+$CC -c ../spguest.c -o $OUT/spguest.o
+$CC -c ../spguest_tlv.S -o $OUT/spguest_tlv.o
 # shellcheck disable=SC2086 # NATIVE_LIBS is a list of linker flags
-$SWIFTC -D SP_IDEVICE -I $IDEVICE/include -I $HELPER_SRC/iokit ../jittest/helper_host.swift $HELPER_SRC/Device.swift \
+$SWIFTC -D SP_IDEVICE -I $IDEVICE/include -I $HELPER_SRC/iokit ../../../research/jittest/helper_host.swift $HELPER_SRC/Device.swift \
   $OUT/device.o $OUT/spguest.o $OUT/spguest_tlv.o "$IDEVICE/$SP_PLATFORM"/libidevice_ffi.a $NATIVE_LIBS \
   -framework Foundation -Xlinker -rpath -Xlinker @executable_path/Frameworks -o $APP/SPGuestLoadTest
 # The shims as they are, in Frameworks/, and the map that sends the toy's libraries to them (device.c).
-../../shims/build.sh "$SP_PLATFORM"
+../../../shims/build.sh "$SP_PLATFORM"
 mkdir -p $APP/Frameworks
-cp ../../build/"$SP_PLATFORM"/*.dylib $APP/Frameworks/
-cp ../../shims/generated/rewrite-map.txt $APP/
+cp ../../../build/"$SP_PLATFORM"/*.dylib $APP/Frameworks/
+cp ../../../shims/generated/rewrite-map.txt $APP/
 sp_plist Info.plist $APP/Info.plist "$BUNDLE_ID"
 cp "$SP_PROFILE" $APP/embedded.mobileprovision
 

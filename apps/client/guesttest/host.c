@@ -1,4 +1,4 @@
-// The launcher side of guestloadtest on the Mac: loads the toy with spguest and runs it.
+// The launcher side of guesttest on the Mac: loads the toy with spguest and runs it.
 // Usage: host <toy> [args]. The device host (device.c) shares spguest.c.
 #include "spguest.h"
 #include <dlfcn.h>

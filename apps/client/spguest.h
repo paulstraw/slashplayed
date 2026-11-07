@@ -1,8 +1,8 @@
 // spguest: loads an unchanged, unsigned arm64 macOS executable (MH_EXECUTE) into this process without
-// dyld, for research/guestloadtest. Modelled on Tolkara's loader (MIT, github.com/tolkara/tolkara,
-// runtime/GuestImage.c, GuestFixups.c, GuestTLS.c, GuestUnwind.c, NativeGuest.m), reduced to what a
-// native, non-emulated guest needs: map, rebase, bind, register with Objective-C and the unwinder,
-// serve thread-locals, run initializers, call main.
+// dyld, for the launcher (guesttest/ is its test, research/guestloadtest the research). Modelled on
+// Tolkara's loader (MIT, github.com/tolkara/tolkara, runtime/GuestImage.c, GuestFixups.c, GuestTLS.c,
+// GuestUnwind.c, NativeGuest.m), reduced to what a native, non-emulated guest needs: map, rebase, bind,
+// register with Objective-C and the unwinder, serve thread-locals, run initializers, call main.
 #pragma once
 #include <mach-o/dyld.h>
 #include <stdbool.h>

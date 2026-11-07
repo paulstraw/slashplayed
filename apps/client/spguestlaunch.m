@@ -1,6 +1,6 @@
-// A dev switch for research/guestloadtest: $SP_GUEST_CLIENT=<path in the app's home> loads that file, the
+// A dev switch from research/guestloadtest: $SP_GUEST_CLIENT=<path in the app's home> loads that file, the
 // game's client unchanged and unsigned (no thin needed, no load-command rewrite, retype, or signature), with
-// the launcher's own loader (research/guestloadtest/spguest.c) instead of dlopen'ing the bundled image.
+// the launcher's own loader (spguest.c) instead of dlopen'ing the bundled image.
 // Everything before it is the launcher's as for any start (the flavor, the region, the game data's checks,
 // the sign-in, the helper's attach, the loading screen); only the load differs:
 // - the helper prepares the region spguest reserved for the client's __TEXT in one brk #0xf00d stop and

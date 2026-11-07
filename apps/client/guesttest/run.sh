@@ -1,12 +1,12 @@
 #!/bin/bash
 # Copies the toy (unsigned, out/toy-guest) into the installed app's Documents/, launches the app with no
 # arguments (the helper attaches by itself, as in the client), and prints this run's part of
-# Documents/guest.log. SP_GUEST_BUNDLE_ID as for build.sh. The helper needs what jittest's h3 does:
+# Documents/guest.log. SP_GUEST_BUNDLE_ID as for build.sh. The helper needs what research/jittest's h3 does:
 # LocalDevVPN on, Wi-Fi, Documents/pairingFile.plist and Documents/DDI (jittest's push-pairing.sh and
 # push-ddi.sh, with SP_PUSH_TO set to the bundle ID).
 set -euo pipefail
 cd "$(dirname "$0")"
-. ../../scripts/platform.sh
+. ../../../scripts/platform.sh
 BUNDLE_ID=${SP_GUEST_BUNDLE_ID:-com.strawdynamics.spguestloadtest}
 sp_need_device
 [ -f out/toy-guest ] || { echo "run.sh: no out/toy-guest (./build.sh device)" >&2; exit 1; }

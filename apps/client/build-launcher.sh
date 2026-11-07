@@ -27,11 +27,11 @@ xcrun --sdk "$SP_SDK" clang++ -target "$SP_TARGET" -std=c++11 -O1 -Wall -I "$ZSI
 xcrun --sdk "$SP_SDK" swiftc -target "$SP_TARGET" -O -wmo -parse-as-library -module-name SPLauncher \
   -import-objc-header spswift.h -c spstyle.swift spstartscreen.swift spsettings.swift spsignin.swift sppairscreen.swift spvpnscreen.swift sppatchscreen.swift -o "$TMP/spswift.o"
 for m in launcher spjit sppair spvpn splogin spstart sppatch spcdn spbind spassemble spsign spguestlaunch; do
-  xcrun --sdk "$SP_SDK" clang -target "$SP_TARGET" -O1 -Wall -fobjc-arc -I ../../research/guestloadtest -c $m.m -o "$TMP/$m.o"
+  xcrun --sdk "$SP_SDK" clang -target "$SP_TARGET" -O1 -Wall -fobjc-arc -c $m.m -o "$TMP/$m.o"
 done
-# The loader SP_GUEST_CLIENT uses (spguestlaunch.m, a dev switch): research/guestloadtest's.
-xcrun --sdk "$SP_SDK" clang -target "$SP_TARGET" -O1 -Wall -c ../../research/guestloadtest/spguest.c -o "$TMP/spguest.o"
-xcrun --sdk "$SP_SDK" clang -target "$SP_TARGET" -c ../../research/guestloadtest/spguest_tlv.S -o "$TMP/spguest_tlv.o"
+# spguest, the loader SP_GUEST_CLIENT uses (spguestlaunch.m, a dev switch); guesttest/ is its test.
+xcrun --sdk "$SP_SDK" clang -target "$SP_TARGET" -O1 -Wall -c spguest.c -o "$TMP/spguest.o"
+xcrun --sdk "$SP_SDK" clang -target "$SP_TARGET" -c spguest_tlv.S -o "$TMP/spguest_tlv.o"
 # swiftc links, so the Swift runtime (the OS's, in /usr/lib/swift) and its rpath come with it.
 xcrun --sdk "$SP_SDK" swiftc -target "$SP_TARGET" \
   -framework Foundation -framework UIKit -framework SwiftUI -framework CoreGraphics -framework QuartzCore \

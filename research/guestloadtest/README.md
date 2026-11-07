@@ -7,6 +7,12 @@ client's own on-device JIT helper. Background: [docs/research.md](../../docs/res
 [jittest](../jittest/README.md) (the helper, TXM, the prepare), [dlopentest](../dlopentest/README.md) (why a
 team-signed image is needed for dyld).
 
+The code has moved out of this directory, which keeps the research's record: the loader is the launcher's
+now, `apps/client/spguest.c`, `spguest.h`, and `spguest_tlv.S` (built by `apps/client/build-launcher.sh`), and
+the toy with its two hosts is spguest's test, [`apps/client/guesttest/`](../../apps/client/guesttest)
+(`build.sh`, `run.sh`, `toy.mm`, `host.c`, `device.c`, `Info.plist`). The files below are named as they
+were here.
+
 - `spguest.h`, `spguest.c`, `spguest_tlv.S`: the loader, modelled on Tolkara's (MIT,
   github.com/tolkara/tolkara, `runtime/`). It maps the segments into one reserved span, applies the rebase,
   bind, lazy, and weak opcode streams (lazy pointers bound at load), serves thread-locals through its own
@@ -21,9 +27,9 @@ team-signed image is needed for dyld).
   destructors), a missing weak import, lazy binds, the guest's self-queries, `backtrace`, rewriting its own
   code through `dlsym`'d `mprotect`/`memcpy`, and both ends of a 44 MB `__TEXT` filler (Classic Era's size).
   With `SP_GUEST_REFS=<game>` (build.sh's default, `retail`; `none` skips it) it also imports every symbol
-  that game's client does, from the same library (`../loadertest/gen_refs.py`, symbol names only, from the
-  local recon and thinned client into the ignored `out/`), subclasses AppKit's `NSView`, and checks that
-  libspSystem's `sp_client_text` is the guest.
+  that game's client does, from the same library (`research/loadertest/gen_refs.py`, symbol names only,
+  from the local recon and thinned client into the ignored `out/`), subclasses AppKit's `NSView`, and
+  checks that libspSystem's `sp_client_text` is the guest.
 - `host.c`: the Mac host. A `vm_remap` alias stands in for the device's prepared region, and its `dlsym` (the
   loader's `symbol` option) for libspSystem's, which the Mac host has no shims for.
 - `device.c`: the device host. The helper attaches, spguest reserves the span, the helper prepares
@@ -39,12 +45,12 @@ team-signed image is needed for dyld).
 ## Running it
 
 ```sh
-research/guestloadtest/build.sh mac
-SP_PLATFORM=ios SP_GUEST_BUNDLE_ID=com.strawdynamics.spdlopentest research/guestloadtest/build.sh device
+apps/client/guesttest/build.sh mac
+SP_PLATFORM=ios SP_GUEST_BUNDLE_ID=com.strawdynamics.spdlopentest apps/client/guesttest/build.sh device
 SP_PLATFORM=ios SP_PUSH_TO=com.strawdynamics.spdlopentest SP_STIKDEBUG_BUNDLE_ID=<Slashplayed's bundle ID> \
   SP_STIKDEBUG_PAIRING=Library/sppairing.plist research/jittest/push-pairing.sh
 SP_PLATFORM=ios SP_PUSH_TO=com.strawdynamics.spdlopentest research/jittest/push-ddi.sh
-SP_PLATFORM=ios SP_GUEST_BUNDLE_ID=com.strawdynamics.spdlopentest research/guestloadtest/run.sh
+SP_PLATFORM=ios SP_GUEST_BUNDLE_ID=com.strawdynamics.spdlopentest apps/client/guesttest/run.sh
 ```
 
 The helper needs what jittest's `h3` does: LocalDevVPN on, Wi-Fi, the pairing record, and the disk image.

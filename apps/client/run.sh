@@ -67,7 +67,7 @@ fi
 [ -n "$SP_SKIP_INTRO" ] && export DEVICECTL_CHILD_SP_SKIP_INTRO=$SP_SKIP_INTRO
 [ -n "$SP_SCENE_CONNECT_LATE" ] && export DEVICECTL_CHILD_SP_SCENE_CONNECT_LATE=$SP_SCENE_CONNECT_LATE
 # SP_GUEST_CLIENT=<path in the app's home>: the unchanged client there loads with the launcher's own loader
-# instead of the bundled image (spguestlaunch.m, research/guestloadtest); copy it in with devicectl first.
+# instead of the bundled image (spguestlaunch.m, spguest.c); copy it in with devicectl first.
 [ -n "$SP_GUEST_CLIENT" ] && export DEVICECTL_CHILD_SP_GUEST_CLIENT=$SP_GUEST_CLIENT
 if [ -n "$SP_START_DRILL" ]; then
   xcrun devicectl device process launch --device "$SP_DEVICE" --terminate-existing -- $BUNDLE_ID "$@"

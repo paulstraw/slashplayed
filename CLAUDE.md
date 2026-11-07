@@ -41,7 +41,11 @@ the push, the export), `SlashplayedCertificate.swift` (a paid team's own certifi
   the identity the Mac pushes, into the keychain, and zsign through `spzsign.cpp`, and which certificate an
   update's image is signed with against the profiles the app can see; tested in the companion's tests), `flavors.plist` (each game's
   name, `.build.info` product, client path, Battle.net arguments, and addon number: the one list, read by the
-  launcher, the companion's `Flavor.swift`, and `scripts/flavor.sh`),
+  launcher, the companion's `Flavor.swift`, and `scripts/flavor.sh`), `spguest.c`/`.h` and `spguest_tlv.S`
+  (spguest, a loader of our own: the unchanged, unsigned client mapped, bound, and run without dyld;
+  `spguestlaunch.m` loads it behind the `SP_GUEST_CLIENT` dev switch), `guesttest/` (spguest's test: a toy
+  guest of our own, `build.sh mac` on the Mac, and `build.sh device`/`run.sh` on a device;
+  `research/guestloadtest/README.md` has the research and the device runs),
   `helper/` (the
   on-device JIT helper, a classic app extension on idevice, `Pair.swift` its pair-setup;
   `build-helper.sh`; jittest builds the same source), Info.plist and
@@ -80,6 +84,7 @@ the push, the export), `SlashplayedCertificate.swift` (a paid team's own certifi
   (`regen.sh`, `bucket.py`, `gen_stubs.py`, `verify_binds.py`, `check_exports.py`, `check-patch.sh`);
   `release/` (`release.sh`, `appcast-merge.sh`, `update-test.sh`).
 - `research/{jittest,loadertest,metaltest,dlopentest}`: the experiments, each with a README; `docs/research.md`.
+  `research/guestloadtest/` is a README only: its loader and toy are `apps/client/spguest.*` and `guesttest/`.
 - `work/`, `build/`: gitignored output. `work/` holds thinned clients and game data: never commit it.
 
 ## Build and test
@@ -96,6 +101,7 @@ SP_PLATFORM=ios SP_NO_INSTALL=1 apps/client/build.sh   # the script build of the
 scripts/build-zsign.sh source; (cd apps/companion-rs && cargo test --locked && cargo build --release --locked)
                                            # slashplayed-companion; a device run needs --kit <zip>:
                                            # scripts/release/device-kit.sh <bundle-resources.sh --build dir> <zip>
+SP_GUEST_REFS=none apps/client/guesttest/build.sh mac   # spguest's toy on the Mac, from our own code alone
 research/<harness>/build.sh                # research harnesses (they install; no no-install switch)
 ```
 

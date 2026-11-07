@@ -104,7 +104,7 @@ static void image_added(const struct mach_header *h, intptr_t slide) {
 // For the other shims' caller offsets.
 __attribute__((visibility("default"))) uintptr_t sp_client_text(void) { return text; }
 
-// The client when a loader of our own maps it instead of dyld (research/guestloadtest): dyld never lists
+// The client when a loader of our own maps it instead of dyld (apps/client/spguest.c): dyld never lists
 // it, so the loader says where it is. Its __TEXT was prepared before the loader copied it in, and `alias`
 // is the RW alias it copied through, so sp_mprotect has nothing left to prepare and sp_memcpy writes there.
 static const char *client_name;  // for crash reports, which list only dyld's images otherwise
