@@ -210,6 +210,7 @@ Anniversary's and MoP Classic's the way it took Retail's (above). Seconds on run
 | Vision Pro, Anniversary 2.5.6.70577 | 1.55 s | 2,818 pages, 0.134 s | 0.021 s | 3.33 | 4.3 s | in the world: 119.1 / 10 ms / 1280 MB at 65 s |
 | iPhone 16 Pro, MoP Classic 5.5.4.70631 | | 2,841 pages, 0.115 s | 0.067 s | 3.27 | 5.5 s | character creation (no character on the account): 44.7 fps at 31 s, still streaming |
 | iPhone 16 Pro, Anniversary 2.5.6.70577 | | 2,818 pages, 0.104 s | 0.078 s | 3.81 | none | the client's error #134 (below) |
+| iPhone 16 Pro, Forever 1.60.1.70790 | 1.42 s | 3,339 pages, 0.104 s | 0.086 s | 4.15 | 10.2 s | character select: 35.6 fps at 32 s, still streaming, then 60.0 / 18 ms / 2170 MB at 62, 92, and 122 s, thermal nominal |
 
 Every run signed in from the saved sign-in (`login.txt` opened and deleted by the client), bound every import
 (none unresolved), and had one client image with no class loaded twice. The headset's numbers are the iPhone's:
@@ -220,3 +221,13 @@ Anniversary on the iPhone stopped at the loading screen with the client's own "I
 WOWSTATIC_5_5_4_67732 for Table StartupFiles", the same error and stack as a dyld-loaded run on 2026-10-31:
 the game's data, not the loader (a wrong `_anniversary_/.flavor.info` there; fixed separately, on `main`). The
 same slice runs on the headset.
+
+Forever (`forever`, product `wowf`), 2026-11-07, on the iPhone: the fifth game, added after the runs above.
+It isn't installed on the Mac, so its slice came from Blizzard's CDN instead of the companion's cache: the
+build of the iPhone's own game data (1.60.1.70790, which the device had installed itself; the CDN's current
+build was 1.60.1.70862, which the guest path doesn't look for), fetched with the companion's `BlizzardCDN`,
+its `LC_UUID` the device-made image's. The app was `build.sh`'s with `SP_NO_IMAGES=1`, with that device-made
+image copied in as the bundled `wow-forever` for its stamp and the app signed again; the launcher then
+retired the device's own copy as caught up, which was put back after the run. 59.1 MB, 2,751 binds and 792
+lazy, none unresolved; 13,305 initializers in 0.130 s; signed in from the saved sign-in (`login.txt` opened
+and deleted by the client); one client image, no class loaded twice. Nobody pressed Enter World.
