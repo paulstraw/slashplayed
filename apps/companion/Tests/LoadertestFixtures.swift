@@ -3,7 +3,7 @@ import XCTest
 /// The loadertest fixtures (research/loadertest, the toy with the client's import shape: an AppKit program
 /// linking the same frameworks), universal like the Mac clients and never committed as a binary. Built
 /// once per test process into a directory of its own, deleted when the test bundle finishes, and shared by
-/// every suite that takes the same one: ClientAssemblyTests, BindCheckTests, and DeviceAssemblyTests all
+/// every suite that takes the same one: ClientAssemblyTests and BindCheckTests both
 /// read `client`, and only ever read it.
 ///
 /// main.m is compiled once per deployment target and each fixture only linked from it: compiling it for

@@ -216,35 +216,6 @@ final class DeviceIdentityTests: XCTestCase {
         XCTAssertNotEqual(Self.importP12(p12, password: "wrong").0, errSecSuccess)
     }
 
-    /// The device's signer reads what macOS exports (the identity alone, as Keychain Access exports it):
-    /// zsign's OpenSSL (scripts/build-zsign.sh), not only SecPKCS12Import, opens the .p12 and signs a fixture
-    /// of our own with it and a profile for the team.
-    func testTheDevicesSignerTakesTheExport() throws {
-        let (keychain, hash) = try Self.makeKeychain(trusted: true)
-        let password = try DeviceIdentity.newPassword()
-        let p12 = try DeviceIdentity.export(hash: hash, password: password, keychains: [keychain])
-        let plist: [String: Any] = [
-            "Name": "Slashplayed Test", "TeamIdentifier": ["ABCDE12345"],
-            "DeveloperCertificates": [try Data(contentsOf: Self.scratch.appending(path: "leaf.der"))],
-            "Entitlements": ["application-identifier": "ABCDE12345.com.strawdynamics.sptest",
-                             "com.apple.developer.team-identifier": "ABCDE12345"],
-        ]
-        try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
-            .write(to: Self.scratch.appending(path: "profile.plist"))
-        try Self.run("/usr/bin/openssl", ["smime", "-sign", "-nodetach", "-binary", "-outform", "DER", "-in", "profile.plist",
-                                          "-signer", "leaf.pem", "-inkey", "leaf.key", "-out", "profile.mobileprovision"])
-        try "int sp_identity_answer(void) { return 42; }\n".write(to: Self.scratch.appending(path: "fixture.c"), atomically: true, encoding: .utf8)
-        try Self.run("/usr/bin/xcrun", ["clang", "-arch", "arm64", "-bundle", "fixture.c", "-o", "fixture.bundle"])
-        let dest = Self.scratch.appending(path: "signed.bundle")
-        var problem: NSString?
-        XCTAssertTrue(sp_sign(Self.scratch.appending(path: "fixture.bundle").path, dest.path, "spidentitytest", p12, password,
-                              try Data(contentsOf: Self.scratch.appending(path: "profile.mobileprovision")), &problem),
-                      problem as String? ?? "")
-        let info = try Self.run("/usr/bin/codesign", ["-d", "-vvvv", dest.path])
-        XCTAssertTrue(info.contains("Identifier=spidentitytest"), info)
-        XCTAssertTrue(info.contains("TeamIdentifier=ABCDE12345"), info)
-    }
-
     func testExportOfAMissingIdentityFails() throws {
         let (keychain, _) = try Self.makeKeychain(trusted: true)
         XCTAssertThrowsError(try DeviceIdentity.export(hash: String(repeating: "0", count: 40), password: "x", keychains: [keychain])) {

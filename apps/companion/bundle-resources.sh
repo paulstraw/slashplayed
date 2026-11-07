@@ -9,8 +9,7 @@
 #   apps/companion/bundle-resources.sh --install <staging dir> <app>  their output and the rest, into it
 # Contents/Resources/ gets, per device platform (xros, ios), <platform>/: the unsigned shim dylibs, their
 # exports.json (the bind check's manifest) and rewrite-map.txt, the unsigned launcher (slashplayed) and
-# licenses/ (the device app's: zsign's and OpenSSL's, which the launcher links, from scripts/build-zsign.sh,
-# idevice's with its crates' and the Rust standard library's, which the helper links, from
+# licenses/ (the device app's: idevice's with its crates' and the Rust standard library's, which the helper links, from
 # scripts/build-idevice.sh <platform>, and the start screen's face's, goodmountain.txt), the start screen's
 # face, Goodmountain-Regular.otf, unmodified (scripts/fetch-font.sh: its license forbids changing it), the unsigned JIT helper's executable (SPJitHelper,
 # apps/client/build-helper.sh: needs idevice for the platform), and icon/ (the device app's compiled icon,
@@ -51,7 +50,6 @@ if [ "$MODE" != install ]; then
 rm -f "$STAGE/.built"
 for p in xros ios; do
   rm -rf "${STAGE:?}/$p" && mkdir -p "$STAGE/$p/licenses"
-  cp "$ROOT/work/zsign/licenses/zsign.txt" "$ROOT/work/zsign/licenses/openssl.txt" "$STAGE/$p/licenses/"
   cp "$ROOT/work/idevice/$p/licenses/idevice.txt" "$ROOT/work/idevice/$p/licenses/rust-std.html" "$STAGE/$p/licenses/"
   cp "$FONT/LICENSE.md" "$STAGE/$p/licenses/goodmountain.txt"
   cp "$FONT/Goodmountain-Regular.otf" "$STAGE/$p/"
@@ -125,7 +123,6 @@ rm -f "$RES/mac-identity"  # bundled before MacIdentity replaced it
 ACK=$RES/Acknowledgements
 [ -s "$ACK/Sparkle.txt" ] || { echo "no Sparkle.txt in $ACK: the build's Sparkle license phase (project.yml) didn't run" >&2; exit 1; }
 cp "$ROOT/work/idevice/macos/licenses/idevice.txt" "$ROOT/work/idevice/macos/licenses/rust-std.html" "$ACK/"
-cp "$ROOT/work/zsign/licenses/zsign.txt" "$ROOT/work/zsign/licenses/openssl.txt" "$ACK/"
 cp "$ROOT/work/idevice/ios/licenses/idevice.txt" "$ACK/idevice-ios.txt"
 cp "$ROOT/work/idevice/xros/licenses/idevice.txt" "$ACK/idevice-visionos.txt"
 cp "$FONT/LICENSE.md" "$ACK/goodmountain.txt"
@@ -140,7 +137,6 @@ third-party components, each under its own license:
 
 The Slashplayed app it builds for your device also includes:
 
-  zsign and OpenSSL   signing a game update on the device             zsign.txt, openssl.txt
   idevice             the JIT helper, with its Rust crates and the    idevice-ios.txt,
                       Rust standard library (rust-std.html)           idevice-visionos.txt
   Goodmountain        the start screen's typeface, by Hermann S       goodmountain.txt

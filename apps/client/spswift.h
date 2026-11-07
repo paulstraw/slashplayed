@@ -2,10 +2,9 @@
 // bridging header (-import-objc-header), so the Swift screens (spstartscreen.swift, spsettings.swift, spsignin.swift, ...) call the launcher's
 // logic through these C functions; the Objective-C imports it for the Swift side's own C entry points
 // (@_cdecl). The logic stays in Objective-C: the companion's tests compile some of it for the Mac
-// (spsign.m), and the credential rules (CLAUDE.md) are kept where they're already kept (splogin.m,
-// spsign.m). Swift only shows what these return.
+// (spcdn.m), and the credential rules (CLAUDE.md) are kept where they're already kept (splogin.m).
+// Swift only shows what these return.
 #import <UIKit/UIKit.h>
-#import "spsign.h"
 #import "splogo.h"  // the start screen's logo (spstartscreen.swift)
 
 NS_ASSUME_NONNULL_BEGIN
@@ -13,10 +12,11 @@ NS_ASSUME_NONNULL_BEGIN
 // launcher.m
 void sp_launch_say(NSString *s);
 NSString *sp_flavor_name(NSString *flavor);
-// The build a game starts with (Version, Build Key, ...), and whether the device made it. nil without a stamp.
-NSDictionary<NSString *, NSString *> *_Nullable sp_game_build(NSString *flavor, BOOL *updated);
-// Whether the game has an image to start: the app's, or one the device made that the next start would load.
-// NO for a game an app built without images offers to install.
+// The build a game starts with (Version, Build Key, ...): its client's stamp, and where the client came from
+// (*source: "mac", "updated", "installed", or nil). nil without a client.
+NSDictionary<NSString *, NSString *> *_Nullable sp_game_build(NSString *flavor, NSString *_Nullable *_Nonnull source);
+// Whether the device has the game: its client, or game data whose client the next start gets. NO for a game
+// the start screen offers to install.
 BOOL sp_game_has_image(NSString *flavor);
 NSString *sp_game_reset(NSString *flavor);
 // The game's region and languages (spcdn.h's sp_game_region: Region, Text, Speech, Source), and Device "1"

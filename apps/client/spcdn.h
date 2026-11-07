@@ -155,16 +155,24 @@ NSString *_Nullable sp_table_with(NSString *_Nullable text, NSString *product, N
 NSString *sp_config_with_region(NSString *_Nullable config, NSDictionary<NSString *, NSString *> *choice, BOOL follow,
                                 NSArray<NSString *> *_Nullable *_Nonnull set);
 
-// ---- Installing a game on the device, with no image in the app (launcher.m, sppatch.m)
+// ---- The game's client in Library/spgames (launcher.m, sppatch.m)
 
-// The games the start screen offers, in flavors.plist's order (`order`, its ids; any other last, by name).
-// An app with client images offers the games it bundles one of (`bundled`), as it always has, and
-// *installable is empty: an update the device made of a game the app no longer bundles doesn't bring it back.
-// An app with none (built without them, so it ships no Blizzard bytes: build.sh's SP_NO_IMAGES=1) offers
-// every game in `order`, and *installable is the ones the device hasn't made an image of yet (`made`,
-// Library/spgames), which it installs itself (sp_patch_install).
-NSArray<NSString *> *sp_games(NSArray<NSString *> *order, NSArray<NSString *> *bundled, NSArray<NSString *> *made,
-                              NSSet<NSString *> *_Nullable *_Nonnull installable);
+// Why the file at `path` isn't a client spguest can load (spguest.c), or nil when it is: the game's unchanged
+// arm64 slice, a thin MH_EXECUTE with an entry point, whose segments all lie within the file. An image an
+// older Slashplayed made on the device (an MH_BUNDLE, assembled and signed there), a universal or arm64e
+// file, or one a copy left short each has a reason, in a few words for the log and the screen.
+NSString *_Nullable sp_slice_problem(NSString *path);
+
+// The game's client in `games` (Library/spgames: wow-<flavor>) retired when it isn't a slice spguest can
+// load (sp_slice_problem): its stamp first (spbuild-<flavor>, so a file left behind is never taken for its
+// build), then the file, its kept .build.info row (spbuildinfo-<flavor>), and spsource-<flavor>. The game
+// data stays. A line for the log (versions, sizes, and the reason), or nil when there was nothing to retire.
+NSString *_Nullable sp_slice_retire(NSString *games, NSString *flavor, NSString *product);
+
+// The games the start screen offers: every game flavors.plist lists (`order`, its ids; any other last, by
+// name), in its order. *installable is the ones the device has nothing of (`made`: those with a client in
+// Library/spgames, or game data to get one for), which it installs itself (sp_patch_install).
+NSArray<NSString *> *sp_games(NSArray<NSString *> *order, NSArray<NSString *> *made, NSSet<NSString *> *_Nullable *_Nonnull installable);
 
 // The game's .flavor.info, as Battle.net writes it in the game's folder and the companion sends it
 // (GameFiles.flavorInfo): its product, as a one-column table.

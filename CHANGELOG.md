@@ -6,6 +6,19 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- Updating and installing games on the iPad, iPhone, or Vision Pro works on every team, free Apple IDs
+  included, with nothing to turn on: when a new build is out, the device offers Update and sets it up in
+  seconds.
+- Settings on the device says where each game came from: From your Mac, Updated on this device, or
+  Installed on this device.
+
+### Removed
+
+- The Game Updates section of Settings on the device, and the signing key Update Games on This Device
+  sent to it: the device no longer needs one, and deletes it the first time Slashplayed starts.
+
 ### Fixed
 
 - slashplayed-companion no longer stops with "…helper's profile grants … which it shouldn't" on a paid team

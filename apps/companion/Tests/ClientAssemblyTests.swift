@@ -13,15 +13,15 @@ final class ClientAssemblyTests: XCTestCase {
         }
     }
 
-    /// Builds the fixture (once per test process: BindCheckTests and DeviceAssemblyTests share it).
+    /// Builds the fixture (once per test process: BindCheckTests shares it).
     override class func setUp() {
         super.setUp()
         try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
         _ = fixture
     }
 
-    /// Stand-ins for the app's licenses/ (bundle-resources.sh copies scripts/build-zsign.sh's, build-idevice.sh's,
-    /// and fetch-font.sh's) and the start screen's font.
+    /// Stand-ins for the app's licenses/ (bundle-resources.sh copies scripts/build-idevice.sh's and
+    /// fetch-font.sh's) and the start screen's font.
     static func writeLicenses(in res: URL) throws {
         let dir = res.appending(path: "licenses")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -195,14 +195,14 @@ final class ClientAssemblyTests: XCTestCase {
                                                                           "Version": "1.2.3.45678"]])
     }
 
-    /// build.sh's awk writes the same stamp for the fixture .build.info (flavor.sh's product for the flavor
-    /// included), so the two producers agree byte for byte without a client.
-    func testBuildShWritesTheSameStamp() throws {
+    /// seed-client.sh's awk writes the same stamp for the fixture .build.info (flavor.sh's product for the
+    /// flavor included), so the two producers agree byte for byte without a client.
+    func testSeedClientWritesTheSameStamp() throws {
         let root = try dir("stamp-sh")
         try Self.buildInfo.write(to: root.appending(path: ".build.info"), atomically: true, encoding: .utf8)
-        let script = try String(contentsOf: Self.repo.appending(path: "apps/client/build.sh"), encoding: .utf8)
+        let script = try String(contentsOf: Self.repo.appending(path: "apps/client/seed-client.sh"), encoding: .utf8)
         let start = try XCTUnwrap(script.range(of: #"awk -F'|' -v p="$P" '"#)).upperBound
-        let end = try XCTUnwrap(script.range(of: #"' "$SP_INSTALL/.build.info""#, range: start..<script.endIndex)).lowerBound
+        let end = try XCTUnwrap(script.range(of: #"' "$INFO" > "$OUT/spbuild-$F""#, range: start..<script.endIndex)).lowerBound
         let awk = script[start..<end]
         let result = try TestShell.run("/usr/bin/awk", ["-F|", "-v", "p=wow_classic_era", String(awk),
                                                          root.appending(path: ".build.info").path])
@@ -241,7 +241,7 @@ final class ClientAssemblyTests: XCTestCase {
         XCTAssertEqual(files, Set<String>(["wow-toy", "spbuild-toy", "slashplayed", "Frameworks", "Frameworks/libspAppKit.dylib", "Assets.car", "Info.plist",
                               "sproots.plist", "PlugIns", "PlugIns/SPJitHelper.appex", "PlugIns/SPJitHelper.appex/SPJitHelper",
                               "PlugIns/SPJitHelper.appex/Info.plist", "flavors.plist", "wow.icns",
-                              "exports.json", "rewrite-map.txt", "licenses", "licenses/zsign.txt", "licenses/openssl.txt",
+                              "exports.json", "rewrite-map.txt", "licenses",
                               "licenses/idevice.txt", "licenses/rust-std.html", "licenses/goodmountain.txt",
                               "Goodmountain-Regular.otf", "addons", "addons/SPMovie", "addons/SPHover"])
                        .union(ClientAssembly.addonFiles.map { "addons/" + $0 }))
@@ -314,70 +314,6 @@ final class ClientAssemblyTests: XCTestCase {
                         "ddi/Cryptex1,CryptexInfoPlist", "ddi/Cryptex1,GenericVolume"])
         XCTAssertThrowsError(try DeveloperDiskImage.cryptexFiles(["BuildIdentities": [identity("Other", "no")]]))
         XCTAssertThrowsError(try DeveloperDiskImage.cryptexFiles(["BuildIdentities": [identity("Developer Disk Image Cryptex", "../up")]]))
-    }
-
-    /// Opt-in, local only (reads the installed clients' build, fetches from Blizzard's CDN): compares the
-    /// companion's client images, made from the CDN's arm64 slice as ClientBuild makes them, and the
-    /// launcher's (apps/client/spassemble.m, as a device makes them) from the same slice, with those
-    /// apps/client/build.sh made from the installed clients, byte for byte: their inputs differ, the images
-    /// don't. Build them unsigned first, e.g. with an identity that can't sign (build.sh stops at codesign,
-    /// after the images are made):
-    ///   SP_PLATFORM=xros SP_NO_INSTALL=1 SP_SIGN_ID=none SP_OUT=$TMPDIR/cmp-xros apps/client/build.sh
-    /// then run the tests with TEST_RUNNER_SP_COMPARE_APP=$TMPDIR/cmp-xros/Slashplayed.app
-    /// TEST_RUNNER_SP_COMPARE_PLATFORM=xros (SP_INSTALL as for build.sh). The slice is of the install's
-    /// build (the CDN's current one once Battle.net has updated it); the stamp from the patch service's
-    /// row is compared too when that's the install's build. The CDN's files go to $TMPDIR and are deleted.
-    func testMatchesBuildShOnInstalledClients() async throws {
-        let env = ProcessInfo.processInfo.environment
-        guard let reference = env["SP_COMPARE_APP"].map(URL.init(fileURLWithPath:)),
-              let platform = env["SP_COMPARE_PLATFORM"].flatMap(ClientAssembly.Platform.named) else {
-            throw XCTSkip("set SP_COMPARE_APP and SP_COMPARE_PLATFORM to compare with build.sh's output")
-        }
-        let install = URL(fileURLWithPath: env["SP_INSTALL"] ?? "/Applications/World of Warcraft")
-        let images = try FileManager.default.contentsOfDirectory(atPath: reference.path).filter { $0.hasPrefix("wow-") }
-        XCTAssertFalse(images.isEmpty)
-        let scratch = try dir("compare-cdn")
-        let cdn = BlizzardCDN(cache: scratch.appending(path: "cdn"))
-        for image in images {
-            let flavor = try XCTUnwrap(Flavor(rawValue: String(image.dropFirst(4))))
-            let row = try XCTUnwrap(try GameStore.buildInfo(install)[flavor.product])
-            let region = try XCTUnwrap(row["Branch"]).lowercased()
-            let slice = try await cdn.connected(product: flavor.product, region: region)
-                .slice(product: flavor.product, region: region, buildConfig: try XCTUnwrap(row["Build Key"]),
-                       cdnConfig: try XCTUnwrap(row["CDN Key"]), executable: flavor.clientPath).slice
-            let out = try dir("compare").appending(path: image)
-            try await ClientAssembly.prepareClient(slice, to: out, rewriteMap: Self.rewriteMap, platform: platform)
-            let ours = try Data(contentsOf: out), theirs = try Data(contentsOf: reference.appending(path: image))
-            XCTAssertTrue(ours == theirs, "\(image) from the CDN differs from build.sh's (\(ours.count) vs \(theirs.count) bytes)")
-            print("compare: \(platform.name) \(image) from the CDN identical to build.sh's (\(ours.count) bytes)")
-            // The third producer: the launcher's assembly on the device (apps/client/spassemble.m), of the same slice.
-            let device = try DeviceAssemblyTests.launcherImage(Data(contentsOf: slice), map: DeviceAssemblyTests.mapText, platform: platform)
-            XCTAssertTrue(device.image == theirs, "\(image) from spassemble.m differs from build.sh's")
-            print("compare: \(platform.name) \(image) from spassemble.m identical to build.sh's")
-            // Its stamp: build.sh's from the install's .build.info, ClientBuild's from the version row.
-            let stamp = try String(contentsOf: reference.appending(path: ClientAssembly.Stamp.fileName(flavor.rawValue)), encoding: .utf8)
-            XCTAssertEqual(try ClientAssembly.Stamp.from(product: flavor.product, row: row).text, stamp)
-            let current = try await cdn.version(product: flavor.product, region: region)
-            if current.buildConfig == row["Build Key"] {
-                XCTAssertEqual(ClientAssembly.Stamp.from(product: flavor.product, version: current).text, stamp)
-                print("compare: spbuild-\(flavor.rawValue) from the patch service identical")
-            } else {
-                print("compare: the install isn't Blizzard's current \(current.versionsName), so the stamp is compared with the install's row only")
-            }
-            try? FileManager.default.removeItem(at: out)
-        }
-        try? FileManager.default.removeItem(at: scratch)
-        // The bundle ID and version as build.sh stamped them (the tests have no host app, so their
-        // Bundle.main isn't the companion whose version the assembly would take).
-        let referenceInfo = NSDictionary(contentsOf: reference.appending(path: "Info.plist"))
-        let info = ClientAssembly.infoPlist(template: try String(contentsOf: Self.repo.appending(path: "apps/client/Info.plist"), encoding: .utf8),
-                                            bundleID: try XCTUnwrap(referenceInfo?["CFBundleIdentifier"] as? String),
-                                            platform: platform,
-                                            version: try XCTUnwrap(referenceInfo?["CFBundleShortVersionString"] as? String))
-        XCTAssertEqual(info, try String(contentsOf: reference.appending(path: "Info.plist"), encoding: .utf8))
-        let roots = try dir("compare").appending(path: "sproots.plist")
-        try await ClientAssembly.exportRootCAs(to: roots)
-        XCTAssertEqual(NSArray(contentsOf: roots), NSArray(contentsOf: reference.appending(path: "sproots.plist")))
     }
 
     // MARK: Helpers

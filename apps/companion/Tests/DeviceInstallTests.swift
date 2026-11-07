@@ -1,37 +1,80 @@
 import XCTest
 
-/// The launcher's install of a game on the device, for an app built with no client images (build.sh's
-/// SP_NO_IMAGES=1): which games the start screen offers and which it installs (sp_games), and the game
-/// folder's .flavor.info the launcher writes at every start (sp_flavor_info, against the companion's GameFiles.flavorInfo). The install
-/// itself is the update's chain (spcdn.m, spbind.m, spassemble.m, spsign.m), which their own tests cover, and
-/// its region is DeviceRegionTests'. Made-up rows, no Blizzard file.
+/// The launcher's games and their clients (apps/client/spcdn.m): which games the start screen offers and
+/// which it installs (sp_games), which Library/spgames files it retires rather than load (sp_slice_retire),
+/// and the game folder's .flavor.info the launcher writes at every start (sp_flavor_info, against the
+/// companion's GameFiles.flavorInfo). The install itself is the update's chain (spcdn.m, spbind.m), which
+/// their own tests cover, and its region is DeviceRegionTests'. Made-up rows and fixtures of our own, no
+/// Blizzard file.
 final class DeviceInstallTests: XCTestCase {
     private let order = Flavor.allCases.map(\.rawValue)
 
-    private func games(_ bundled: [String], _ made: [String]) -> (games: [String], installable: Set<String>) {
+    private func games(_ made: [String]) -> (games: [String], installable: Set<String>) {
         var installable: NSSet?
-        let games = sp_games(order, bundled, made, &installable)
+        let games = sp_games(order, made, &installable)
         return (games, (installable as? Set<String>) ?? [])
     }
 
-    /// An app with images offers what it bundles, in flavors.plist's order, and installs nothing, even with
-    /// an update the device made of a game it no longer bundles: as before images could be left out.
-    func testAnAppWithImagesOffersItsOwn() {
-        let r = games(["retail", "classic_era"], ["anniversary", "retail"])
-        XCTAssertEqual(r.games, ["classic_era", "retail"])
-        XCTAssertEqual(r.installable, [])
-        // One flavors.plist doesn't list goes last, as the launcher always sorted them.
-        XCTAssertEqual(games(["zz_test", "retail"], []).games, ["retail", "zz_test"])
-    }
-
-    /// An app without images offers every game, and installs the ones the device hasn't made.
-    func testAnAppWithoutImagesOffersEveryGame() {
-        let none = games([], [])
+    /// Every game is offered, in flavors.plist's order, and the ones the device has nothing of are installed.
+    func testEveryGameIsOfferedAndTheMissingOnesInstalled() {
+        let none = games([])
         XCTAssertEqual(none.games, order)
         XCTAssertEqual(none.installable, Set(order))
-        let some = games([], ["retail"])
+        let some = games(["retail", "classic_era"])
         XCTAssertEqual(some.games, order)
-        XCTAssertEqual(some.installable, Set(order).subtracting(["retail"]))
+        XCTAssertEqual(some.installable, Set(order).subtracting(["retail", "classic_era"]))
+    }
+
+    /// A Library/spgames client spguest can't load is retired with its stamp, row, and spsource, before the
+    /// launcher would load it: the image an older Slashplayed assembled there (an MH_BUNDLE, as a 1.4 device
+    /// holds), and a copy cut short. The game data beside it stays. The game's own executable stays, files and
+    /// all, and so does nothing at all.
+    func testAClientThatIsntAnExecutableIsRetiredNotLoaded() throws {
+        let scratch = FileManager.default.temporaryDirectory.appending(path: "sp-slice-retire-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let games = scratch.appending(path: "Library/spgames"), data = scratch.appending(path: "Documents/.build.info")
+        try FileManager.default.createDirectory(at: games, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: data.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "game data".write(to: data, atomically: true, encoding: .utf8)
+        try "int main(void) { return 0; }\nint sp_retire_answer(void) { return 42; }\n"
+            .write(to: scratch.appending(path: "fixture.c"), atomically: true, encoding: .utf8)
+        let exe = scratch.appending(path: "exe"), bundle = scratch.appending(path: "bundle")
+        try ClientAssemblyTests.run(["clang", "-arch", "arm64", scratch.appending(path: "fixture.c").path, "-o", exe.path])
+        try ClientAssemblyTests.run(["clang", "-arch", "arm64", "-bundle", scratch.appending(path: "fixture.c").path, "-o", bundle.path])
+        let stamp = "Product!STRING:0|Branch!STRING:0|Build Key!HEX:16|Version!STRING:0\nwow_classic_era|us|00112233445566778899aabbccddeeff|1.2.3.45678\n"
+        func place(_ client: Data) throws {
+            try client.write(to: games.appending(path: "wow-classic_era"))
+            try stamp.write(to: games.appending(path: "spbuild-classic_era"), atomically: true, encoding: .utf8)
+            try "row".write(to: games.appending(path: "spbuildinfo-classic_era"), atomically: true, encoding: .utf8)
+            try "updated\n".write(to: games.appending(path: "spsource-classic_era"), atomically: true, encoding: .utf8)
+        }
+        func left() throws -> Set<String> { Set(try FileManager.default.contentsOfDirectory(atPath: games.path)) }
+        let all: Set<String> = ["wow-classic_era", "spbuild-classic_era", "spbuildinfo-classic_era", "spsource-classic_era"]
+
+        // The executable spguest loads: nothing to say, nothing retired.
+        try place(try Data(contentsOf: exe))
+        XCTAssertNil(sp_slice_problem(games.appending(path: "wow-classic_era").path))
+        XCTAssertNil(sp_slice_retire(games.path, "classic_era", "wow_classic_era"))
+        XCTAssertEqual(try left(), all)
+
+        // An older Slashplayed's image: retired, with all three beside it.
+        try place(try Data(contentsOf: bundle))
+        let line = try XCTUnwrap(sp_slice_retire(games.path, "classic_era", "wow_classic_era"))
+        XCTAssertTrue(line.contains("wow_classic_era 1.2.3.45678") && line.contains("an image an older Slashplayed made"), line)
+        XCTAssertEqual(try left(), [])
+        XCTAssertEqual(try String(contentsOf: data, encoding: .utf8), "game data")
+
+        // A copy cut short: its header's fine, its segments run past the file's end.
+        let whole = try Data(contentsOf: exe)
+        try place(whole.prefix(whole.count / 2))
+        XCTAssertTrue(sp_slice_problem(games.appending(path: "wow-classic_era").path)?.contains("cut short") == true)
+        XCTAssertNotNil(sp_slice_retire(games.path, "classic_era", "wow_classic_era"))
+        XCTAssertEqual(try left(), [])
+
+        // Not a Mach-O at all, and no client: the first retired, the second nothing to do.
+        try place(Data("not a client".utf8))
+        XCTAssertNotNil(sp_slice_retire(games.path, "classic_era", "wow_classic_era"))
+        XCTAssertNil(sp_slice_retire(games.path, "classic_era", "wow_classic_era"))
     }
 
     /// The addons the launcher puts in a game's folder (sp_addons_place): SPMovie everywhere, SPHover only on

@@ -5,7 +5,9 @@
 # up), so nothing on the Mac debugs it. Prints the launcher's JIT lines as they come, and its message if
 # the helper couldn't do its part (the device shows the same).
 # Output: work/clienttest$SP_SUFFIX/console.txt, each line prefixed with seconds since run.sh started.
-# SP_FLAVOR (scripts/flavor.sh) picks which of the bundled clients the launcher runs; it's remembered in
+# SP_FLAVOR (scripts/flavor.sh) picks which game the launcher runs (its client in Library/spgames:
+# seed-client.sh, the companion's Play, or the device's own install, which a game with no client gets first,
+# its screen with no Back); it's remembered in
 # work/clienttest/last-flavor for the other scripts. Arguments are passed to the client; with none, the
 # flavor's Battle.net ones (SP_ARGS; grab-token.sh prints the ones Battle.net used).
 # SP_SCALE=1 or 2 sets the AppKit shim's backing scale, over the device's Settings > Display (a dev
@@ -46,13 +48,8 @@ if [ "$SP_START" = 1 ]; then
   [ -n "$SP_START_DRILL" ] && export DEVICECTL_CHILD_SP_START_DRILL=$SP_START_DRILL
   [ -n "$SP_START_TEXT_SIZE" ] && export DEVICECTL_CHILD_SP_START_TEXT_SIZE=$SP_START_TEXT_SIZE
 else
-  # A build with images has to have this one; one without (build.sh's SP_NO_IMAGES=1) installs it on the
-  # device first if it hasn't yet (sppatch.m's sp_patch_install).
-  if ls $OUT/Slashplayed.app/wow-* >/dev/null 2>&1; then
-    [ -f $OUT/Slashplayed.app/wow-$SP_FLAVOR ] || { echo "$SP_FLAVOR isn't in the installed build (build.sh)"; exit 1; }
-  fi
   [ $# = 0 ] && set -- $SP_ARGS
-  echo $SP_FLAVOR > ../../work/clienttest/last-flavor
+  mkdir -p ../../work/clienttest && echo $SP_FLAVOR > ../../work/clienttest/last-flavor
   export DEVICECTL_CHILD_SP_LAUNCH_FLAVOR=$SP_FLAVOR
 fi
 [ -n "$SP_SCALE" ] && export DEVICECTL_CHILD_SP_SCALE=$SP_SCALE
@@ -66,9 +63,6 @@ fi
 [ -n "$SP_LOADING_DRILL" ] && export DEVICECTL_CHILD_SP_LOADING_DRILL=$SP_LOADING_DRILL
 [ -n "$SP_SKIP_INTRO" ] && export DEVICECTL_CHILD_SP_SKIP_INTRO=$SP_SKIP_INTRO
 [ -n "$SP_SCENE_CONNECT_LATE" ] && export DEVICECTL_CHILD_SP_SCENE_CONNECT_LATE=$SP_SCENE_CONNECT_LATE
-# SP_GUEST_CLIENT=<path in the app's home>: the unchanged client there loads with the launcher's own loader
-# instead of the bundled image (spguestlaunch.m, spguest.c); copy it in with devicectl first.
-[ -n "$SP_GUEST_CLIENT" ] && export DEVICECTL_CHILD_SP_GUEST_CLIENT=$SP_GUEST_CLIENT
 if [ -n "$SP_START_DRILL" ]; then
   xcrun devicectl device process launch --device "$SP_DEVICE" --terminate-existing -- $BUNDLE_ID "$@"
   echo "start screen drill $SP_START_DRILL launched: screenshot with xcrun devicectl device capture screenshot --device $SP_DEVICE"
@@ -82,11 +76,11 @@ CONSOLE=$!
 # Follow the launch to the end of the prepare (ClientLauncher.swift reads the same lines): 180 s covers a
 # disk image mount, which the helper does when the device has none.
 for i in $(seq 900); do
-  grep -q -e '\[sp:System\] detached' -e '\[sp:launch\] guest: detached' -e "\[sp:launch\] can't prepare" $OUT/console.txt && break
+  grep -q -e '\[sp:launch\] guest: detached' -e "\[sp:launch\] can't prepare" $OUT/console.txt && break
   kill -0 $CONSOLE 2>/dev/null || break
   sleep 0.2
 done
-grep -E '\[sp:launch\] (jit:|vpn:|can.t prepare|guest:)|\[sp:System\] (preparing|detached)|ERROR' $OUT/console.txt || true
-grep -q -e '\[sp:System\] detached' -e '\[sp:launch\] guest: detached' $OUT/console.txt || { echo "the client wasn't prepared (log: $OUT/console.txt)"; kill $CONSOLE 2>/dev/null; exit 1; }
+grep -E '\[sp:launch\] (jit:|vpn:|can.t prepare|guest:)|ERROR' $OUT/console.txt || true
+grep -q '\[sp:launch\] guest: detached' $OUT/console.txt || { echo "the client wasn't prepared (log: $OUT/console.txt)"; kill $CONSOLE 2>/dev/null; exit 1; }
 wait $CONSOLE || true
 cat $OUT/console.txt

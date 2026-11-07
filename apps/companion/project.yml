@@ -148,14 +148,9 @@ targets:
       - Sources/TokenRelay.swift
       - Sources/UpdateGate.swift
       - Sources/USBLink.swift
-      # The launcher's CDN client, bind check, and assembly (Foundation only), tested against BlizzardCDN,
-      # BindCheck, and ClientAssembly; and its signer (spsign.m, with zsign through spzsign.cpp), whose
-      # signatures codesign reads.
-      - ../client/spassemble.m
+      # The launcher's CDN client and bind check (Foundation only), tested against BlizzardCDN and BindCheck.
       - ../client/spbind.m
       - ../client/spcdn.m
-      - ../client/spsign.m
-      - ../client/spzsign.cpp
       - path: ../client/flavors.plist
         buildPhase: resources
     settings:
@@ -163,11 +158,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.strawdynamics.slashplayed.companion.tests
         SWIFT_OBJC_BRIDGING_HEADER: Tests/SPCompanionTests-Bridging-Header.h
         CLANG_ENABLE_OBJC_ARC: YES
-        # zsign and OpenSSL for the Mac, built from source by scripts/build-zsign.sh macos (test.sh checks).
-        SP_ZSIGN_DIR: $(SRCROOT)/../../work/zsign
-        HEADER_SEARCH_PATHS: $(SP_ZSIGN_DIR)/src/zsign/src $(SP_ZSIGN_DIR)/src/zsign/src/common $(SP_ZSIGN_DIR)/macos/openssl/include
-        CLANG_CXX_LANGUAGE_STANDARD: c++11
-        OTHER_LDFLAGS: -lz -lc++ -framework Security $(SP_ZSIGN_DIR)/macos/libzsign.a $(SP_ZSIGN_DIR)/macos/openssl/lib/libcrypto.a
+        OTHER_LDFLAGS: -lz
         SWIFT_VERSION: "5.0"
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual

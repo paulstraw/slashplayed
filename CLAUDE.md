@@ -27,23 +27,21 @@ the push, the export), `SlashplayedCertificate.swift` (a paid team's own certifi
   At run time it reads only its bundled resources (`bundle-resources.sh`), never the repo, and runs only
   `/usr/bin` tools and `xcrun`. It links idevice statically (`idevice-config.sh` writes the xcconfig from
   `work/idevice/macos/`).
-- `apps/client/`: the device app. `launcher.m` (the `slashplayed` executable, dlopens `wow-<flavor>`),
+- `apps/client/`: the device app. `launcher.m` (the `slashplayed` executable: picks the game, retires what it can't load, and loads
+  `Library/spgames/wow-<flavor>`, the game's unchanged slice, with spguest),
   `spjit.m` (its side of the JIT helper), `sppair.m` (the headset's pairing; its screen is `sppairscreen.swift`), `spvpn.m` (the
   wait for LocalDevVPN; its screen is `spvpnscreen.swift`), `spstyle.swift` (the launcher's look, shared by every
   SwiftUI screen: one game button, `GameButtonStyle`), `splogin.m` (the Battle.net sign-in: the keychain and `login.txt`; its screen is `spsignin.swift`),
   `spstart.m` (the start screen, every launch that doesn't name a game: the wait for a tap, `SP_START_TEXT_SIZE`, Goodmountain's
   registration, `sp_face`; its screen is `spstartscreen.swift`; its logo is the icon's own vectors, `splogo.h`, and its face
-  Goodmountain, never committed: `scripts/fetch-font.sh`), `spsettings.swift` (the start screen's Settings sheet: the forgets,
-  each game's build, Open in Files, and Reset Game Settings, Acknowledgements, and the `SP_START_DRILL` states), `sppatch.m` (the check for a newer build; its screen is `sppatchscreen.swift`; it fetches the new client with
+  Goodmountain, never committed: `scripts/fetch-font.sh`), `spsettings.swift` (the start screen's Settings sheet: the sign-in's forget,
+  each game's build and where it came from (`spsource-<flavor>`), Open in Files, and Reset Game Settings, Acknowledgements, and the `SP_START_DRILL` states), `sppatch.m` (the check for a newer build; its screen is `sppatchscreen.swift`; it fetches the new client with
   `spcdn.m`, the port of `BlizzardCDN.swift`, and checks its imports with `spbind.m`; both Foundation only,
-  tested in the companion's tests), `spassemble.m` (the client image made on the device from that
-  slice: install_name_tool's, vtool's, and retype.py's steps, ported), `spsign.m` (signing on the device:
-  the identity the Mac pushes, into the keychain, and zsign through `spzsign.cpp`, and which certificate an
-  update's image is signed with against the profiles the app can see; tested in the companion's tests), `flavors.plist` (each game's
+  tested in the companion's tests; an Update or an install puts that slice in place, signing nothing), `flavors.plist` (each game's
   name, `.build.info` product, client path, Battle.net arguments, and addon number: the one list, read by the
   launcher, the companion's `Flavor.swift`, and `scripts/flavor.sh`), `spguest.c`/`.h` and `spguest_tlv.S`
   (spguest, a loader of our own: the unchanged, unsigned client mapped, bound, and run without dyld;
-  `spguestlaunch.m` loads it behind the `SP_GUEST_CLIENT` dev switch), `guesttest/` (spguest's test: a toy
+  `spguestlaunch.m` is the launcher's load step and its preflight), `guesttest/` (spguest's test: a toy
   guest of our own, `build.sh mac` on the Mac, which CI runs, and `build.sh device`/`run.sh` on a device;
   `research/guestloadtest/README.md` has the research and the device runs),
   `helper/` (the
@@ -51,10 +49,10 @@ the push, the export), `SlashplayedCertificate.swift` (a paid team's own certifi
   `build-helper.sh`; jittest builds the same source), Info.plist and
   entitlements templates, `icons/` (the app icon catalogs, compiled by `build-icons.sh`),
   `signing/` (stub project for the explicit-App-ID profile), and
-  dev scripts (`build.sh`, `run.sh`, `seed.sh`, `pull-logs.sh`, `grab-token.sh`, `push-identity.sh`,
-  `retype.py`, `casc_archives.py`). `build.sh`, `ClientAssembly.swift`, and `spassemble.m` (the launcher's assembly
-  of a newer build's image on the device, tested in the companion's tests) must produce byte-identical
-  unsigned client images: change all three together.
+  dev scripts (`build.sh`, the app with no game in it, `run.sh`, `seed.sh`, `seed-client.sh`, the Mac's
+  client into `Library/spgames`, `pull-logs.sh`, `grab-token.sh`, `casc_archives.py`). The companion's
+  `ClientAssembly.swift` still bundles each game's image, which this launcher never loads, until the Mac
+  stops assembling them.
 - `apps/companion-rs/`: `slashplayed-companion`, the host tool for an iPad or iPhone without a Mac (Windows, Linux, a
   Mac without Xcode; Rust, `rust-toolchain.toml` pins it): `src/kit.rs` (the device kit, the unsigned app
   `scripts/release/device-kit.sh` makes at release), `device.rs` (usbmuxd, trust, Developer Mode, install,
@@ -107,7 +105,7 @@ research/<harness>/build.sh                # research harnesses (they install; n
 
 Some companion tests are opt-in because they read the owner's real install (see each test's doc
 comment, e.g. `TEST_RUNNER_SP_CHECK_INSTALLED=1`, `TEST_RUNNER_SP_COMPARE_STORE=1`,
-`TEST_RUNNER_SP_COMPARE_CDN=1`, `TEST_RUNNER_SP_COMPARE_BUILDS=1`, `TEST_RUNNER_SP_COMPARE_ASSEMBLY=1`). They compare against Blizzard files locally (the CDN one fetches from
+`TEST_RUNNER_SP_COMPARE_CDN=1`, `TEST_RUNNER_SP_COMPARE_BUILDS=1`). They compare against Blizzard files locally (the CDN one fetches from
 Blizzard's CDN into `$TMPDIR`); nothing from them is ever written into the repo.
 
 Companion launch flags for headless work: `-play` (Play the game the menu by Play picks, signed in on
@@ -115,8 +113,8 @@ the device; add `-skip-intro` to start without the intro movie or Retail's Scree
 `SP_SKIP_INTRO=1` does for `apps/client/run.sh`; it sets them in the device's `Config.wtf`, so they stay
 skipped there), `-update`, `-sync`, `-pull-logs`, `-export-diagnostics`, `-setup-step <n>`,
 `-check-for-updates`, `-pair` (Pair Again: an iPad or iPhone on USB gets a new RemotePairing record;
-the headset's is cleared, so its next launch pairs), `-push-identity` (what Play does about the device's
-signing identity for Update Games on This Device, alone; `DeviceIdentity.swift`), `-certificate-request`
+the headset's is cleared, so its next launch pairs), `-push-identity` (sends nothing now: the device updates
+its games without a signing identity), `-certificate-request`
 (a paid team's Slashplayed certificate: its key and request, `SlashplayedCertificate.swift`). These act inside the running
 GUI app, which doesn't quit afterwards: follow `~/Library/Logs/Slashplayed/companion.txt` and quit it.
 
@@ -146,7 +144,7 @@ again (over an hour for Retail on the headset). Don't change it casually.
 
 - **Signing identities are credentials.** A `.p12`, its password, or a keychain export is never read
   into a log, printed or committed: sizes and validity dates only, files 0600, zeroed and deleted after the
-  copy, as `spsign.m` and `push-identity.sh` do. Test identities are made at test time in `$TMPDIR`.
+  copy, as the companion's `DeviceIdentity.swift` does. Test identities are made at test time in `$TMPDIR`.
 - **Pairing records are credentials.** A RemotePairing record (and the Mac's lockdown pair record, which
   idevice holds in memory to make one) is never read, printed or logged: sizes only, files 0600 and
   deleted after the copy, as `Pairing.swift` and `research/jittest/push-pairing.sh` do.
