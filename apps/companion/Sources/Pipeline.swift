@@ -66,8 +66,8 @@ final class Pipeline {
     /// Whether the device may update its games itself (Device.updatesGames), which puts a signing identity on
     /// it (DeviceIdentity). Change it with setUpdatesGames.
     private(set) var updatesGames: Bool
-    /// The device's games an update on it put ahead of the image the companion installed (ClientBuild.
-    /// deviceUpdate), by version, as the last action found them: the main window says so.
+    /// The device's games whose client it got itself is newer than Blizzard's build as the last action
+    /// asked (ClientBuild.clientCopy's newerOnDevice), by version: the main window says so.
     private(set) var updatedOnDevice: [Flavor: String]
     /// What was wrong with the signing identity a device updated its games with, for the main window. Always
     /// nil now: the device needs none (pushIdentity).
@@ -150,9 +150,12 @@ final class Pipeline {
     /// Each game's current build on Blizzard's patch service, from the build step's check
     /// (ClientBuild.check), for the files step's .build.info rows.
     private var latest: [Flavor: BlizzardCDN.Version] = [:]
-    /// The products whose update on the device is ahead of its installed image (checkDeviceUpdates), for the
-    /// files step: their .build.info rows and configs stay the device's.
+    /// The products whose client on the device is newer than Blizzard's current build (checkDeviceUpdates),
+    /// for the files step: their .build.info rows and configs stay the device's.
     private var aheadProducts: [String] = []
+    /// The build of each game's client on the device (Library/spgames), as checkDeviceUpdates read it and
+    /// copyGameClients left it: the files step sends the rows and configs of these builds alone.
+    private var onDevice: [Flavor: ClientAssembly.Stamp] = [:]
     /// The log, and each step's outcome, for this run of the app.
     private let logFile = LogFile(Paths.logs.appending(path: "companion.txt"), t0: Date())
     /// GameFiles.size by games and install date.
@@ -194,8 +197,8 @@ final class Pipeline {
                              + "Slashplayed opens it to turn it on; the game starts once it's on.")
             case .newerBuild(let flavor):
                 self.set(.start, .waitingOnUser, title: "A newer \(flavor.name) is out",
-                         detail: "Blizzard put out a newer build since the \(self.device.noun)'s game was built. Stop the client and "
-                             + "press Play again to build it; or press Play Anyway on the \(self.device.noun).")
+                         detail: "Blizzard put out a newer build than the \(self.device.noun)'s. Press Update on the \(self.device.noun) "
+                             + "to fetch it there, or Play Anyway; or stop the client and press Play again to copy it from this Mac.")
             case .preparing:
                 // The launcher deleted the listed files and wrote the free space.
                 self.pendingFree = 0
@@ -398,38 +401,38 @@ final class Pipeline {
     /// built and installed first if it isn't yet.
     func copyGameFiles() {
         start([.build, .device, .install, .files]) {
-            try await self.updateBuild(for: nil)
+            try await self.updateBuild()
             try await self.waitForDevice()
             try await self.installBuild()
-            try await self.copyGameClients()
+            try await self.copyGameClients(for: nil)
             try await self.syncGameFiles(self.device.flavors, copy: true)
         }
     }
 
-    /// Rebuilds the device's client if Blizzard has a newer build of any of its games, and installs it,
-    /// without playing.
+    /// Copies the device's games' clients where Blizzard has a newer build (copyGameClients), with the app
+    /// built and installed first if it needs it, without playing.
     func updateClient() {
         start([.build, .device, .install]) {
-            try await self.updateBuild(for: nil)
+            try await self.updateBuild()
             try await self.waitForDevice()
             try await self.installBuild()
             try await self.setUpHelper()
-            try await self.copyGameClients()
+            try await self.copyGameClients(for: nil)
         }
     }
 
     /// Setup Assistant's install step: what Play does before it starts the client, for every game ticked
     /// for `device`, so Slashplayed opens on the device alone afterwards. The build, the install, the
-    /// helper's disk image and (iPad, iPhone) USB pairing, the signing identity if asked for, each game's
-    /// build files, and the login identity file (the addons come with the app). Never a copy of the Mac's game files, which
+    /// helper's disk image and (iPad, iPhone) USB pairing, each game's client and build files, and the
+    /// login identity file (the addons come with the app). Never a copy of the Mac's game files, which
     /// can take an hour: the device streams, and Play copies when copying is on.
     func installForSetup(on device: Device) {
         start([.build, .device, .install, .files, .sendLogin], on: device) {
-            try await self.updateBuild(for: nil)
+            try await self.updateBuild()
             try await self.waitForDevice()
             try await self.installBuild()
             try await self.setUpHelper()
-            try await self.copyGameClients()
+            try await self.copyGameClients(for: nil)
             try await self.syncGameFiles(self.device.flavors, copy: false)
             try await self.sendLoginFiles(nil)
         }
@@ -643,6 +646,7 @@ final class Pipeline {
         launch = nil
         latest = [:]
         aheadProducts = []
+        onDevice = [:]
         canRetryLaunch = false
         unsupportedIssue = nil
         pulledLogs = nil
@@ -714,11 +718,11 @@ final class Pipeline {
         flavor = launch.flavor
 
         // The Mac-side work first, so the device only has to be awake for the copying.
-        try await updateBuild(for: launch.flavor)
+        try await updateBuild()
         try await waitForDevice()
         try await installBuild()
         try await setUpHelper()
-        try await copyGameClients()
+        try await copyGameClients(for: launch.flavor)
         // Copying needs a game install here; without one, the device's client fetches its data itself. With
         // copying off the install isn't read at all (GameInstall.reads), so a stalled drive can't hold Play.
         var copies = false
@@ -851,76 +855,47 @@ final class Pipeline {
         }
     }
 
-    /// Rebuilds the device's client (Mac only) when its last build didn't finish, or Blizzard has a newer
-    /// build of `flavor` (nil: any of the device's games) than its image (ClientBuild.check). The build
-    /// takes each client from Blizzard's CDN and checks it against the bundled shims first (BindCheck).
-    /// When the patch service can't be reached, a game that has an image keeps it.
-    private func updateBuild(for flavor: Flavor?) async throws {
-        set(.build, .active, title: "Checking the client build…", detail: "Asking Blizzard for each game's current build.")
+    /// Asks Blizzard for each of the device's games' current build (ClientBuild.check: what copyGameClients
+    /// and the files step send), and rebuilds the device app (Mac only) when its last build didn't finish or
+    /// is out of date (ClientBuild.isComplete: this companion's resources, the bundle ID, the entitlements, the
+    /// profile). A game patch never rebuilds it: the app holds no game, and the new client is copied to the
+    /// device by itself. When the patch service can't be reached, a game's client isn't copied, and the
+    /// device plays the one it has.
+    private func updateBuild() async throws {
+        set(.build, .active, title: "Checking the app build…", detail: "Asking Blizzard for each game's current build.")
         let check = try await ClientBuild.check(device)
         latest = check.latest
         for (f, why) in check.unchecked.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
             appendLog("[companion] couldn't ask Blizzard for \(f.name)'s current build: \(why)")
         }
-        let stale = check.stale
-        let complete = ClientBuild.isComplete(device)
-        let wanted = flavor.map { stale.contains($0) } ?? !stale.isEmpty
-        let versioned = { (f: Flavor) in check.latest[f].map { "\(f.name) \($0.versionsName)" } ?? f.name }
-        switch ClientBuild.buildAction(wanted: wanted, complete: complete, drill: BindCheck.drillImport) {
-        case .build: break
-        case .drill(let withheld):
-            set(.build, .active, title: "Checking the client build…", detail: "Patch drill: withholding \(withheld) from the bundled shims.")
-            do {
-                try await ClientBuild.drill(device, flavors: flavor.map { [$0] } ?? device.flavors, latest: check.latest,
-                                            withheld: withheld) { [weak self] in self?.appendLog("[companion] \($0)") }
-            } catch let e as CancellationError {
-                throw e
-            } catch let e as BindCheck.Unsupported {
-                throw unsupported(e, latest: check.latest)
-            } catch {
-                throw StepFailure(.build, error.localizedDescription)
-            }
-            // Not reached: a withheld symbol always fails the check (BindCheck.check).
-            throw StepFailure(.build, "The patch drill's bind check passed with \(withheld) withheld.")
-        case .upToDate:
+        guard !ClientBuild.isComplete(device) else {
             let unchecked = check.unchecked.isEmpty ? nil
-                : "Blizzard couldn't be reached to check for a newer build, so the one built is played."
-            let others = stale.isEmpty ? nil
-                : "\(stale.map(versioned).joined(separator: ", ")) is out too; it's built when you play it or use Update Client."
-            let notes = [unchecked, others].compactMap { $0 }
-            set(.build, .done, title: "Client build is up to date", detail: notes.isEmpty ? nil : notes.joined(separator: "\n"))
+                : "Blizzard couldn't be reached to check for a newer build of \(check.unchecked.keys.map(\.name).sorted().joined(separator: ", ")), so the \(device.noun) plays the one it has."
+            set(.build, .done, title: "The app build is up to date", detail: unchecked)
             return
         }
-        // Every ticked game is rebuilt; the title names one only when it alone changed (a patch).
-        let target = stale.count == 1 ? stale.first : nil
-        // No patch, but the games changed (File > Games on): the build gets just the ticked ones.
-        let games = device.flavors.map(\.name).joined(separator: " + ")
-        let title = target.map { "Building the client for \(versioned($0))…" } ?? "Building the client with \(games)…"
-        set(.build, .active, title: title,
-            detail: "About a minute, on this Mac, with the game's client from Blizzard. The \(device.noun) isn't needed yet.")
+        set(.build, .active, title: "Building the app…",
+            detail: "Under a minute, on this Mac. The \(device.noun) isn't needed yet.")
         let start = Date()
         do {
-            try await ClientBuild.build(device, latest: check.latest, beforeSigning: {
+            try await ClientBuild.build(device, beforeSigning: {
                 // Xcode registers the device and makes its profile now, which needs it unlocked.
-                if try await self.waitForUnlock(.build, to: "sign the client") {
-                    self.set(.build, .active, title: title, detail: "Signing the client for the \(self.device.noun).")
+                if try await self.waitForUnlock(.build, to: "sign the app") {
+                    self.set(.build, .active, title: "Building the app…", detail: "Signing the app for the \(self.device.noun).")
                 }
             }) { [weak self] in self?.appendLog($0) }
         } catch let e as CancellationError {
             throw e
-        } catch let e as BindCheck.Unsupported {
-            throw unsupported(e, latest: check.latest)
         } catch let p as Signing.Problem {
             throw StepFailure(.build, p.message, title: p.title)
         } catch {
             throw StepFailure(.build, error.localizedDescription)
         }
         profileExpires = ClientBuild.profile(device)?.expires
-        set(.build, .done, title: target.map { "Built the client for \(versioned($0))" } ?? "Built the client with \(games)",
-            detail: "In \(Self.duration(Date().timeIntervalSince(start))).")
+        set(.build, .done, title: "Built the app", detail: "In \(Self.duration(Date().timeIntervalSince(start))).")
     }
 
-    /// The build step's failure for a client this version can't run (a game patch, or the patch drill), with
+    /// The copy step's failure for a client this version can't run (a game patch, or the patch drill), with
     /// Report It…'s pre-filled issue (unsupportedIssue), whose URL is logged too.
     private func unsupported(_ e: BindCheck.Unsupported, latest: [Flavor: BlizzardCDN.Version]) -> StepFailure {
         let f = Flavor(rawValue: e.flavor)
@@ -929,7 +904,8 @@ final class Pipeline {
         let issue = BindCheck.issueURL(flavorName: name, build: build, companionVersion: version, unsupported: e)
         unsupportedIssue = issue
         appendLog("[companion] Report It… opens \(issue.absoluteString)")
-        return StepFailure(.build, BindCheck.message(flavorName: name, build: build, unsupported: e))
+        return StepFailure(.install, BindCheck.message(flavorName: name, build: build, unsupported: e),
+                           title: "\(name) \(build) isn't supported yet")
     }
 
     /// Installs the build unless the device holds the one this Mac last installed there (ClientBuild.installNeed):
@@ -938,26 +914,22 @@ final class Pipeline {
     /// data container (setUpHelper and after), which needs the app there.
     private func installBuild() async throws {
         let device = device
-        set(.install, .active, title: "Checking the client on the \(device.noun)…")
+        set(.install, .active, title: "Checking the app on the \(device.noun)…")
         let need = await ClientBuild.installNeed(device)
-        let games = device.flavors.map(\.name).joined(separator: ", ")
         let why: String
         switch need {
         case .upToDate:
-            set(.install, .done, title: "The \(device.noun) has the latest client")
+            set(.install, .done, title: "The \(device.noun) has the latest app")
             return
         case .notOnDevice:
             setAppMissing(true, on: device)
             why = "Slashplayed isn't on the \(device.noun) (not installed yet, or deleted there)"
-        case .notFromThisMac: why = "this Mac hasn't installed Slashplayed on the \(device.noun) before (it may have another Mac's, with other games)"
+        case .notFromThisMac: why = "this Mac hasn't installed Slashplayed on the \(device.noun) before (it may have another Mac's)"
         case .olderBuild: why = "the \(device.noun) has an earlier build than this one"
-        case .otherGames:
-            let had = ClientBuild.installed(device)?.flavors.compactMap(Flavor.init).map(\.name).joined(separator: ", ") ?? ""
-            why = "the \(device.noun)'s Slashplayed has \(had), not the games ticked for it"
         case .replaced: why = "Slashplayed was installed on the \(device.noun) again since this Mac installed it (from another Mac or Xcode)"
         }
-        appendLog("[companion] installing the client: \(why); this build has \(games)")
-        set(.install, .active, title: "Installing the client on the \(device.noun)…")
+        appendLog("[companion] installing the app: \(why)")
+        set(.install, .active, title: "Installing the app on the \(device.noun)…")
         do {
             try await ClientBuild.install(device) { [weak self] in self?.appendLog($0) }
         } catch let e as CancellationError {
@@ -968,34 +940,37 @@ final class Pipeline {
             throw StepFailure(.install, error.localizedDescription)
         }
         setAppMissing(false, on: device)
-        set(.install, .done, title: "Installed the new client")
+        set(.install, .done, title: "Installed the app")
     }
 
     /// The device's game clients (Library/spgames, ClientBuild.deviceClients), once the companion's app is
-    /// installed: Play, Update Client, and Copy Game Files. One the device got itself (an Update or an install
-    /// there) that's ahead of the app's image keeps its game data's row and configs (aheadProducts, for the
-    /// files step) and is named in the main window; one this Mac has a newer build of is replaced by
-    /// copyGameClients. Nothing here stops the action: a device that can't be read is logged, and
+    /// installed: Play, Update Client, and Copy Game Files. Each is compared with Blizzard's current build
+    /// (`latest`, the build step's, ClientBuild.clientCopy): one the device got itself that's newer (an Update
+    /// or an install there, ahead of the patch service the Mac asked) keeps its game data's row and configs
+    /// (aheadProducts, for the files step) and is named in the main window; an older or missing one is
+    /// replaced by copyGameClients. Nothing here stops the action: a device that can't be read is logged, and
     /// .build.info's own check (GameStore.deviceBuildInfo) still keeps a newer row. Returns what
     /// Library/spgames holds, for copyGameClients, which runs this first; nil when the device couldn't be read.
     private func checkDeviceUpdates() async throws -> [Flavor: ClientBuild.DeviceClient]? {
         let device = device
         do {
             let clients = try await ClientBuild.deviceClients(device)
+            onDevice = clients.mapValues(\.stamp)
             var ahead: [Flavor: String] = [:]
             for (flavor, client) in clients.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
-                let update = client.stamp, image = ClientBuild.builtStamp(device, flavor)
-                let installed = image.map { "\(flavor.name) \($0.version)" } ?? "no \(flavor.name)"
-                switch ClientBuild.deviceUpdate(image: image, update: update) {
-                case .caughtUp where client.fromMac:
-                    appendLog("[companion] the \(device.noun) has \(flavor.name) \(update.version)'s client from this Mac (Library/spgames), and its app has \(installed)")
-                case .caughtUp where client.source == nil:
-                    appendLog("[companion] the \(device.noun) has \(flavor.name) \(update.version) in Library/spgames with no spsource: an older Slashplayed's image, which the client replaces (its app has \(installed))")
-                case .caughtUp:
-                    appendLog("[companion] the \(device.noun) has \(flavor.name) \(update.version)'s client, which it got itself (Library/spgames, spsource \(client.source ?? "none")), and its app has \(installed): Play replaces it once this Mac has a newer one")
-                case .ahead:
-                    ahead[flavor] = update.version
-                    appendLog("[companion] \(flavor.name) \(update.version) was updated on the \(device.noun), ahead of its app's \(installed): it plays that, and its game data's build stays \(update.version)")
+                let have = "\(flavor.name) \(client.stamp.version)'s client (spsource \(client.source ?? "none"))"
+                guard let version = latest[flavor] else {
+                    appendLog("[companion] the \(device.noun) has \(have); Blizzard's current build wasn't asked, so it's left as it is")
+                    continue
+                }
+                switch ClientBuild.clientCopy(device: client.stamp, mac: .from(product: flavor.product, version: version)) {
+                case .upToDate:
+                    appendLog("[companion] the \(device.noun) has \(have), Blizzard's current build")
+                case .copy:
+                    appendLog("[companion] the \(device.noun) has \(have), older than Blizzard's \(version.versionsName)")
+                case .newerOnDevice:
+                    ahead[flavor] = client.stamp.version
+                    appendLog("[companion] the \(device.noun) has \(have), newer than Blizzard's \(version.versionsName) as this Mac asked: it plays that, and its game data's build stays \(client.stamp.version)")
                 }
             }
             aheadProducts = ahead.keys.map(\.product).sorted()
@@ -1006,54 +981,63 @@ final class Pipeline {
         } catch let e as CancellationError {
             throw e
         } catch {
-            appendLog("[companion] couldn't read the games the \(device.noun) updated itself (Library/spgames): \(error.localizedDescription)")
+            appendLog("[companion] couldn't read the game clients on the \(device.noun) (Library/spgames): \(error.localizedDescription)")
             return nil
         }
     }
 
-    /// Each ticked game's client into the device's Library/spgames (ClientBuild.copyClient), the one step Play,
-    /// Update Client, Setup, and Copy Game Files each run once the app is installed: the unchanged arm64 slice,
-    /// which the launcher loads with spguest (apps/client/spguestlaunch.m), when the device's (read first,
-    /// checkDeviceUpdates: a device that can't be read gets nothing, as it may hold a newer build) is missing
-    /// or older than Blizzard's current build (ClientBuild.clientCopy). Only a game whose bundled image is that
-    /// build gets its client: the slice the build was made from and checked against the shims (BindCheck),
-    /// so the device never holds a client this Slashplayed can't run. updateBuild rebuilds for every ticked
-    /// game's current build before this, so each one that binds is copied at the same action. A client running
-    /// on the device maps the file it loaded (Library/spgames/wow-<flavor>), so it's stopped just before the
-    /// first write to the device, once a slice is in hand: a download that fails leaves a game being played.
-    /// Borrows the install step's row as setUpHelper does. Nothing here stops the action: a copy that fails is
-    /// logged, and the next action copies it again.
-    private func copyGameClients() async throws {
-        guard let onDevice = try await checkDeviceUpdates() else { return }
+    /// Each game's client into the device's Library/spgames (ClientBuild.copyClient), the one step Play,
+    /// Update Client, Setup, and Copy Game Files each run once the app is installed: the unchanged arm64 slice
+    /// of Blizzard's current build, which the launcher loads with spguest (apps/client/spguestlaunch.m), when
+    /// the device's (read first, checkDeviceUpdates: a device that can't be read gets nothing, as it may hold
+    /// a newer build) is missing or older (ClientBuild.clientCopy). The files step after it compares with
+    /// the builds this leaves on the device (onDevice), so it must run first. This is what a game patch comes
+    /// to: a ~50 MB copy, not a new app. Each slice is checked against the bundled shims first (BindCheck), so a patch this
+    /// version doesn't know never reaches the device: for `flavor` (Play's game; nil, every ticked game) it
+    /// stops the action with Report It…'s issue once the other games are copied, and another game's is
+    /// logged and left as it is. The patch drill (BindCheck.drillImport) withholds its symbol from that
+    /// check and checks `flavor`'s games even when they're up to date, so it fires without a patch. A client
+    /// running on the device maps the file it loaded, so it's stopped just before the first write to the
+    /// device, once a slice is downloaded and binds: a download that fails, or a patch this version can't
+    /// run, leaves a game being played alone. Borrows the install step's row as setUpHelper does. A copy that
+    /// fails otherwise is logged, and the next action copies it again.
+    private func copyGameClients(for flavor: Flavor?) async throws {
+        guard let clients = try await checkDeviceUpdates() else { return }
         let device = device, installed = steps.first { $0.id == .install }
         defer { if let installed, let i = steps.firstIndex(where: { $0.id == .install }) { steps[i] = installed } }
-        var stopped = false
-        for flavor in device.flavors {
-            guard let version = latest[flavor] else { continue }
-            let mac = ClientAssembly.Stamp.from(product: flavor.product, version: version), have = onDevice[flavor]?.stamp
-            guard ClientBuild.builtStamp(device, flavor) == mac else {
-                appendLog("[companion] \(flavor.name) \(version.versionsName)'s client is copied to the \(device.noun) once the client build has it")
-                continue
-            }
+        let exports: BindCheck.Manifest
+        do {
+            exports = try BindCheck.Manifest(Paths.platformResources(device).appending(path: "exports.json"))
+        } catch {
+            throw StepFailure(.install, error.localizedDescription)
+        }
+        let drill = BindCheck.drillImport
+        if let drill {
+            exports.withheld = [drill]
+            appendLog("[companion] patch drill: withholding \(drill) from the bundled shims")
+        }
+        var stopped = false, unsupported: BindCheck.Unsupported?
+        for game in device.flavors {
+            guard let version = latest[game] else { continue }
+            let mac = ClientAssembly.Stamp.from(product: game.product, version: version), have = clients[game]?.stamp
             var decision = ClientBuild.clientCopy(device: have, mac: mac)
             // A client of this build with no spsource is an older Slashplayed's own image (an MH_BUNDLE it made
             // and signed there, which never wrote one): the launcher retires it and would fetch the slice over
             // the network, so the Mac copies it now. A newer one stays: its game data is that build, which the
             // launcher fetches.
-            if decision == .upToDate, onDevice[flavor]?.source == nil {
-                decision = .copy
-            }
+            if decision == .upToDate, clients[game]?.source == nil { decision = .copy }
+            if decision == .upToDate, drill != nil, flavor.map({ $0 == game }) ?? true { decision = .copy }
             switch decision {
             case .upToDate: continue
             case .newerOnDevice:
-                appendLog("[companion] the \(device.noun) has \(flavor.name) \(have?.version ?? "")'s client, newer than \(version.versionsName): it's kept")
+                appendLog("[companion] the \(device.noun) has \(game.name) \(have?.version ?? "")'s client, newer than \(version.versionsName): it's kept")
                 continue
             case .copy: break
             }
-            set(.install, .active, title: "Copying \(flavor.name) to the \(device.noun)…")
+            set(.install, .active, title: "Copying \(game.name) to the \(device.noun)…")
             let start = Date()
             do {
-                let size = try await ClientBuild.copyClient(flavor, version: version, to: device, log: { [weak self] in
+                let size = try await ClientBuild.copyClient(game, version: version, to: device, against: exports, log: { [weak self] in
                     self?.appendLog("[companion] \($0)")
                 }, beforeWrite: {
                     guard !stopped else { return }
@@ -1063,15 +1047,23 @@ final class Pipeline {
                     self.appendLog("[companion] stopping the client running on the \(device.noun) (pid \(pid)) before copying over its file")
                     await device.kill(pid: pid)
                     try await Task.sleep(for: .seconds(2))
-                    self.set(.install, .active, title: "Copying \(flavor.name) to the \(device.noun)…")
+                    self.set(.install, .active, title: "Copying \(game.name) to the \(device.noun)…")
                 })
-                appendLog("[companion] copied \(flavor.name) \(version.versionsName)'s client to the \(device.noun)'s Library/spgames (\(Self.bytes(size)), \(String(format: "%.1f", Date().timeIntervalSince(start))) s)\(have.map { ", replacing \($0.version)" } ?? "")")
+                onDevice[game] = mac
+                appendLog("[companion] copied \(game.name) \(version.versionsName)'s client to the \(device.noun)'s Library/spgames (\(Self.bytes(size)), \(String(format: "%.1f", Date().timeIntervalSince(start))) s)\(have.map { ", replacing \($0.version)" } ?? "")")
             } catch let e as CancellationError {
                 throw e
+            } catch let e as BindCheck.Unsupported {
+                if flavor.map({ $0 == game }) ?? true {
+                    unsupported = unsupported ?? e
+                } else {
+                    appendLog("[companion] \(game.name) \(version.versionsName) isn't supported by this version of Slashplayed yet, so its client isn't copied; the \(device.noun) keeps \(have.map { "its \($0.version)" } ?? "none")")
+                }
             } catch {
-                appendLog("[companion] couldn't copy \(flavor.name)'s client to the \(device.noun): \(error.localizedDescription); it's copied at the next action")
+                appendLog("[companion] couldn't copy \(game.name)'s client to the \(device.noun): \(error.localizedDescription); it's copied at the next action")
             }
         }
+        if let unsupported { throw self.unsupported(unsupported, latest: latest) }
     }
 
     /// What the client's JIT helper needs on the device (apps/client/spjit.m), in the app's data
@@ -1146,20 +1138,21 @@ final class Pipeline {
             detail: asked ? "Comparing the \(device.noun)'s files with the Mac's." : "Getting the game's build files from Blizzard.")
         let plan: GameFiles.Plan
         do {
-            // The rows and configs of the builds the device's images are, for the games whose image is
-            // Blizzard's current build (the check's); any other game's row on the device is left as it is.
-            var builds: [GameFiles.Build] = [], images: [String: String] = [:]
-            // A game the device updated past its image keeps its own (aheadProducts).
+            // The rows and configs of the builds the device's clients are (onDevice), for the games whose
+            // client is Blizzard's current build (the check's, the one copyGameClients copies); any other
+            // game's row on the device is left as it is, so its client and its game data's build agree.
+            var builds: [GameFiles.Build] = [], clients: [String: String] = [:]
+            // A game whose client on the device is newer keeps its own (aheadProducts).
             for f in device.flavors {
-                guard let built = ClientBuild.builtStamp(device, f) else { continue }
-                images[f.product] = built.buildKey
-                if let version = latest[f], built == .from(product: f.product, version: version), !aheadProducts.contains(f.product) {
+                guard let client = onDevice[f] else { continue }
+                clients[f.product] = client.buildKey
+                if let version = latest[f], client == .from(product: f.product, version: version), !aheadProducts.contains(f.product) {
                     builds.append(try await GameFiles.build(f, version: version))
                 }
             }
             // Asked only when the device's last copy stopped and copying is off: finishing it needs the install.
             let finishFix = "The last copy of game files to the \(device.noun) stopped before it finished, and finishing it reads the install. Press Play again once the drive answers."
-            plan = try await GameFiles.plan(flavors, on: device, copy: asked, builds: builds, images: images, ahead: aheadProducts,
+            plan = try await GameFiles.plan(flavors, on: device, copy: asked, builds: builds, clients: clients, ahead: aheadProducts,
                                             macInstall: { try await self.readInstall(for: .files, fix: finishFix).hasBuildInfo })
         } catch let e as CancellationError {
             throw e
@@ -1484,8 +1477,8 @@ final class Pipeline {
         case .battleNet: "Battle.net didn't start the game"
         case .token: "No new login token"
         case .device: "\(device.name) not found"
-        case .build: "Couldn't rebuild the client"
-        case .install: "Couldn't install the client"
+        case .build: "Couldn't build the app"
+        case .install: "Couldn't install the app"
         case .files: "Couldn't update the game files"
         case .sendLogin: "Couldn't send the login files"
         case .start: "The client didn't start"
@@ -1547,9 +1540,9 @@ final class Pipeline {
         let the = "the \(device.noun)"
         return [Step(id: .battleNet, title: "Click Play in Battle.net"),
                 Step(id: .token, title: "Get a new login token"),
-                Step(id: .build, title: "Check the client build"),
+                Step(id: .build, title: "Check the app build"),
                 Step(id: .device, title: "Find \(the)"),
-                Step(id: .install, title: "Install the client on \(the)"),
+                Step(id: .install, title: "Install the app on \(the)"),
                 // Copying needs a game here (playSteps), whatever the device's setting.
                 Step(id: .files, title: device.copiesGameFiles && !Flavor.installed.isEmpty ? "Copy game files to \(the)" : "Send the game's build files to \(the)"),
                 Step(id: .sendLogin, title: "Send the login files to \(the)"),

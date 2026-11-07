@@ -2,24 +2,26 @@ import CryptoKit
 import Foundation
 
 /// The device app (Paths.clientApp: one build per platform), assembled by ClientAssembly as
-/// apps/client/build.sh does, and kept in step with Blizzard's current build of each game. Every game's
-/// client comes from Blizzard's CDN (BlizzardCDN: the arm64 slice of the build the patch service names),
-/// whether or not the Mac has the game installed, so the Mac's install is only ever what a device may copy
-/// its game data from. Each image is stamped with that build (ClientAssembly.Stamp), and a game whose stamp
-/// isn't the patch service's current build is rebuilt (check). The build checks every client's imports
-/// against the bundled shims first (BindCheck), so a patch this version doesn't know stops it on the Mac
-/// with BindCheck.Unsupported rather than crashing on the device. It's signed with the profile and identity
-/// Xcode makes for the user's team and the device (Signing). The build runs on the Mac alone; installing
-/// waits for the device. A finished build is marked build-complete and given a new build-id; what each
-/// device holds is this Mac's record of the build it installed there and the folder the install made
-/// (installNeed), since the iPad and the iPhone share one build, and a device's app may have been deleted
-/// or come from another Mac. A device's build holds the games ticked for it.
+/// apps/client/build.sh does, and each game's client beside it on the device. The app holds no game: it's
+/// rebuilt only when this companion's resources, the bundle ID, or the entitlements change, or its profile
+/// is about to run out (isComplete), so the iPad and the iPhone share one build whatever games they have.
+/// Every game's client comes from Blizzard's CDN (BlizzardCDN: the arm64 slice of the build the patch
+/// service names, check), whether or not the Mac has the game installed, so the Mac's install is only ever
+/// what a device may copy its game data from. The Mac copies the slice, unchanged, into the device's
+/// Library/spgames when the device's is missing or older (clientCopy, copyClient), after checking its
+/// imports against the bundled shims (BindCheck), so a patch this version doesn't know stops on the Mac
+/// with BindCheck.Unsupported rather than crashing on the device. The app is signed with the profile and
+/// identity Xcode makes for the user's team and the device (Signing); the client isn't signed at all. The
+/// build runs on the Mac alone; installing waits for the device. A finished build is marked build-complete
+/// and given a new build-id; what each device holds is this Mac's record of the build it installed there and
+/// the folder the install made (installNeed), since a device's app may have been deleted or come from
+/// another Mac.
 enum ClientBuild {
     private static func buildComplete(_ device: Device) -> URL { Paths.clientDir(device).appending(path: "build-complete") }
     private static func buildIDFile(_ device: Device) -> URL { Paths.clientDir(device).appending(path: "build-id") }
     /// What builds before the install record left beside a build not yet installed; deleted at the next build.
     private static func legacyNeedsInstall(_ device: Device) -> URL { Paths.clientDir(device).appending(path: "needs-install") }
-    /// In build-complete with the flavors: a digest of everything the build takes from this app's bundle
+    /// In build-complete: a digest of everything the build takes from this app's bundle
     /// (the platform's launcher, JIT helper, shims, and icon, the Info.plist and entitlements templates, and
     /// the addons). A companion with different ones, after an update or in development, rebuilds the device
     /// app instead of leaving the old launcher and shims on it. A build from before the digest has none.
@@ -46,15 +48,16 @@ enum ClientBuild {
     /// The bundle doesn't change while the app runs, so each platform's digest is made once.
     private static let resourceMarks = Locked<[String: String]>([:])
 
-    /// The device's last build finished, and holds exactly the games ticked for it (a game
-    /// ticked or unticked in Settings > Games means a rebuild), from this companion's bundled launcher, helper,
-    /// and shims (resourcesMark), under the current bundle ID (a new team or prefix does too), with the
-    /// same entitlements left out (a free team's), and a profile that isn't
-    /// about to run out (Signing.renewWithin: a free team's lasts 7 days), so Play renews it in time.
+    /// The device's last build finished, from this companion's bundled launcher, helper, and shims
+    /// (resourcesMark), under the current bundle ID (a new team or prefix means a rebuild), with the same
+    /// entitlements left out (a free team's), and a profile that isn't about to run out
+    /// (Signing.renewWithin: a free team's lasts 7 days), so Play renews it in time. The games ticked for the
+    /// device don't come into it: the app holds none. A build-complete from before that, which listed them,
+    /// isn't complete, so the first Play after the upgrade builds the app without its images.
     static func isComplete(_ device: Device) -> Bool {
         guard let text = try? String(contentsOf: buildComplete(device), encoding: .utf8) else { return false }
         let built = Set(text.split(whereSeparator: \.isWhitespace).map(String.init))
-        guard built == Set(device.flavors.map(\.rawValue) + [Signing.bundleID, resourcesMark(device)] + Signing.droppedEntitlements) else { return false }
+        guard built == Set([Signing.bundleID, resourcesMark(device)] + Signing.droppedEntitlements) else { return false }
         return profile(device).map { $0.expires.timeIntervalSinceNow > Signing.renewWithin } ?? false
     }
 
@@ -64,24 +67,17 @@ enum ClientBuild {
         (try? Data(contentsOf: Paths.clientApp(device).appending(path: "embedded.mobileprovision"))).flatMap(Signing.profileInfo)
     }
 
-    /// The profile the companion installed on the device beside the app's own, so the Slashplayed
-    /// certificate (B) is listed before the app's next build (Pipeline.profileListsCertificate).
-    static func certificateProfile(_ device: Device) -> URL {
-        Paths.clientDir(device).appending(path: "certificate-profile.mobileprovision")
-    }
-
     /// The build's ID, new at each build (nil before its first, or for a build from before the ID).
     static func buildID(_ device: Device) -> String? {
         (try? String(contentsOf: buildIDFile(device), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// What this Mac last installed on a device: the build (buildID), its games, the app's bundle URL on the
-    /// device right after (Device.AppState; empty if devicectl didn't list it then), and its bundle ID (empty
-    /// in a record from before it was kept). A team change makes a new bundle ID (Signing.bundleID), a new
-    /// app beside the old one, which the old app's record says nothing about.
+    /// What this Mac last installed on a device: the build (buildID), the app's bundle URL on the device
+    /// right after (Device.AppState; empty if devicectl didn't list it then), and its bundle ID (empty in a
+    /// record from before it was kept). A team change makes a new bundle ID (Signing.bundleID), a new app
+    /// beside the old one, which the old app's record says nothing about.
     struct Installed: Equatable {
         var build: String
-        var flavors: [String]
         var url: String
         var bundleID = ""
     }
@@ -90,13 +86,11 @@ enum ClientBuild {
 
     static func installed(_ device: Device, _ defaults: UserDefaults = .standard) -> Installed? {
         guard let d = defaults.dictionary(forKey: installedKey(device)), let build = d["build"] as? String else { return nil }
-        return Installed(build: build, flavors: d["flavors"] as? [String] ?? [], url: d["url"] as? String ?? "",
-                         bundleID: d["bundleID"] as? String ?? "")
+        return Installed(build: build, url: d["url"] as? String ?? "", bundleID: d["bundleID"] as? String ?? "")
     }
 
     static func setInstalled(_ record: Installed, for device: Device, _ defaults: UserDefaults = .standard) {
-        defaults.set(["build": record.build, "flavors": record.flavors, "url": record.url, "bundleID": record.bundleID],
-                     forKey: installedKey(device))
+        defaults.set(["build": record.build, "url": record.url, "bundleID": record.bundleID], forKey: installedKey(device))
     }
 
     /// Why the build is installed on a device (installNeed), or that it's there.
@@ -106,25 +100,21 @@ enum ClientBuild {
         case notOnDevice
         /// This Mac never installed a build there: the app (if any) is another Mac's, or an older companion's.
         case notFromThisMac
-        /// This Mac installed an earlier build (a patch, a renewed profile, a new companion), or the shared
-        /// build the iPad and the iPhone both get was rebuilt since, for the other one's games or a patch.
+        /// This Mac installed an earlier build (a renewed profile, a new companion, a new team), or the shared
+        /// build the iPad and the iPhone both get was rebuilt since, for the other one.
         case olderBuild
-        /// The games this Mac installed there aren't the ones ticked for it now (File > Games on). A rebuild
-        /// for them (isComplete) makes a new build too; this says why when the record is all there is.
-        case otherGames
         /// The app is in another folder than the install this Mac made: installed again since (another Mac,
         /// Xcode, or deleted and installed again).
         case replaced
     }
 
-    /// The decision, from the build's ID, the games ticked for the device, this Mac's record for it, the
-    /// app's bundle ID now (Signing.bundleID), and the app on it. A device that couldn't be asked counts as
-    /// holding what the record says. A record of another bundle ID (before a team change) is no record.
-    static func installNeed(build: String?, games: [Flavor], record: Installed?, bundleID: String = "",
-                            app: Device.AppState) -> InstallNeed {
+    /// The decision, from the build's ID, this Mac's record for the device, the app's bundle ID now
+    /// (Signing.bundleID), and the app on it. A device that couldn't be asked counts as holding what the
+    /// record says. A record of another bundle ID (before a team change) is no record. The games don't come
+    /// into it: a game ticked or unticked is a client copied or left alone, never a new app.
+    static func installNeed(build: String?, record: Installed?, bundleID: String = "", app: Device.AppState) -> InstallNeed {
         if app == .missing { return .notOnDevice }
         guard let record, record.bundleID.isEmpty || bundleID.isEmpty || record.bundleID == bundleID else { return .notFromThisMac }
-        if Set(record.flavors) != Set(games.map(\.rawValue)) { return .otherGames }
         guard let build, record.build == build else { return .olderBuild }
         if case .present(let url) = app, !record.url.isEmpty, url != record.url { return .replaced }
         return .upToDate
@@ -135,9 +125,9 @@ enum ClientBuild {
     /// reason given is true: rc19's free-team install, a new bundle ID, read "an earlier build than this
     /// one" for an app that wasn't there.
     static func installNeed(_ device: Device, askDevice: Bool = true) async -> InstallNeed {
-        let build = buildID(device), record = installed(device), games = device.flavors, bundleID = Signing.bundleID
+        let build = buildID(device), record = installed(device), bundleID = Signing.bundleID
         let app = askDevice ? await device.app(bundleID) : .unknown
-        return installNeed(build: build, games: games, record: record, bundleID: bundleID, app: app)
+        return installNeed(build: build, record: record, bundleID: bundleID, app: app)
     }
 
     /// Whether the build is the one this Mac last installed on the device (the record alone, no device call).
@@ -149,63 +139,32 @@ enum ClientBuild {
     /// Blizzard's patch service and CDN, for each game's client (downloads cached in Paths.cdn).
     static var cdn: BlizzardCDN { BlizzardCDN(cache: Paths.cdn) }
 
-    /// What `check` found: each game's current build on Blizzard's patch service, the games whose image
-    /// isn't that build (or that have none), and the games it couldn't check.
+    /// What `check` found: each game's current build on Blizzard's patch service, the build the Mac copies
+    /// (clientCopy), and the games it couldn't check.
     struct Check {
         var latest: [Flavor: BlizzardCDN.Version] = [:]
-        var stale: [Flavor] = []
-        /// Why the patch service couldn't be asked (offline, a timeout). Such a game counts as stale only
-        /// when it has no image: one that has can still be played.
+        /// Why the patch service couldn't be asked (offline, a timeout). Such a game's client isn't copied:
+        /// the device plays the one it has, or fetches its own.
         var unchecked: [Flavor: String] = [:]
     }
 
     /// Asks the patch service for the current build of each of the device's games (one request each,
-    /// about 80 ms) and compares it with the image's stamp.
+    /// about 80 ms).
     static func check(_ device: Device) async throws -> Check {
         var check = Check()
         for flavor in device.flavors {
-            let built = builtStamp(device, flavor)
             do {
-                let version = try await cdn.version(product: flavor.product, region: flavor.region)
-                check.latest[flavor] = version
-                if built != .from(product: flavor.product, version: version) { check.stale.append(flavor) }
+                check.latest[flavor] = try await cdn.version(product: flavor.product, region: flavor.region)
             } catch let e as CancellationError {
                 throw e
             } catch {
                 check.unchecked[flavor] = error.localizedDescription
-                if built == nil { check.stale.append(flavor) }
             }
         }
         return check
     }
 
-    /// The build the device's image of the game was made from (its spbuild-<flavor>); nil if the build has
-    /// no image of it, or one from before the stamp.
-    static func builtStamp(_ device: Device, _ flavor: Flavor) -> ClientAssembly.Stamp? {
-        let app = Paths.clientApp(device)
-        guard FileManager.default.fileExists(atPath: app.appending(path: "wow-\(flavor.rawValue)").path),
-              let text = try? String(contentsOf: app.appending(path: ClientAssembly.Stamp.fileName(flavor.rawValue)), encoding: .utf8),
-              let row = GameStore.BuildInfo(text)?.byProduct[flavor.product] else { return nil }
-        return try? .from(product: flavor.product, row: row)
-    }
-
-    // MARK: Updates the device made
-
-    /// An update the device made itself (Update on its patch screen: Library/spgames/wow-<flavor>, stamped
-    /// spgames/spbuild-<flavor>) against the image the companion installed. `ahead`: a later build than the
-    /// installed image (or there's none), so the launcher may load it: its game data's row and configs are the
-    /// device's, never taken back. `caughtUp`: the installed image is that build or a later one, so the
-    /// launcher deletes the update at its next start. One rule on both sides: apps/client/spcdn.m's
-    /// sp_update_caught_up.
-    enum DeviceUpdate: Equatable {
-        case ahead, caughtUp
-    }
-
-    static func deviceUpdate(image: ClientAssembly.Stamp?, update: ClientAssembly.Stamp) -> DeviceUpdate {
-        guard let image else { return .ahead }
-        return image.buildKey == update.buildKey || image.version == update.version
-            || GameStore.isVersion(image.version, newerThan: update.version) ? .caughtUp : .ahead
-    }
+    // MARK: The device's game clients
 
     /// A game's client in the device's Library/spgames: the stamp beside wow-<flavor>, and where it came
     /// from, spsource-<flavor>'s one word (`source`): `mac` (this Mac's copyClient), `updated` or `installed`
@@ -245,14 +204,13 @@ enum ClientBuild {
         return clients
     }
 
-    // MARK: The game clients the Mac copies
-
     /// What the Mac does about a game's client on the device (Library/spgames/wow-<flavor>), from the stamp
-    /// beside it (nil: none) and the build the Mac sends (`mac`): copy it when the device's is missing or
-    /// older. The device is the record, so this Mac keeps none of its own, and a newer build the device
-    /// fetched itself, or one whose version can't be told apart, is never replaced. The same build or
-    /// version is the same client, as sp_update_caught_up counts it: another region's build of a version
-    /// isn't copied over.
+    /// beside it (nil: none) and the build the Mac sends (`mac`, Blizzard's current one): copy it when the
+    /// device's is missing or older. The device is the record, so this Mac keeps none of its own, and a newer
+    /// build the device fetched itself, or one whose version can't be told apart, is never replaced
+    /// (`newerOnDevice`: its game data's row and configs stay the device's too, GameFiles.plan's `ahead`).
+    /// The same build or version is the same client, as the launcher's sp_update_caught_up counts it:
+    /// another region's build of a version isn't copied over.
     enum ClientCopy: Equatable {
         case copy, upToDate, newerOnDevice
     }
@@ -266,24 +224,54 @@ enum ClientBuild {
     /// Where a client in Library/spgames came from, one word: `mac` for copyClient's (DeviceClient.source).
     static func sourceFile(_ flavor: Flavor) -> String { "spsource-\(flavor.rawValue)" }
 
-    /// Copies `flavor`'s client of `version` into the device's Library/spgames, for the launcher that loads
-    /// the unchanged client with spguest (apps/client/spguest.c): the CDN's arm64 slice as wow-<flavor>, then its
-    /// .build.info row (spbuildinfo-<flavor>, as an update on the device keeps it), spsource-<flavor>
-    /// (`mac`), and the stamp last, so a stamp is only ever beside a whole client of its build. devicectl
-    /// can't delete, so the stamp is emptied first, whatever the listing said was there (one it couldn't
-    /// parse included): a copy cut short leaves no stamp naming the old build beside the new client.
-    /// `beforeWrite` runs once the slice is in hand, just before the first write (the caller stops a client
-    /// running on the device there), so a download that fails touches nothing on it. Returns the slice's size.
+    /// Copies `flavor`'s client of `version` (the CDN's arm64 slice, cached) into the device's
+    /// Library/spgames (`copyClient(_:stamp:...)`), with its .build.info row from the patch service. Returns
+    /// the slice's size.
     @discardableResult
-    static func copyClient(_ flavor: Flavor, version: BlizzardCDN.Version, to device: Device, log: (String) -> Void,
-                           beforeWrite: () async throws -> Void) async throws -> Int64 {
-        let (slice, stamp) = try await clientSlice(flavor, latest: [flavor: version], log: log)
+    static func copyClient(_ flavor: Flavor, version: BlizzardCDN.Version, to device: Device, against exports: BindCheck.Manifest,
+                           log: (String) -> Void, beforeWrite: () async throws -> Void) async throws -> Int64 {
+        let (slice, stamp) = try await clientSlice(flavor, version: version, log: log)
         let cdn = try await cdn.connected(product: flavor.product, region: flavor.region)
         guard let cdns = cdn.cdns else { throw Failure("Blizzard's patch service lists no CDN for \(flavor.name).") }
         let row = GameStore.buildInfoText([BlizzardCDN.buildInfoLine(product: flavor.product, version: version, cdns: cdns,
                                                                      tags: flavor.tags)])
-        let staging = FileManager.default.temporaryDirectory.appending(path: "spgames-copy-\(device.udid)-\(flavor.rawValue)")
-        try? FileManager.default.removeItem(at: staging)
+        try await copyClient(slice, stamp: stamp, row: row, flavor: flavor, against: exports, platform: device.platform,
+                             log: log, beforeWrite: beforeWrite) { try await device.copy($0, to: $1) }
+        return Int64((try? slice.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+    }
+
+    /// `flavor`'s client of `version` from Blizzard's CDN: its arm64 slice, cached in Paths.cdn, and the
+    /// stamp for it.
+    private static func clientSlice(_ flavor: Flavor, version: BlizzardCDN.Version,
+                                    log: (String) -> Void) async throws -> (URL, ClientAssembly.Stamp) {
+        let product = flavor.product, region = flavor.region
+        let start = Date()
+        let slice = try await cdn.connected(product: product, region: region)
+            .slice(product: product, region: region, buildConfig: version.buildConfig, cdnConfig: version.cdnConfig,
+                   executable: flavor.clientPath).slice
+        let size = (try? slice.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        log("\(flavor.rawValue) \(version.versionsName): the client's arm64 slice from Blizzard's CDN "
+            + "(\(size / 1_000_000) MB, \(String(format: "%.1f", Date().timeIntervalSince(start))) s, cached)")
+        return (slice, .from(product: product, version: version))
+    }
+
+    /// The copy of one game's client, for the launcher that loads the unchanged client with spguest
+    /// (apps/client/spguestlaunch.m), through `write` (Device.copy: a file to a path in the app's data
+    /// container). First the bind check (BindCheck.require: `slice` against the bundled shims' `exports`), so
+    /// a client with an import nothing provides stops here with BindCheck.Unsupported and nothing of it
+    /// reaches the device. Then the slice as wow-<flavor>, its .build.info `row` (spbuildinfo-<flavor>, as an
+    /// update on the device keeps it), spsource-<flavor> (`mac`), and `stamp` last, so a stamp is only ever
+    /// beside a whole client of its build. devicectl can't delete, so the stamp is emptied first, whatever
+    /// the device's listing showed (a stamp it couldn't parse included): a copy cut short leaves no stamp
+    /// naming the old build beside the new client. `beforeWrite` runs once the slice binds, just before the
+    /// first write (the caller stops a client running on the device there), so a check or a download that
+    /// fails touches nothing on the device.
+    static func copyClient(_ slice: URL, stamp: ClientAssembly.Stamp, row: String, flavor: Flavor,
+                           against exports: BindCheck.Manifest, platform: String, log: (String) -> Void,
+                           beforeWrite: () async throws -> Void, write: (URL, String) async throws -> Void) async throws {
+        try await BindCheck.require(slice, flavor: flavor.rawValue, against: exports, platform: platform, onLine: log)
+        try await beforeWrite()
+        let staging = FileManager.default.temporaryDirectory.appending(path: "spgames-copy-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: staging) }
         func staged(_ name: String, _ text: String) throws -> URL {
@@ -292,20 +280,18 @@ enum ClientBuild {
             return url
         }
         let dir = "Library/spgames/", stampPath = dir + ClientAssembly.Stamp.fileName(flavor.rawValue)
-        try await beforeWrite()
-        try await device.copy(try staged("empty", ""), to: stampPath)
-        try await device.copy(slice, to: dir + "wow-\(flavor.rawValue)")
-        try await device.copy(try staged("row", row), to: dir + "spbuildinfo-\(flavor.rawValue)")
-        try await device.copy(try staged("source", "mac\n"), to: dir + sourceFile(flavor))
-        try await device.copy(try staged("stamp", stamp.text), to: stampPath)
-        return Int64((try? slice.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        try await write(try staged("empty", ""), stampPath)
+        try await write(slice, dir + "wow-\(flavor.rawValue)")
+        try await write(try staged("row", row), dir + "spbuildinfo-\(flavor.rawValue)")
+        try await write(try staged("source", "mac\n"), dir + sourceFile(flavor))
+        try await write(try staged("stamp", stamp.text), stampPath)
     }
 
-    /// UserDefaults key of the device's updates that are ahead of its installed image, as the last action
-    /// found them (flavor -> version), for the main window.
+    /// UserDefaults key of the device's clients newer than Blizzard's current build (ClientCopy.newerOnDevice),
+    /// as the last action found them (flavor -> version), for the main window.
     static func aheadKey(_ device: Device) -> String { "updatedOnDevice.\(device.udid)" }
 
-    /// The device's games an update on it put ahead of the companion's image, by version, as last seen.
+    /// The device's games whose client is newer than the one this Mac sends, by version, as last seen.
     static func aheadOnDevice(_ device: Device, _ defaults: UserDefaults = .standard) -> [Flavor: String] {
         let stored = defaults.dictionary(forKey: aheadKey(device)) as? [String: String] ?? [:]
         return stored.reduce(into: [:]) { out, e in if let f = Flavor(rawValue: e.key) { out[f] = e.value } }
@@ -322,12 +308,10 @@ enum ClientBuild {
         GameInstall.known?.games[flavor.rawValue]?.build
     }
 
-    /// Builds the device's games (ClientAssembly) from their builds in `latest` (check's; a game not in it
-    /// is asked for again) and signs the app, without installing. The log goes to
-    /// ~/Library/Logs/Slashplayed/build.txt too. `beforeSigning` runs once the images are assembled, before
+    /// Builds the device app (ClientAssembly) and signs it, without installing. The log goes to
+    /// ~/Library/Logs/Slashplayed/build.txt too. `beforeSigning` runs once the app is assembled, before
     /// Xcode provisions for the device, which has to be unlocked then (Pipeline.waitForUnlock).
-    static func build(_ device: Device, latest: [Flavor: BlizzardCDN.Version],
-                      beforeSigning: () async throws -> Void = {},
+    static func build(_ device: Device, beforeSigning: () async throws -> Void = {},
                       onLine: @escaping (String) -> Void) async throws {
         let logFile = LogFile(Paths.logs.appending(path: "build.txt"), t0: Date())
         let log = { (line: String) in
@@ -335,63 +319,14 @@ enum ClientBuild {
             DispatchQueue.main.async { onLine(line) }
         }
         do {
-            try await assembleAndSign(device, latest: latest, beforeSigning: beforeSigning, log: log)
+            try await assembleAndSign(device, beforeSigning: beforeSigning, log: log)
         } catch {
             log("failed: \(error.localizedDescription)")
             throw error
         }
     }
 
-    /// `flavor`'s client from Blizzard's CDN: the arm64 slice of the build `latest` names (or the patch
-    /// service's current one), cached in Paths.cdn, and the stamp for it.
-    private static func clientSlice(_ flavor: Flavor, latest: [Flavor: BlizzardCDN.Version],
-                                    log: (String) -> Void) async throws -> (URL, ClientAssembly.Stamp) {
-        let product = flavor.product, region = flavor.region
-        let version: BlizzardCDN.Version
-        if let known = latest[flavor] { version = known } else { version = try await cdn.version(product: product, region: region) }
-        let start = Date()
-        let slice = try await cdn.connected(product: product, region: region)
-            .slice(product: product, region: region, buildConfig: version.buildConfig, cdnConfig: version.cdnConfig,
-                   executable: flavor.clientPath).slice
-        let size = (try? slice.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        log("\(flavor.rawValue) \(version.versionsName): the client's arm64 slice from Blizzard's CDN "
-            + "(\(size / 1_000_000) MB, \(String(format: "%.1f", Date().timeIntervalSince(start))) s, cached)")
-        return (slice, .from(product: product, version: version))
-    }
-
-    /// What Play or Update Client does about the device's build: build it when a game it wants is out of
-    /// date or the last build didn't finish; otherwise, with the patch drill set (BindCheck.drillImport, a
-    /// pre-release only), check the clients alone (`drill`), so the drill fires on an up-to-date build too
-    /// without waiting for a patch or throwing away a good build.
-    enum BuildAction: Equatable {
-        case upToDate, build
-        /// The drill's withheld symbol.
-        case drill(String)
-    }
-
-    static func buildAction(wanted: Bool, complete: Bool, drill: String?) -> BuildAction {
-        if wanted || !complete { return .build }
-        return drill.map { .drill($0) } ?? .upToDate
-    }
-
-    /// The patch drill on an up-to-date build: the bind check the build makes, of `flavors`' clients (the
-    /// cached CDN slices the build was made from) against the bundled shims with `withheld` withheld. Throws
-    /// BindCheck.Unsupported as the build would; the build itself isn't touched.
-    static func drill(_ device: Device, flavors: [Flavor], latest: [Flavor: BlizzardCDN.Version], withheld: String,
-                      onLine: (String) -> Void) async throws {
-        let exports = try BindCheck.Manifest(Paths.platformResources(device).appending(path: "exports.json"))
-        exports.withheld = [withheld]
-        onLine("patch drill: withholding \(withheld) from the bundled shims (the build is up to date, so only its bind check runs)")
-        for flavor in flavors {
-            let (slice, _) = try await clientSlice(flavor, latest: latest, log: onLine)
-            // The CDN's slice is the thinned image the build's check sees (ClientAssembly.prepareClient).
-            try await BindCheck.require(slice, flavor: flavor.rawValue, against: exports, platform: device.platform,
-                                        onLine: onLine)
-        }
-    }
-
-    private static func assembleAndSign(_ device: Device, latest: [Flavor: BlizzardCDN.Version],
-                                        beforeSigning: () async throws -> Void,
+    private static func assembleAndSign(_ device: Device, beforeSigning: () async throws -> Void,
                                         log: @escaping (String) -> Void) async throws {
         guard let platform = ClientAssembly.Platform.named(device.platform) else {
             throw Failure("No build settings for the \(device.platform) platform.")
@@ -410,21 +345,15 @@ enum ClientBuild {
         try? FileManager.default.removeItem(at: buildComplete(device))
         try? FileManager.default.removeItem(at: buildIDFile(device))
         try? FileManager.default.removeItem(at: legacyNeedsInstall(device))
-        let flavors = device.flavors
         let entitlements = dir.appending(path: "entitlements.plist")
         let helperEntitlements = dir.appending(path: "helper-entitlements.plist")
         let dropped = Signing.dropped(for: team)
-        var clients: [(flavor: String, executable: URL, stamp: ClientAssembly.Stamp)] = []
-        for flavor in flavors {
-            let (slice, stamp) = try await clientSlice(flavor, latest: latest, log: log)
-            clients.append((flavor.rawValue, slice, stamp))
-        }
-        try await ClientAssembly.assemble(app: app, clients: clients,
-                                          platform: platform, platformResources: Paths.platformResources(device),
+        log("assembling the app for \(platform.name)")
+        try await ClientAssembly.assemble(app: app, platform: platform, platformResources: Paths.platformResources(device),
                                           templates: Paths.resource("client"), addons: Paths.resource("addons"),
                                           team: team.id, bundleID: bundleID,
                                           entitlements: entitlements, helperEntitlements: helperEntitlements,
-                                          droppedEntitlements: dropped, onLine: log)
+                                          droppedEntitlements: dropped)
         try await beforeSigning()
         let identity = try await Signing.provision(team: team, bundleID: bundleID, udid: device.udid,
                                                    stub: Paths.resource("signing"), work: dir.appending(path: "signing"),
@@ -438,15 +367,14 @@ enum ClientBuild {
         let helper = app.appending(path: "PlugIns/\(ClientAssembly.helperName).appex")
         try FileManager.default.copyItem(at: identity.profile, to: app.appending(path: "embedded.mobileprovision"))
         try FileManager.default.copyItem(at: helperIdentity.profile, to: helper.appending(path: "embedded.mobileprovision"))
-        let images = try FileManager.default.contentsOfDirectory(atPath: app.appending(path: "Frameworks").path)
+        let shims = try FileManager.default.contentsOfDirectory(atPath: app.appending(path: "Frameworks").path)
             .filter { $0.hasSuffix(".dylib") }.sorted().map { app.appending(path: "Frameworks/\($0)").path }
-            + flavors.map { app.appending(path: "wow-\($0.rawValue)").path }
         log("signing")
-        try await Shell.run("/usr/bin/codesign", ["-f", "-s", identity.hash] + images)
+        try await Shell.run("/usr/bin/codesign", ["-f", "-s", identity.hash] + shims)
         // Inside out: the helper is sealed into the app's signature, so it's signed before the app.
         try await Shell.run("/usr/bin/codesign", ["-f", "-s", helperIdentity.hash, "--entitlements", helperEntitlements.path, helper.path])
         try await Shell.run("/usr/bin/codesign", ["-f", "-s", identity.hash, "--entitlements", entitlements.path, app.path])
-        try (flavors.map(\.rawValue) + [bundleID, resourcesMark(device)] + dropped).joined(separator: " ").write(to: buildComplete(device), atomically: true, encoding: .utf8)
+        try ([bundleID, resourcesMark(device)] + dropped).joined(separator: " ").write(to: buildComplete(device), atomically: true, encoding: .utf8)
         try UUID().uuidString.write(to: buildIDFile(device), atomically: true, encoding: .utf8)
         if let p = profile(device) {
             log("profile \(p.uuid) expires \(p.expires.formatted(date: .abbreviated, time: .shortened))")
@@ -471,7 +399,7 @@ enum ClientBuild {
         guard let build = buildID(device) else { return }
         let bundleID = Signing.bundleID
         let url: String = if case .present(let url) = await device.app(bundleID) { url } else { "" }
-        setInstalled(Installed(build: build, flavors: device.flavors.map(\.rawValue), url: url, bundleID: bundleID), for: device)
+        setInstalled(Installed(build: build, url: url, bundleID: bundleID), for: device)
     }
 
 }

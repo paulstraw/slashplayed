@@ -138,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("-play") { Pipeline.shared.play() }
         // -sync: copy game files at startup (for testing without a Battle.net login).
         if CommandLine.arguments.contains("-sync") { Pipeline.shared.copyGameFiles() }
-        // -update: rebuild and install the client if a patch changed it.
+        // -update: copy each game's newer client, and rebuild and install the app if it needs it.
         if CommandLine.arguments.contains("-update") { Pipeline.shared.updateClient() }
         // -pair: Pair Again (the iPad's or iPhone's RemotePairing record made over USB and sent; the headset's cleared).
         if CommandLine.arguments.contains("-pair") { Pipeline.shared.pairDevice() }
@@ -344,7 +344,7 @@ struct GamesFooter: View {
                               : "As the \(device.noun)'s Settings counts it: now, for an iPad or iPhone the Mac can reach; else when Slashplayed last started")
                 }
             }
-            // Games the device updated itself past the build Slashplayed installed (Pipeline.checkDeviceUpdates).
+            // Games the device updated itself past Blizzard's build as this Mac last asked (Pipeline.checkDeviceUpdates).
             ForEach(pipeline.updatedOnDevice.sorted { $0.key.rawValue < $1.key.rawValue }, id: \.key) { flavor, version in
                 Text("\(flavor.name) \(version), updated on the \(device.noun)")
                     .help("The \(device.noun) updated itself to this version. Play keeps it there until this Mac has a newer one.")

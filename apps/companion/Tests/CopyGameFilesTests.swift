@@ -3,7 +3,7 @@ import XCTest
 /// What the sync decides before it copies anything (GameFiles.plan): the device's .build.info against
 /// the Mac's (GameStore.deviceBuildInfo), the device's own indexes against the Mac's (GameStore.outranking),
 /// whether a device copies at all (Device.copiesGameFiles), and what an update the device made itself
-/// (Library/spgames) means for both (ClientBuild.deviceUpdate). Made-up builds and keys, no Blizzard file.
+/// (Library/spgames) means for both (ClientBuild.clientCopy). Made-up builds and keys, no Blizzard file.
 final class CopyGameFilesTests: XCTestCase {
     private let header = "Branch!STRING:0|Active!DEC:1|Build Key!HEX:16|Version!STRING:0|Product!STRING:0"
 
@@ -211,29 +211,9 @@ final class CopyGameFilesTests: XCTestCase {
         ClientAssembly.Stamp(product: "wow_classic_era", branch: "us", buildKey: key, version: version)
     }
 
-    /// An update the device made is retired once the installed image is its build or a later one, and is
-    /// ahead otherwise (or with no image); the launcher's rule (sp_update_caught_up) says the same.
-    func testDeviceUpdateAheadOrCaughtUp() {
-        let update = stamp("bbbb", "1.15.9.70003")
-        let cases: [(ClientAssembly.Stamp?, ClientBuild.DeviceUpdate)] = [
-            (stamp("aaaa", "1.15.9.69722"), .ahead),        // the image is older: 7.6's state
-            (stamp("bbbb", "1.15.9.70003"), .caughtUp),     // the companion installed the same build
-            (stamp("cccc", "1.15.9.70003"), .caughtUp),     // the same version, another key
-            (stamp("bbbb", "x"), .caughtUp),                // the same key
-            (stamp("dddd", "1.15.10.71000"), .caughtUp),    // the image passed it
-            (stamp("eeee", "1.15.x"), .ahead),              // can't be told apart: kept
-            (nil, .ahead),                                  // no image of the game
-        ]
-        for (image, expected) in cases {
-            XCTAssertEqual(ClientBuild.deviceUpdate(image: image, update: update), expected, "\(String(describing: image))")
-            let row = { (s: ClientAssembly.Stamp) in ["Product": s.product, "Branch": s.branch, "Build Key": s.buildKey, "Version": s.version] }
-            XCTAssertEqual(sp_update_caught_up(image.map(row), row(update)), expected == .caughtUp, "\(String(describing: image))")
-        }
-        XCTAssertFalse(sp_update_caught_up(["Version": "1.15.9.70003"], ["Build Key": "bbbb", "Version": "1.15.9.70003"]))
-    }
-
     /// The Mac copies a game's client when the device's stamp is missing or older than the build it sends,
-    /// and never over the same build or a newer one the device fetched itself.
+    /// and never over the same build or a newer one the device fetched itself. The launcher's rule
+    /// (sp_update_caught_up, which retires a client the game data has caught up with) agrees on which is newer.
     func testCopiesTheClientOnlyOverAnOlderOrMissingOne() {
         let mac = stamp("bbbb", "1.15.9.70003")
         let cases: [(ClientAssembly.Stamp?, ClientBuild.ClientCopy)] = [
@@ -245,12 +225,17 @@ final class CopyGameFilesTests: XCTestCase {
             (stamp("eeee", "1.15.x"), .newerOnDevice),         // can't be told apart: kept
             (nil, .copy),                                      // missing
         ]
+        let row = { (s: ClientAssembly.Stamp) in ["Product": s.product, "Branch": s.branch, "Build Key": s.buildKey, "Version": s.version] }
         for (device, expected) in cases {
             XCTAssertEqual(ClientBuild.clientCopy(device: device, mac: mac), expected, "\(String(describing: device))")
+            if let device {
+                XCTAssertEqual(sp_update_caught_up(row(mac), row(device)), expected != .newerOnDevice, "\(device)")
+            }
         }
+        XCTAssertFalse(sp_update_caught_up(["Version": "1.15.9.70003"], ["Build Key": "bbbb", "Version": "1.15.9.70003"]))
     }
 
-    /// A game the device updated past its image keeps the device's store whole, ahead of the other reasons.
+    /// A game whose client on the device is newer keeps the device's store whole, ahead of the other reasons.
     func testAnUpdateAheadKeepsTheStore() {
         XCTAssertEqual(GameFiles.storeKept(copy: true, newer: ["wow_classic_era"], differs: ["wow"], outranking: 3),
                        .newerOnDevice(["wow_classic_era"]))

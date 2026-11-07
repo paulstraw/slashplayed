@@ -78,18 +78,7 @@ final class BindCheckTests: XCTestCase {
         }
     }
 
-    /// The drill fires on an up-to-date build (rc6: it waited for a rebuild nothing in the UI could force),
-    /// without rebuilding it; a build that's needed anyway is built, and the drill applies there.
-    func testTheDrillRunsOnAnUpToDateBuild() {
-        XCTAssertEqual(ClientBuild.buildAction(wanted: false, complete: true, drill: "_NSApp"), .drill("_NSApp"))
-        XCTAssertEqual(ClientBuild.buildAction(wanted: false, complete: true, drill: nil), .upToDate)
-        for drill in ["_NSApp", nil] {
-            XCTAssertEqual(ClientBuild.buildAction(wanted: true, complete: true, drill: drill), .build)
-            XCTAssertEqual(ClientBuild.buildAction(wanted: false, complete: false, drill: drill), .build)
-        }
-    }
-
-    /// require, the check the build and the drill both stop on: Unsupported with the withheld import, its
+    /// require, the check the copy step stops on (a game patch, or the drill): Unsupported with the withheld import, its
     /// count logged and each unresolved import listed; nothing thrown for a client that binds.
     func testRequireThrowsUnsupportedForAWithheldImport() async throws {
         let manifest = try BindCheck.Manifest(Self.manifest)
@@ -120,32 +109,32 @@ final class BindCheckTests: XCTestCase {
         XCTAssertTrue(result.unresolved.allSatisfy { $0.library == "AppKit" }, "\(result.unresolved)")
     }
 
-    /// The whole path the companion takes: assembling the patched fixture stops with
-    /// BindCheck.Unsupported (not a crash, nothing rewritten), and that becomes the message and the
-    /// pre-filled issue.
-    func testAssembleStopsOnAnUnknownImport() async throws {
-        let repo = ClientAssemblyTests.repo
-        let base = Self.scratch.appending(path: "assemble-\(UUID().uuidString)")
-        let res = base.appending(path: "xros")
-        try FileManager.default.createDirectory(at: res, withIntermediateDirectories: true)
-        try FileManager.default.copyItem(at: repo.appending(path: "shims/generated/rewrite-map.txt"), to: res.appending(path: "rewrite-map.txt"))
-        try FileManager.default.copyItem(at: Self.manifest, to: res.appending(path: "exports.json"))
-        var lines: [String] = []
+    /// The whole path the companion takes for a game patch: the copy step's check of the patched client
+    /// stops with BindCheck.Unsupported before anything of it reaches the device, and that becomes the message
+    /// and the pre-filled issue, without the caller's beforeWrite (which stops a client running on the
+    /// device). A client that binds is written in the order the launcher relies on, after beforeWrite: the old
+    /// stamp emptied first, then the client, its row, its spsource, and the stamp last.
+    func testTheCopyStopsOnAnUnknownImport() async throws {
+        let manifest = try BindCheck.Manifest(Self.manifest)
+        let stamp = ClientAssemblyTests.stamp, row = "Branch!STRING:0|Version!STRING:0\nus|1.2.3.45678\n"
+        var written: [(path: String, bytes: Data)] = [], lines: [String] = []
+        var beforeWrites: [Int] = []  // how much was written each time beforeWrite ran
+        func copy(_ client: URL) async throws {
+            try await ClientBuild.copyClient(client, stamp: stamp, row: row, flavor: .classicEra, against: manifest, platform: "xros",
+                                             log: { lines.append($0) }, beforeWrite: { beforeWrites.append(written.count) }) { file, path in
+                written.append((path, try Data(contentsOf: file)))
+            }
+        }
         do {
-            try await ClientAssembly.assemble(app: base.appending(path: "Slashplayed.app"), clients: [("classic_era", Self.patched, ClientAssemblyTests.stamp)],
-                                              platform: .xros, platformResources: res, templates: repo.appending(path: "apps/client"), addons: repo.appending(path: "addon"),
-                                              team: "ABCDE12345", bundleID: "ABCDE12345.slashplayed",
-                                              entitlements: base.appending(path: "e.plist"),
-                                              helperEntitlements: base.appending(path: "h.plist")) { lines.append($0) }
-            XCTFail("assembled a client with an unknown import")
+            try await copy(thin(Self.patched))
+            XCTFail("copied a client with an unknown import")
         } catch let e as BindCheck.Unsupported {
+            XCTAssertEqual(written.map(\.path), [], "nothing reaches the device")
+            XCTAssertEqual(beforeWrites, [], "a client running on the device isn't stopped")
             XCTAssertEqual(e.flavor, "classic_era")
             XCTAssertEqual(e.platform, "xros")
             XCTAssertEqual(e.unresolved, [Self.extraImport])
             XCTAssertTrue(lines.contains("UNRESOLVED AppKit _NSApplicationLoad"), "\(lines)")
-            // Stopped before the rewrite: the image still loads the Mac's AppKit.
-            let image = base.appending(path: "Slashplayed.app/wow-classic_era")
-            XCTAssertTrue(try MachO.loadedDylibs(Data(contentsOf: image)).contains("/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit"))
 
             let message = BindCheck.message(flavorName: "Classic Era", build: "1.15.9.70003", unsupported: e)
             XCTAssertEqual(message, """
@@ -162,6 +151,16 @@ final class BindCheckTests: XCTestCase {
                                    "flavor": "Classic Era", "game-build": "1.15.9.70003", "platform": "xros",
                                    "companion-version": "0.1.0", "imports": "AppKit _NSApplicationLoad\n"])
         }
+
+        let client = try thin(Self.fixture)
+        try await copy(client)
+        let dir = "Library/spgames/"
+        XCTAssertEqual(beforeWrites, [0], "beforeWrite runs once, before anything is written")
+        XCTAssertEqual(written.map(\.path), [dir + "spbuild-classic_era", dir + "wow-classic_era", dir + "spbuildinfo-classic_era",
+                                             dir + "spsource-classic_era", dir + "spbuild-classic_era"])
+        XCTAssertEqual(written.map { String(decoding: $0.bytes, as: UTF8.self) }.suffix(3), [row, "mac\n", stamp.text])
+        XCTAssertEqual(written[1].bytes, try Data(contentsOf: client), "the client, unchanged")
+        XCTAssertEqual(written[0].bytes, Data(), "the old stamp, emptied")
     }
 
     func testIssueURLStaysShortWithManyImports() {

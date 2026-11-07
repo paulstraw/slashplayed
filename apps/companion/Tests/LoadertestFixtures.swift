@@ -15,10 +15,14 @@ enum Loadertest {
     /// Like a client, with nothing extra.
     static var client: URL { get throws { try fixture(named: "sploader-macos") } }
 
-    /// Every framework the rewrite map knows, linked into every fixture.
+    /// Every framework the rewrite map knows (its "<Mac install name> -> <device install name>" lines),
+    /// linked into every fixture.
     static var frameworks: [String] {
         get throws {
-            try ClientAssemblyTests.rewriteMap.compactMap { $0.from.firstMatch(of: #/Frameworks/(\w+)\.framework/#).map { String($0.1) } }
+            try String(contentsOf: ClientAssemblyTests.repo.appending(path: "shims/generated/rewrite-map.txt"), encoding: .utf8)
+                .split(separator: "\n").compactMap { line in
+                    line.split(separator: " -> ").first?.firstMatch(of: #/Frameworks/(\w+)\.framework/#).map { String($0.1) }
+                }
         }
     }
 

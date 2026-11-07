@@ -187,8 +187,8 @@ enum GameStore {
         return false
     }
 
-    /// The .build.info the companion writes to a device: `mac` (the rows of the builds in its client
-    /// images, BlizzardCDN.buildInfoLine), except that a product whose build on the device is newer
+    /// The .build.info the companion writes to a device: `mac` (the rows of the builds in its clients,
+    /// BlizzardCDN.buildInfoLine), except that a product whose build on the device is newer
     /// (`newer`; an on-device update put it there) keeps the device's row, and a product only the device
     /// has keeps its row too. With neither, `mac` unchanged. A device row is laid out by `mac`'s columns,
     /// by name.

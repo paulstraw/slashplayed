@@ -171,7 +171,7 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(SetupStatus.firstInstall([("iPad", .olderBuild), ("iPhone", .upToDate)]), .ok("Slashplayed is on iPhone."))
         XCTAssertEqual(SetupStatus.firstInstall([("Vision Pro", .upToDate), ("iPad", .upToDate), ("iPhone", .upToDate)]),
                        .ok("Slashplayed is on Vision Pro, iPad, and iPhone."))
-        XCTAssertEqual(SetupStatus.firstInstall([("Vision Pro", .otherGames), ("iPad", .notOnDevice), ("iPhone", .replaced)]),
+        XCTAssertEqual(SetupStatus.firstInstall([("Vision Pro", .olderBuild), ("iPad", .notOnDevice), ("iPhone", .replaced)]),
                        .problem("Slashplayed on Vision Pro and iPhone needs an update", "Press Update for the device you'll play on."))
     }
 
@@ -190,9 +190,8 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(button(.notFromThisMac), "Install")
         XCTAssertEqual(state(.olderBuild), "Installed, needs an update")
         XCTAssertEqual(state(.olderBuild, "Put on the headset first."), "Installed, needs an update. Put on the headset first.")
-        XCTAssertEqual(state(.otherGames), "Installed, needs an update for the games you chose")
         XCTAssertEqual(state(.replaced), "Installed from another Mac or Xcode, needs an update")
-        for need in [ClientBuild.InstallNeed.olderBuild, .otherGames, .replaced] {
+        for need in [ClientBuild.InstallNeed.olderBuild, .replaced] {
             XCTAssertEqual(button(need), "Update", "\(need)")
         }
         XCTAssertEqual(SetupStatus.logName(.olderBuild), "an earlier build")

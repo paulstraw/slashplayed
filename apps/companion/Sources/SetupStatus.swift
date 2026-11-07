@@ -42,7 +42,7 @@ enum SetupStatus: Equatable {
             ? ("Press Play to install Slashplayed on the \(noun)",
                "Slashplayed isn't on the \(noun): it was deleted there, or never installed. Play builds it, installs it, and starts the game.")
             : ("Open Slashplayed on the \(noun) to play",
-               "Or press Play here: it updates the app on the \(noun) first, after a patch or a change of games, and then starts the game.")
+               "Or press Play here: it brings the app and the game on the \(noun) up to date first, and then starts the game.")
     }
 
     /// The install step's line for a device (ClientBuild.installNeed with the device asked) and its button
@@ -57,7 +57,6 @@ enum SetupStatus: Equatable {
         case .notOnDevice: (text, button) = ("Not installed", "Install")
         case .notFromThisMac: (text, button) = ("Not installed from this Mac", "Install")
         case .olderBuild: (text, button) = ("Installed, needs an update", "Update")
-        case .otherGames: (text, button) = ("Installed, needs an update for the games you chose", "Update")
         case .replaced: (text, button) = ("Installed from another Mac or Xcode, needs an update", "Update")
         }
         return (wake.map { "\(text). \($0)" } ?? text, button)
@@ -70,7 +69,6 @@ enum SetupStatus: Equatable {
         case .notOnDevice: "not on the device"
         case .notFromThisMac: "not installed from this Mac"
         case .olderBuild: "an earlier build"
-        case .otherGames: "other games"
         case .replaced: "installed again elsewhere"
         }
     }

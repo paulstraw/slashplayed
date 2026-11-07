@@ -137,19 +137,19 @@ enum GameFiles {
     }
 
     enum StoreKept: Equatable {
-        /// The device has a newer build of these products (.build.info's Product) than its client images.
+        /// The device has a newer build of these products (.build.info's Product) than its clients.
         case newerOnDevice([String])
-        /// The Mac's install of these products is another build than the device's images (Battle.net
-        /// hasn't updated it to Blizzard's current one yet), so its data isn't the images' build.
+        /// The Mac's install of these products is another build than the device's clients (Battle.net
+        /// hasn't updated it to Blizzard's current one yet), so its data isn't the clients' build.
         case macDiffers([String])
-        /// Battle.net updated these products on this Mac to the images' build, but they haven't run here
+        /// Battle.net updated these products on this Mac to the clients' build, but they haven't run here
         /// since, so their data in the shared store may not be finished (Unplayed).
         case macUnplayed([String])
         /// The device's client wrote this many index files that outrank the Mac's (GameStore.outranking).
         case deviceWrote(Int)
     }
 
-    /// A game's build as the companion writes it to a device: the build of its client image, as its
+    /// A game's build as the companion writes it to a device: the build of its client, as its
     /// .build.info line (BlizzardCDN.buildInfoLine) and the configs that line names (build, CDN, and
     /// Retail's KeyRing; key -> bytes, from Blizzard's CDN).
     struct Build {
@@ -159,7 +159,7 @@ enum GameFiles {
         var configs: [String: Data]
     }
 
-    /// The flavor's `version` (its image's build) from Blizzard: the cdns row for its line, and the configs.
+    /// The flavor's `version` (its client's build) from Blizzard: the cdns row for its line, and the configs.
     static func build(_ flavor: Flavor, version: BlizzardCDN.Version) async throws -> Build {
         let cdn = try await ClientBuild.cdn.connected(product: flavor.product, region: flavor.region)
         guard let cdns = cdn.cdns else { throw Failure("Blizzard's patch service lists no CDN for \(flavor.name).") }
@@ -173,24 +173,24 @@ enum GameFiles {
     }
 
     /// What brings the device up to date for `flavors`, and the old index files to delete. `builds` are the
-    /// builds of the device's client images (Build): their .build.info rows and configs are sent whether or
-    /// not the store is copied, so the device's game data always names the build of its images; an empty
+    /// builds of the device's clients (Build): their .build.info rows and configs are sent whether or
+    /// not the store is copied, so the device's game data always names the build of its clients; an empty
     /// list leaves .build.info as it is. With `copy`, the Mac's game files too: its configs and CDN indexes,
     /// and the store (the archives and their indexes) as one, all or nothing, archives first and .build.info
-    /// last. The store goes only when every chosen game the Mac has is the build of its image
-    /// (`images`: product -> Build Key) and has run on the Mac since Battle.net put that build there
+    /// last. The store goes only when every chosen game the Mac has is the build of its client
+    /// (`clients`: product -> Build Key) and has run on the Mac since Battle.net put that build there
     /// (Unplayed); otherwise the device's client fetches what its build needs itself.
     /// Without `copy`, only what the client needs to start and stream the rest: .build.info, the configs,
     /// and each flavor's folder. Either way the device's .build.info is read first, and a product whose
-    /// build on the device is newer than its image's keeps its row (GameStore.deviceBuildInfo), as does one
-    /// in `ahead`, whose image an update on the device made is a later build (ClientBuild.deviceUpdate; the
-    /// caller leaves its build out of `builds`): nothing of an older build goes to either. A copy of the
+    /// build on the device is newer than its client's keeps its row (GameStore.deviceBuildInfo), as does one
+    /// in `ahead`, whose client on the device is a later build than Blizzard's current one (ClientBuild.clientCopy's
+    /// newerOnDevice; the caller leaves its build out of `builds`): nothing of an older build goes to either. A copy of the
     /// store the device's copy marker says stopped is finished as if `copy` were true (Plan.finishing),
     /// when there's a game install on the Mac and nothing keeps the store (Plan.unfinished otherwise).
     /// `macInstall` says whether there's one (Pipeline: a time-limited read, GameInstall), asked only then
     /// (readsInstall): without `copy` and an unfinished copy, nothing here touches the Mac's install.
     static func plan(_ flavors: [Flavor], on device: Device, copy asked: Bool, builds: [Build],
-                     images: [String: String], ahead: [String] = [],
+                     clients: [String: String], ahead: [String] = [],
                      macInstall: () async throws -> Bool) async throws -> Plan {
         let onDevice = try await device.files(in: "Documents", recursive: true)
             .reduce(into: [:]) { $0["Documents/" + $1.key] = $1.value }
@@ -233,7 +233,7 @@ enum GameFiles {
         let outranking = unfinished ? []
             : GameStore.outranking(device: written, mac: macData.map(\.relative).filter { $0.hasSuffix(".idx") })
         let macRows = mac?.table.byProduct ?? [:]
-        let differs = device.installedFlavors.map(\.product).filter { p in macRows[p]?["Build Key"] != images[p] }
+        let differs = device.installedFlavors.map(\.product).filter { p in macRows[p]?["Build Key"] != clients[p] }
         let unplayed = !copy ? [] : unplayedSincePatch(root: Flavor.installRoot, rows: macRows, games:
             device.installedFlavors.filter { !differs.contains($0.product) }.map { ($0.product, $0.folder) })
         let storeKept = storeKept(copy: copy, newer: newer, differs: differs, unplayed: unplayed.map(\.product),
@@ -358,7 +358,7 @@ enum GameFiles {
 
     /// Why a copy leaves the device's store as it is (nil: it's copied, or copying wasn't asked for), in this
     /// order: a product is newer on the device (its .build.info row, or an update it made), the Mac's install
-    /// isn't the images' build, it is but hasn't run on the Mac since Battle.net put it there (`unplayed`),
+    /// isn't the clients' build, it is but hasn't run on the Mac since Battle.net put it there (`unplayed`),
     /// or the device's client wrote `outranking` indexes of its own.
     static func storeKept(copy: Bool, newer: [String], differs: [String], unplayed: [String] = [],
                           outranking: Int) -> StoreKept? {
@@ -370,7 +370,7 @@ enum GameFiles {
     /// A game Battle.net updated on this Mac that hasn't run here since. Battle.net's update doesn't leave
     /// a game's part of the shared store finished: it finishes it after the game's next session on the Mac
     /// (its Agent logs an update of the game as each session closes). Copied before that, the store can
-    /// hold the game's build in .build.info, with the same Build Key as the device's image, and still not
+    /// hold the game's build in .build.info, with the same Build Key as the device's client, and still not
     /// be readable by it: TBC Anniversary 2.5.6.70577, patched on 2026-10-26 and then not run on the Mac
     /// while Retail's patch rewrote the shared archives, quit on the iPhone after a full copy with "Invalid
     /// schema … for Table StartupFiles". Its first session on the Mac, through Battle.net, was followed by

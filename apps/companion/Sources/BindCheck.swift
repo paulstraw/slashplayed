@@ -3,8 +3,8 @@ import Foundation
 /// The bind check: does every import of a thinned client resolve against the shims this companion
 /// bundles? exports.json (shims/exports_manifest.py, built by shims/build.sh) lists, per Mac install name
 /// the rewrite map knows, every symbol the device library standing in for it provides. A game patch that
-/// adds an import nothing provides would crash the client at load on the device; this catches it on the
-/// Mac first, as "this game version isn't supported yet". Port of scripts/recon/check_exports.py (keep
+/// adds an import nothing provides would stop the client's load on the device; this catches it on the
+/// Mac first, before the client is copied there, as "this game version isn't supported yet". Port of scripts/recon/check_exports.py (keep
 /// the two in step; they agree on every installed flavor and both platforms). Free of the app's own
 /// types (Paths, Device, Flavor), so the tests build it alone.
 enum BindCheck {
@@ -52,7 +52,7 @@ enum BindCheck {
         }
     }
 
-    /// Checks the thinned (not yet rewritten) client at `client` against `manifest`. dyld_info names each
+    /// Checks the thinned client at `client` (the CDN's arm64 slice, unchanged) against `manifest`. dyld_info names each
     /// import's library by its short name ("(from AppKit)"); that's looked up under the install name the
     /// client's load commands give it, as check_exports.py does.
     /// For an image with chained fixups, dyld_info puts the import's index first ("0x0000  _NSApp  (from
@@ -86,8 +86,8 @@ enum BindCheck {
     }
 
     /// Checks `flavor`'s thinned client and throws Unsupported if an import doesn't resolve, logging the
-    /// count and each unresolved import: the build's check (ClientAssembly.assemble) and the drill's
-    /// (ClientBuild.drill) alike.
+    /// count and each unresolved import: the check of each client the Mac copies to a device
+    /// (ClientBuild.copyClient), the patch drill's included.
     static func require(_ client: URL, flavor: String, against manifest: Manifest, platform: String,
                         onLine: (String) -> Void) async throws {
         let result = try await check(client, against: manifest)
@@ -101,9 +101,9 @@ enum BindCheck {
     /// The patch drill: rehearses a game patch with an import the shims don't provide, without touching
     /// any game file. `defaults write com.strawdynamics.slashplayed.companion SPPatchDrillImport _NSApp`
     /// (or the launch argument `-SPPatchDrillImport _NSApp`) withholds that symbol from the manifest, so
-    /// Play and Update Client stop with the "isn't supported yet" message and issue link: in the build when
-    /// there is one, and otherwise in a check of the up-to-date clients alone (ClientBuild.drill), which
-    /// leaves the build as it was. Honoured only in Debug builds and pre-release versions (`drill`).
+    /// Play and Update Client stop with the "isn't supported yet" message and issue link in the copy of the
+    /// game's client (Pipeline.copyGameClients), which checks an up-to-date client too while drilling and
+    /// writes nothing to the device. Honoured only in Debug builds and pre-release versions (`drill`).
     static var drillImport: String? { drill("SPPatchDrillImport") }
 
     /// The device's patch drill: rehearses the device's newer-build screen (apps/client/sppatch.m) without a
@@ -137,8 +137,8 @@ enum BindCheck {
         #endif
     }
 
-    /// The build stops on this: a client this version of Slashplayed can't run yet. Carries what the
-    /// "New game patch broke it" issue form asks for.
+    /// The copy of a game's client stops on this: a client this version of Slashplayed can't run yet.
+    /// Carries what the "New game patch broke it" issue form asks for.
     struct Unsupported: LocalizedError {
         /// The flavor's raw value (classic_era).
         var flavor: String

@@ -1,13 +1,11 @@
 import Foundation
 
-/// The steps that turn the games' Mac clients into the device app, as apps/client/build.sh does them (keep
-/// the two in step: the client images they make are byte-identical, and so is the one the launcher's
-/// apps/client/spassemble.m makes on the device from the same slice). Their input differs: the companion's
-/// is the arm64 slice of each game's client from Blizzard's CDN (ClientBuild), build.sh's the Mac's install,
-/// thinned to arm64. Each image then has its load commands rewritten (the rewrite map, plus the rpath to Frameworks/), its platform set
-/// and its header retyped MH_BUNDLE (MachO.retype), as wow-<flavor>, with its Stamp beside it. The launcher, the JIT helper, the
-/// shims and the templates come from the companion's bundled resources. Only load commands and headers change; the
-/// game's code and data are untouched. Nothing here signs or knows a device: ClientBuild does that.
+/// The steps that make the device app, as apps/client/build.sh does them (keep the two in step): the
+/// launcher, the JIT helper, the shims, and the templates, from the companion's bundled resources. The app
+/// holds no game client: each game's is its unchanged arm64 slice, which the launcher loads with spguest
+/// from the app's data container (Library/spgames/wow-<flavor>, apps/client/spguest.c), and which the Mac
+/// copies there (ClientBuild.copyClient) or the device fetches itself. So the app is the same for every
+/// device on a platform and every set of games. Nothing here signs or knows a device: ClientBuild does that.
 /// Free of the app's own types (Paths, Device, Flavor), so the tests build it alone.
 enum ClientAssembly {
     static let xcrun = "/usr/bin/xcrun"
@@ -16,12 +14,8 @@ enum ClientAssembly {
     struct Platform: Equatable {
         /// scripts/platform.sh's SP_PLATFORM: xros or ios.
         var name: String
-        /// vtool -set-build-version's platform name (SP_VTOOL).
-        var vtool: String
         /// The deployment target, also MinimumOSVersion (SP_MINOS).
         var minOS: String
-        /// LC_BUILD_VERSION's platform number (PLATFORM_VISIONOS, PLATFORM_IOS), for checks.
-        var machOPlatform: UInt32
         /// The Info.plist template's @PLATFORM@ (CFBundleSupportedPlatforms), @DTPLATFORM@, @FAMILY@.
         var plistPlatform: String
         var dtPlatform: String
@@ -32,12 +26,12 @@ enum ClientAssembly {
         /// partial Info.plist has them.
         var platformKeys: String
 
-        static let xros = Platform(name: "xros", vtool: "visionos", minOS: "27.0", machOPlatform: 11,
+        static let xros = Platform(name: "xros", minOS: "27.0",
                                    plistPlatform: "XROS", dtPlatform: "xros", family: "<integer>7</integer>",
                                    platformKeys: "<key>CFBundleIcons</key><dict><key>CFBundlePrimaryIcon</key><string>AppIcon</string></dict>")
         // The test iPad (iPad14,5, M2) runs iPadOS 26.6, the test iPhone (iPhone17,1, A18 Pro) iOS 27.0.1.
         // Family 1 (iPhone) and 2 (iPad), as scripts/platform.sh: an app without 1 won't install on an iPhone.
-        static let ios = Platform(name: "ios", vtool: "ios", minOS: "26.0", machOPlatform: 2,
+        static let ios = Platform(name: "ios", minOS: "26.0",
                                   plistPlatform: "iPhoneOS", dtPlatform: "iphoneos",
                                   family: "<integer>1</integer><integer>2</integer>",
                                   platformKeys: "<key>UILaunchScreen</key><dict/><key>UIStatusBarHidden</key><true/>"
@@ -59,22 +53,11 @@ enum ClientAssembly {
     /// The JIT helper's bundle ID: the app's plus .helper (an extension's has to start with its app's).
     static func helperBundleID(_ bundleID: String) -> String { bundleID + ".helper" }
 
-    /// shims/generated/rewrite-map.txt: "<Mac install name> -> <device install name>" per line.
-    static func rewriteMap(_ text: String) throws -> [(from: String, to: String)] {
-        try text.split(separator: "\n").filter { !$0.isEmpty }.map { line in
-            let parts = line.components(separatedBy: " -> ")
-            guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else {
-                throw Failure("The bundled rewrite map has a line that isn't \"<from> -> <to>\": \(line)")
-            }
-            return (parts[0], parts[1])
-        }
-    }
-
-    /// The build a client image was made from, in a file beside it: spbuild-<flavor> next to wow-<flavor>,
-    /// in the app now and in Library/ with an image an on-device update puts there, so the launcher always
-    /// knows which build the image it's about to load is. .build.info's columns that name a build, for
-    /// the image's product, as a one-row table of the same shape (the launcher reads both with one parser).
-    /// apps/client/build.sh writes the same bytes.
+    /// The build a game's client is, in a file beside it: Library/spgames/spbuild-<flavor> next to
+    /// wow-<flavor>, written last by whatever put the client there (the Mac's copyClient, the device's own
+    /// update or install, apps/client/seed-client.sh), so the launcher always knows which build the client
+    /// it's about to load is. .build.info's columns that name a build, for the client's product, as a
+    /// one-row table of the same shape (the launcher reads both with one parser).
     struct Stamp: Equatable {
         var product: String, branch: String, buildKey: String, version: String
 
@@ -88,49 +71,14 @@ enum ClientAssembly {
             return Stamp(product: product, branch: row["Branch"] ?? "", buildKey: key, version: version)
         }
 
-        /// From Blizzard's version row for the product (BlizzardCDN), the build the image is made from
-        /// now. The same as `from(product:row:)` gives for an install of that build.
+        /// From Blizzard's version row for the product (BlizzardCDN), the build the Mac copies now. The
+        /// same as `from(product:row:)` gives for an install of that build.
         static func from(product: String, version: BlizzardCDN.Version) -> Stamp {
             Stamp(product: product, branch: version.region, buildKey: version.buildConfig, version: version.versionsName)
         }
 
         var text: String {
             "Product!STRING:0|Branch!STRING:0|Build Key!HEX:16|Version!STRING:0\n\(product)|\(branch)|\(buildKey)|\(version)\n"
-        }
-    }
-
-    /// Makes `client` (the Mac's universal or arm64 executable) into a device client image at `output`:
-    /// thinned, load commands rewritten plus the Frameworks/ rpath, platform set, retyped. `checkThinned`
-    /// sees the thinned image before anything is rewritten (the bind check: its imports still name the Mac
-    /// libraries). Returns what the retype changed, for the log.
-    @discardableResult
-    static func prepareClient(_ client: URL, to output: URL, rewriteMap: [(from: String, to: String)],
-                              platform: Platform, checkThinned: ((URL) async throws -> Void)? = nil) async throws -> [String] {
-        try? FileManager.default.removeItem(at: output)
-        if try MachO.isFat(Data(contentsOf: client, options: .alwaysMapped)) {
-            try await Shell.run(xcrun, ["lipo", "-thin", "arm64", client.path, "-output", output.path])
-        } else {
-            try FileManager.default.copyItem(at: client, to: output)
-        }
-        try await checkThinned?(output)
-        // Every map entry, whether or not this client links it (as build.sh), so the result is the same.
-        let changes = rewriteMap.flatMap { ["-change", $0.from, $0.to] }
-        try await Shell.run(xcrun, ["install_name_tool"] + changes
-                            + ["-add_rpath", "@executable_path/Frameworks", output.path])
-        try await Shell.run(xcrun, ["vtool", "-set-build-version", platform.vtool, platform.minOS, platform.minOS,
-                                    "-replace", "-output", output.path, output.path])
-        var image = try Data(contentsOf: output)
-        let changed = try MachO.retype(&image)
-        try image.write(to: output)
-        return changed
-    }
-
-    /// Load commands the device can't satisfy: anything not in @rpath (the shims), a top-level system
-    /// framework binary or /usr/lib. Empty when the image is fully rewritten (build.sh's otool check).
-    static func unrewrittenLoadCommands(_ image: URL) throws -> [String] {
-        try MachO.loadedDylibs(Data(contentsOf: image, options: .alwaysMapped)).filter { name in
-            !(name.hasPrefix("@rpath/") || name.hasPrefix("/usr/lib/")
-              || name.wholeMatch(of: #/\/System\/Library\/Frameworks\/[A-Za-z]*\.framework\/[A-Za-z]*/#) != nil)
         }
     }
 
@@ -207,50 +155,19 @@ enum ClientAssembly {
     /// decides. bundle-resources.sh bundles them in Resources/addons/.
     static let addonFiles = ["SPMovie/SPMovie.toc", "SPMovie/SPMovie.lua", "SPHover/SPHover.toc", "SPHover/SPHover.lua"]
 
-    /// Assembles an unsigned Slashplayed.app at `app` from the given clients (flavor raw value → the Mac
-    /// client, universal or its arm64 slice, and the build it is, for its Stamp) and the companion's resources: `platformResources` (<platform>/: the shims, the
-    /// launcher, the JIT helper's executable, rewrite-map.txt, exports.json, licenses/, the start screen's
-    /// font) and `templates` (client/:
-    /// Info.plist, entitlements.plist, flavors.plist, and helper/'s two, as apps/client has them), and `addons`
-    /// (addonFiles: Resources/addons/, or the repo's addon/). Writes the filled
-    /// entitlements to `entitlements` and the helper's to `helperEntitlements`, for signing. Throws BindCheck.Unsupported for a
-    /// client with an import the shims don't provide (a game patch this version doesn't know), and fails
-    /// on an unrewritten load command.
-    static func assemble(app: URL, clients: [(flavor: String, executable: URL, stamp: Stamp)], platform: Platform,
-                         platformResources: URL, templates: URL, addons: URL, team: String, bundleID: String,
-                         entitlements entitlementsFile: URL, helperEntitlements: URL, droppedEntitlements: [String] = [],
-                         onLine: (String) -> Void) async throws {
+    /// Assembles an unsigned Slashplayed.app at `app` from the companion's resources: `platformResources`
+    /// (<platform>/: the shims, the launcher, the JIT helper's executable, rewrite-map.txt, exports.json,
+    /// licenses/, the start screen's font), `templates` (client/: Info.plist, entitlements.plist,
+    /// flavors.plist, and helper/'s two, as apps/client has them), and `addons` (addonFiles:
+    /// Resources/addons/, or the repo's addon/). Writes the filled entitlements to `entitlements` and the
+    /// helper's to `helperEntitlements`, for signing.
+    static func assemble(app: URL, platform: Platform, platformResources: URL, templates: URL, addons: URL,
+                         team: String, bundleID: String, entitlements entitlementsFile: URL, helperEntitlements: URL,
+                         droppedEntitlements: [String] = []) async throws {
         let fm = FileManager.default
         try? fm.removeItem(at: app)
         let frameworks = app.appending(path: "Frameworks")
         try fm.createDirectory(at: frameworks, withIntermediateDirectories: true)
-        let map = try rewriteMap(String(contentsOf: platformResources.appending(path: "rewrite-map.txt"), encoding: .utf8))
-        let exports = try BindCheck.Manifest(platformResources.appending(path: "exports.json"))
-        if let drill = BindCheck.drillImport {
-            onLine("patch drill: withholding \(drill) from the bundled shims")
-            exports.withheld = [drill]
-        }
-        for (flavor, executable, stamp) in clients {
-            guard fm.fileExists(atPath: executable.path) else {
-                throw Failure("The \(flavor) client isn't at \(executable.path) any more.")
-            }
-            onLine("bundling \(flavor)")
-            let image = app.appending(path: "wow-\(flavor)")
-            // prepareClient's hook is optional, so escaping; it's only called before prepareClient returns.
-            let changed = try await withoutActuallyEscaping(onLine) { onLine in
-                try await prepareClient(executable, to: image, rewriteMap: map, platform: platform) { thinned in
-                    try await BindCheck.require(thinned, flavor: flavor, against: exports, platform: platform.name, onLine: onLine)
-                }
-            }
-            for line in changed {
-                onLine(line)
-            }
-            let left = try unrewrittenLoadCommands(image)
-            guard left.isEmpty else {
-                throw Failure("wow-\(flavor) still loads libraries the device doesn't have (the rewrite map misses them): \(left.joined(separator: ", "))")
-            }
-            try stamp.text.write(to: app.appending(path: Stamp.fileName(flavor)), atomically: true, encoding: .utf8)
-        }
         try fm.copyItem(at: platformResources.appending(path: "slashplayed"), to: app.appending(path: "slashplayed"))
         // The JIT helper (apps/client/helper, the launcher's spjit.m starts it), an app extension: in
         // PlugIns/ with its own Info.plist, and later its own profile and signature (ClientBuild).
@@ -266,11 +183,12 @@ enum ClientAssembly {
         let dylibs = try fm.contentsOfDirectory(atPath: platformResources.path).filter { $0.hasSuffix(".dylib") }.sorted()
         guard !dylibs.isEmpty else { throw Failure("The companion has no bundled shims for \(platform.name).") }
         for d in dylibs { try fm.copyItem(at: platformResources.appending(path: d), to: frameworks.appending(path: d)) }
-        // The shims' exports, as the bind check above reads them: the launcher checks a newer build against
-        // them on the device (apps/client/sppatch.m, spbind.m), as build.sh's app has them.
+        // The shims' exports, as the Mac's bind check of each client it copies reads them (ClientBuild): the
+        // launcher checks a newer build against them on the device (apps/client/sppatch.m, spbind.m), as
+        // build.sh's app has them.
         try fm.copyItem(at: platformResources.appending(path: "exports.json"), to: app.appending(path: "exports.json"))
-        // The rewrite map, as prepareClient uses it: the launcher assembles a newer build's image on the device
-        // with it (apps/client/spassemble.m), as build.sh's app has it.
+        // The rewrite map: the launcher opens the client's libraries through it (apps/client/spguestlaunch.m),
+        // as build.sh's app has it.
         try fm.copyItem(at: platformResources.appending(path: "rewrite-map.txt"), to: app.appending(path: "rewrite-map.txt"))
         // The licenses of what the app's code links and the font it ships (licenseFiles), as build.sh's app has them.
         let licenses = platformResources.appending(path: "licenses")
@@ -313,31 +231,15 @@ enum ClientAssembly {
     }
 }
 
-/// The few Mach-O header reads and edits the build needs (64-bit little-endian, arm64).
+/// The few Mach-O header reads the bind check needs (64-bit little-endian, arm64).
 enum MachO {
     static let magic64: UInt32 = 0xFEED_FACF
-    static let execute: UInt32 = 2, bundle: UInt32 = 8
-    static let lcSegment64: UInt32 = 0x19, lcBuildVersion: UInt32 = 0x32
     /// LC_LOAD_DYLIB, LC_LOAD_WEAK_DYLIB, LC_REEXPORT_DYLIB, LC_LAZY_LOAD_DYLIB, LC_LOAD_UPWARD_DYLIB.
     static let dylibLoads: Set<UInt32> = [0xC, 0x8000_0018, 0x8000_001F, 0x20, 0x8000_0023]
-    /// S_ZEROFILL, S_GB_ZEROFILL, S_THREAD_LOCAL_ZEROFILL.
-    static let zeroFillTypes: Set<UInt32> = [0x1, 0xC, 0x12]
-
-    /// A universal (fat) file: its magic is big-endian FAT_MAGIC or FAT_MAGIC_64.
-    static func isFat(_ d: Data) -> Bool {
-        guard d.count >= 4 else { return false }
-        let m = d.prefix(4).reduce(UInt32(0)) { $0 << 8 | UInt32($1) }
-        return m == 0xCAFE_BABE || m == 0xCAFE_BABF
-    }
 
     static func u32(_ d: Data, _ off: Int) -> UInt32 {
         let i = d.startIndex + off
         return UInt32(d[i]) | UInt32(d[i + 1]) << 8 | UInt32(d[i + 2]) << 16 | UInt32(d[i + 3]) << 24
-    }
-
-    static func setU32(_ d: inout Data, _ off: Int, _ v: UInt32) {
-        let i = d.startIndex + off
-        for k in 0..<4 { d[i + k] = UInt8(truncatingIfNeeded: v >> (8 * UInt32(k))) }
     }
 
     /// Calls `body` with each load command's type and offset.
@@ -351,32 +253,6 @@ enum MachO {
         }
     }
 
-    /// apps/client/retype.py: makes a thinned executable dlopen-able for the launcher. Retypes the header
-    /// MH_EXECUTE -> MH_BUNDLE (dyld refuses to dlopen an executable) and zeroes the file offset of
-    /// zero-fill sections (dyld rejects a non-main image whose zero-fill section has one, e.g. the
-    /// client's __DATA,__thread_bss). Only the header and section headers change. Returns a line per
-    /// section changed.
-    static func retype(_ d: inout Data) throws -> [String] {
-        guard d.count >= 32, u32(d, 0) == magic64, u32(d, 12) == execute else {
-            throw Failure("Not a thin 64-bit executable, so it can't be retyped.")
-        }
-        setU32(&d, 12, bundle)
-        var changed: [String] = []
-        var sections: [Int] = []
-        try forEachCommand(d) { cmd, off in
-            guard cmd == lcSegment64 else { return }
-            for i in 0..<Int(u32(d, off + 64)) { sections.append(off + 72 + i * 80) }
-        }
-        for s in sections {
-            let offset = u32(d, s + 48), flags = u32(d, s + 64)
-            if zeroFillTypes.contains(flags & 0xFF) && offset != 0 {
-                changed.append("\(name(d, s)),\(name(d, s + 16)): zero-fill offset 0x\(String(offset, radix: 16)) -> 0")
-                setU32(&d, s + 48, 0)
-            }
-        }
-        return changed
-    }
-
     /// The install names the image loads, in load-command order.
     static func loadedDylibs(_ d: Data) throws -> [String] {
         var names: [String] = []
@@ -385,20 +261,6 @@ enum MachO {
             names.append(cString(d, off + Int(u32(d, off + 8))))
         }
         return names
-    }
-
-    /// LC_BUILD_VERSION's platform and minimum OS (xxxx.yy.zz nibbles), if it has one.
-    static func buildVersion(_ d: Data) throws -> (platform: UInt32, minOS: UInt32)? {
-        var found: (UInt32, UInt32)?
-        try forEachCommand(d) { cmd, off in
-            if cmd == lcBuildVersion { found = (u32(d, off + 8), u32(d, off + 12)) }
-        }
-        return found
-    }
-
-    /// A section or segment name: 16 bytes, NUL-padded.
-    private static func name(_ d: Data, _ off: Int) -> String {
-        String(decoding: d[(d.startIndex + off)..<(d.startIndex + off + 16)].prefix { $0 != 0 }, as: UTF8.self)
     }
 
     private static func cString(_ d: Data, _ off: Int) -> String {
