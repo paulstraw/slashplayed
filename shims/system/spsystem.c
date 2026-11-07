@@ -116,6 +116,18 @@ __attribute__((visibility("default"))) void sp_set_client(const struct mach_head
     vlog("client image %p (not dyld's), __TEXT %p+0x%lx, alias %p\n", (void *)h, (void *)text, text_len, (void *)alias);
 }
 
+// dladdr that also knows that client: dyld's dladdr has no image for its frames, so stall stacks, crash
+// lines, and exception backtraces showed them as bare addresses. Named by its file, offset from its header
+// (__TEXT's start), as dyld names a dlopened client (wow-<flavor>+0x...). The other shims link the real
+// libSystem, so they look this up with dlsym and fall back to dladdr.
+__attribute__((visibility("default"))) int sp_dladdr(const void *addr, Dl_info *info) {
+    if (client_name && (uintptr_t)addr - text < text_len) {
+        *info = (Dl_info){.dli_fname = client_name, .dli_fbase = (void *)text};
+        return 1;
+    }
+    return dladdr(addr, info);
+}
+
 static int in_text(uintptr_t a, size_t len) { return a >= text && len <= text_len && a - text <= text_len - len; }
 
 static int traced(void) {
@@ -713,7 +725,7 @@ static struct sigaction client_act[NSIG];
 
 static void log_frame(int i, uintptr_t pc) {
     Dl_info info;
-    if (dladdr((void *)pc, &info) && info.dli_fname)
+    if (sp_dladdr((void *)pc, &info) && info.dli_fname)
         vlog("    %2d %s+0x%lx (%s)\n", i, strrchr(info.dli_fname, '/') + 1, pc - (uintptr_t)info.dli_fbase,
              info.dli_sname ? info.dli_sname : "?");
     else
@@ -1272,7 +1284,7 @@ static void *log_exception(void *exc) {
     int n = backtrace(pcs, 16);
     for (int i = 1; i < n; i++) {
         Dl_info info;
-        if (dladdr(pcs[i], &info) && info.dli_fname)
+        if (sp_dladdr(pcs[i], &info) && info.dli_fname)
             vlog("    %2d %s+0x%lx %s\n", i, strrchr(info.dli_fname, '/') + 1,
                  (unsigned long)((char *)pcs[i] - (char *)info.dli_fbase), info.dli_sname ? info.dli_sname : "");
         else

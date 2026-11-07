@@ -15,6 +15,15 @@
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <pthread.h>
+#include <dlfcn.h>
+
+// libspSystem's dladdr, which also names the frames of a client dyld didn't load (sp_set_client); the
+// plain one without it.
+static int sp_frame_dladdr(const void *pc, Dl_info *info) {
+    static int (*f)(const void *, Dl_info *);
+    if (!f) f = (int (*)(const void *, Dl_info *))dlsym(RTLD_DEFAULT, "sp_dladdr") ?: dladdr;
+    return f(pc, info);
+}
 
 static void sp_audio_resume(const char *why);
 
@@ -308,7 +317,7 @@ static void sp_log_audio_stack(double ms) {
     NSMutableString *msg = [NSMutableString stringWithFormat:@"render callback running %.1f ms:", ms];
     for (int i = 0; i < n; i++) {
         Dl_info info;
-        if (dladdr((void *)pcs[i], &info) && info.dli_fname)
+        if (sp_frame_dladdr((void *)pcs[i], &info) && info.dli_fname)
             [msg appendFormat:@"\n    %2d %s+0x%lx (%s)", i, strrchr(info.dli_fname, '/') + 1,
                               pcs[i] - (uintptr_t)info.dli_fbase, info.dli_sname ?: "?"];
         else

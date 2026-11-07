@@ -105,8 +105,10 @@ The first try named the guest by the bundled image's path (for `dladdr` and imag
 client's start then had dyld load that image too: a second client, every Objective-C class twice, and a hang
 on the loading screen. Named by its own file, which dyld can't load, it runs. The AppKit shim's stats name
 most of the client's threads `?` as they do for the dyld-loaded client (the threads are unnamed), but its
-stall stacks show the client's frames as bare addresses where the dyld-loaded client's read
-`wow-<flavor>+offset`: the shims' `dladdr` doesn't know the guest.
+stall stacks showed the client's frames as bare addresses where the dyld-loaded client's read
+`wow-<flavor>+offset`: dyld's `dladdr` has no image for the guest. libspSystem's `sp_dladdr` now names them
+from what `sp_set_client` told it, and the shims' stall, render-callback, crash, and exception stacks use it:
+Retail's 3 s stall stack on the iPhone, 2026-11-07, reads `wow-retail+offset` for every client frame.
 
 iPhone 16 Pro (iOS 27), Retail 12.1.5.70688, 2026-11-06: **in the world**, past character select, with no
 change to the loader. The app needs Retail's bundled image only for its stamp; an iOS app built with Classic
