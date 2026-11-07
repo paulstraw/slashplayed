@@ -27,10 +27,11 @@
 // the signing identity an update needs, and says so without one), and a game installed that way plays and
 // updates from Library/spgames as an updated game does, with no bundled image to fall back on.
 // Once the bundled image is the update's build or a later one (the companion installed it), the update is
-// deleted (retire_caught_up). Before the helper attaches, splogin.m decides how the game signs in
-// (the saved Battle.net sign-in, asked for once, or a token the companion relayed), and writes login.txt
-// just before the client loads. From then until the client's first frame, the scene shows a loading screen
-// (the AppKit shim's sp_uikit_loading).
+// deleted (retire_caught_up). The game's unchanged slice, which the companion copies into Library/spgames for
+// the launcher that loads it with spguest, is left alone (is_slice). Before the helper attaches, splogin.m
+// decides how the game signs in (the saved Battle.net sign-in, asked for once, or a token the companion
+// relayed), and writes login.txt just before the client loads. From then until the client's first frame, the
+// scene shows a loading screen (the AppKit shim's sp_uikit_loading).
 // Every start also takes a signing identity the companion pushed into the keychain, or forgets it when the
 // companion asks (spsign.m; the start screen's Settings forgets it at the tap), and logs whether there is one and until when it's valid, and
 // writes that to Library/spidentity.txt for the companion. An update's image whose signer no profile lists any
@@ -448,10 +449,24 @@ void sp_launch_build_version(uint32_t *platform, uint32_t *minOS) {
         }
 }
 
+// Whether Library/spgames/wow-<flavor> is the game's unchanged arm64 slice, an MH_EXECUTE, rather than an image
+// an update on the device made (an MH_BUNDLE): the Mac companion copies the slice there, with its stamp, row,
+// and spsource-<flavor>, for the launcher that loads it with spguest. dlopen refuses an executable, so this
+// launcher leaves it alone: it's no update to load, sign again, or retire, and an update or install on the
+// device replaces it.
+static BOOL is_slice(NSString *image) {
+    NSFileHandle *f = [NSFileHandle fileHandleForReadingAtPath:image];
+    NSData *head = [f readDataUpToLength:sizeof(struct mach_header_64) error:nil];
+    [f closeFile];
+    const struct mach_header_64 *mh = head.bytes;
+    return head.length == sizeof *mh && mh->magic == MH_MAGIC_64 && mh->filetype == MH_EXECUTE;
+}
+
 // The image an update on the device made (sppatch.m: Library/spgames/wow-<flavor>, its stamp
-// spgames/spbuild-<flavor> beside it, written last) and its build; nil unless both are there.
+// spgames/spbuild-<flavor> beside it, written last) and its build; nil unless both are there, or when it's
+// a slice the Mac copied (is_slice).
 static NSDictionary<NSString *, NSString *> *updated_build(NSString *image, NSString *flavor) {
-    if (![NSFileManager.defaultManager fileExistsAtPath:image]) return nil;
+    if (![NSFileManager.defaultManager fileExistsAtPath:image] || is_slice(image)) return nil;
     return stamp_beside(image, flavor);
 }
 
@@ -503,8 +518,11 @@ static void retire_caught_up(NSString *flavor, NSDictionary<NSString *, NSString
         NSString *stamp = [home stringByAppendingPathComponent:[@"spbuild-" stringByAppendingString:flavor]];
         NSDictionary<NSString *, NSString *> *kept = build_info_row(stamp, product);
         if (!sp_update_caught_up(bundledStamp, kept)) continue;
-        NSString *file = [home stringByAppendingPathComponent:[dir hasSuffix:@"spgames"] ? [@"wow-" stringByAppendingString:flavor]
-                                                                                       : [flavor stringByAppendingString:@".arm64"]];
+        BOOL games = [dir hasSuffix:@"spgames"];
+        NSString *file = [home stringByAppendingPathComponent:games ? [@"wow-" stringByAppendingString:flavor]
+                                                                    : [flavor stringByAppendingString:@".arm64"]];
+        // The slice the Mac copied is the bundled image's build by design, so it's always caught up: it stays.
+        if (games && is_slice(file)) continue;
         unsigned long long size = [NSFileManager.defaultManager attributesOfItemAtPath:file error:nil].fileSize;
         // The stamp first, so a file left behind is never taken for its build; then the image's kept
         // .build.info row (spgames only), which nothing reads without the stamp.

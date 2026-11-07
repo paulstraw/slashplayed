@@ -439,8 +439,12 @@ static NSString *update(NSString *flavor, NSString *product, NSString *region, N
         return nil;
     }
     say_update([NSString stringWithFormat:@"signed in %.3f s", now() - t]);
-    // Into place: an older update's stamp goes first, and this one's comes last, after the row it keeps.
+    // Into place: an older update's stamp goes first, and this one's comes last, after the row it keeps. A
+    // slice the Mac copied (launcher.m's is_slice) is replaced, and its spsource-<flavor>, which says the Mac
+    // copied what's there, goes with its stamp.
     [NSFileManager.defaultManager removeItemAtPath:stamp error:nil];
+    [NSFileManager.defaultManager removeItemAtPath:[dir stringByAppendingPathComponent:[@"spsource-" stringByAppendingString:flavor]]
+                                             error:nil];
     NSString *keptRow = [dir stringByAppendingPathComponent:[@"spbuildinfo-" stringByAppendingString:flavor]];
     if (![sp_build_info_with(nil, product, region, tags, row, cdnsRow) writeToFile:keptRow atomically:YES encoding:NSUTF8StringEncoding
                                                                        error:nil]) {
