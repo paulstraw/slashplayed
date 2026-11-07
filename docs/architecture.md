@@ -1000,6 +1000,11 @@ and scroll events and `NSTextInputClient`), with no event taps. `spevent.m`:
 - **Cursor.** The client sets its cursor with cursor rects. The shim rebuilds them, draws the cursor of
   the rect under the pointer as a UIView (the system pointer is hidden over the window), and scales
   it (`SP_CURSOR_SCALE`).
+- **Game controllers (visionOS).** By default the system turns a controller's buttons into pinches at the gaze
+  point and the client's gamepad input (sticks, face buttons) reads zero. The scene's root view carries a
+  `GCEventInteraction` for `GCUIEventTypeGamepad`, so a controller's events go to the Game Controller framework
+  alone, which the client reads. `SP_GAMEPAD_SYSTEM=1` leaves them to the system. The look highlights are off
+  while a gamepad is connected (`SP_HOVER_CONTROLLER=1` keeps them).
 - **Look highlights (visionOS).** visionOS never tells an app where the user is looking, so the game
   gets no hover from gaze. The `SPHover` addon draws the rects of the visible clickable UI as a
   3-pixel strip of colored blocks along the bottom of the screen; `sphover.m` blits those rows out of

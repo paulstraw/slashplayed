@@ -504,8 +504,15 @@ static int sp_cursor_hide_count;  // +hide minus +unhide; an +unhide while shown
 static BOOL sp_pointer_inside;    // a mouse or trackpad pointer is over the window
 static NSMutableArray *sp_cursor_rects;  // [view, rect, cursor], in the order added
 
+// A gamepad connected (GCController lists gamepads, not mice or keyboards): the look highlights are off
+// then, since a controller player doesn't pinch and the glow only distracts. SP_HOVER_CONTROLLER=1 keeps
+// them with a gamepad connected.
+static BOOL sp_gamepad_connected(void) {
+    return !getenv("SP_HOVER_CONTROLLER") && GCController.controllers.count > 0;
+}
+
 static void sp_cursor_update(void) {
-    sp_hover_layer.hidden = sp_pointer_inside;
+    sp_hover_layer.hidden = sp_pointer_inside || sp_gamepad_connected();
     if (!sp_cursor_view) return;
     BOOL show = sp_cursor_current && !sp_cursor_hide_count && sp_pointer_inside;
     sp_cursor_view.hidden = !show;
@@ -697,11 +704,25 @@ static double sp_chord_window(void) {
     for (GCMouse *m in GCMouse.mice) sp_watch_mouse(m);
     [NSNotificationCenter.defaultCenter addObserverForName:GCMouseDidConnectNotification object:nil queue:nil
                                                 usingBlock:^(NSNotification *n) { sp_watch_mouse(n.object); }];
+    // visionOS turns a game controller's buttons into pinches at the gaze point, and the client's own gamepad
+    // input doesn't get them (the sticks and face buttons read zero in GameController): this interaction
+    // hands the controller's events to the Game Controller framework alone (GCEventInteraction.h).
+    // SP_GAMEPAD_SYSTEM=1 leaves the controller to the system.
+    if (!getenv("SP_GAMEPAD_SYSTEM")) {
+        GCEventInteraction *gc = [[GCEventInteraction alloc] init];
+        gc.handledEventTypes = GCUIEventTypeGamepad;
+        [self addInteraction:gc];
+    }
+    // The look highlights follow whether a gamepad is connected (sp_gamepad_connected).
+    for (NSNotificationName name in @[GCControllerDidConnectNotification, GCControllerDidDisconnectNotification])
+        [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue
+                                                    usingBlock:^(NSNotification *n) { sp_cursor_update(); }];
     // Above the client's CAMetalLayer, which is added to this view's layer later.
     sp_hover_layer = [[SPHoverLayer alloc] initWithFrame:self.bounds];
     sp_hover_layer.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     sp_hover_layer.layer.zPosition = 1000;
     [self addSubview:sp_hover_layer];
+    sp_hover_layer.hidden = sp_gamepad_connected();  // a gamepad already connected
     sp_hover_test_grid();
     sp_cursor_view = [[UIView alloc] init];
     sp_cursor_view.userInteractionEnabled = NO;
