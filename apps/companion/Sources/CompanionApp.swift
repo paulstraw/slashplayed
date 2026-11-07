@@ -96,7 +96,7 @@ private struct GamesMenuItem: View {
 /// The About panel and the Help menu's links. The standard panel shows the icon, name, version (build)
 /// and NSHumanReadableCopyright from Info.plist; the credits add the disclaimer and the links.
 /// Acknowledgements is the bundled folder of third-party licenses (Sparkle, idevice and its Rust crates,
-/// and the device app's zsign and OpenSSL; bundle-resources.sh), opened in Finder.
+/// and the device app's; bundle-resources.sh), opened in Finder.
 enum About {
     static let website = URL(string: "https://slashplayed.strawdynamics.com")!
     static let github = URL(string: "https://github.com/paulstraw/slashplayed")!
@@ -347,9 +347,9 @@ struct GamesFooter: View {
             // Games the device updated itself past the build Slashplayed installed (Pipeline.checkDeviceUpdates).
             ForEach(pipeline.updatedOnDevice.sorted { $0.key.rawValue < $1.key.rawValue }, id: \.key) { flavor, version in
                 Text("\(flavor.name) \(version), updated on the \(device.noun)")
-                    .help("The \(device.noun) made and signed this version itself (Update Games on This Device). Slashplayed's next build of it replaces it.")
+                    .help("The \(device.noun) updated itself to this version. Play keeps it there until this Mac has a newer one.")
             }
-            // The device's signing identity has expired or been revoked (Pipeline.sendIdentityIfNeeded).
+            // Nothing sets it since the device needs no signing identity; it goes with the rest of it.
             if let notice = pipeline.identityNotice {
                 Text(notice)
                     .foregroundStyle(.orange)

@@ -207,12 +207,13 @@ enum ClientBuild {
             || GameStore.isVersion(image.version, newerThan: update.version) ? .caughtUp : .ahead
     }
 
-    /// A game's client in the device's Library/spgames: the stamp beside wow-<flavor>, and whether this Mac
-    /// copied it there (copyClient: spsource-<flavor> is beside it, which an update on the device deletes)
-    /// rather than an update on the device making it.
+    /// A game's client in the device's Library/spgames: the stamp beside wow-<flavor>, and where it came
+    /// from, spsource-<flavor>'s one word (`source`): `mac` (this Mac's copyClient), `updated` or `installed`
+    /// (the device fetched it: apps/client/sppatch.m), or nil without one.
     struct DeviceClient: Equatable {
         var stamp: ClientAssembly.Stamp
-        var fromMac: Bool
+        var source: String?
+        var fromMac: Bool { source == "mac" }
     }
 
     /// The device's clients of its games: each Library/spgames stamp beside its client, pulled with
@@ -232,7 +233,14 @@ enum ClientBuild {
             guard let text = try? String(contentsOf: url, encoding: .utf8),
                   let row = GameStore.BuildInfo(text)?.byProduct[flavor.product],
                   let client = try? ClientAssembly.Stamp.from(product: flavor.product, row: row) else { continue }
-            clients[flavor] = DeviceClient(stamp: client, fromMac: library["spgames/" + sourceFile(flavor)] != nil)
+            // The word, when there's one: a few bytes, pulled as the stamp is.
+            var source: String?
+            if (library["spgames/" + sourceFile(flavor)]?.size ?? 0) > 0 {
+                try? FileManager.default.removeItem(at: url)
+                try await Device.retrying { try await device.fetch("Library/spgames/" + sourceFile(flavor), to: url) }
+                source = (try? String(contentsOf: url, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            clients[flavor] = DeviceClient(stamp: client, source: source?.isEmpty == false ? source : nil)
         }
         return clients
     }
@@ -255,7 +263,7 @@ enum ClientBuild {
         return GameStore.isVersion(mac.version, newerThan: device.version) ? .copy : .newerOnDevice
     }
 
-    /// Where a client in Library/spgames came from, one word: `mac` for copyClient's.
+    /// Where a client in Library/spgames came from, one word: `mac` for copyClient's (DeviceClient.source).
     static func sourceFile(_ flavor: Flavor) -> String { "spsource-\(flavor.rawValue)" }
 
     /// Copies `flavor`'s client of `version` into the device's Library/spgames, for the launcher that loads

@@ -69,9 +69,8 @@ final class Pipeline {
     /// The device's games an update on it put ahead of the image the companion installed (ClientBuild.
     /// deviceUpdate), by version, as the last action found them: the main window says so.
     private(set) var updatedOnDevice: [Flavor: String]
-    /// What's wrong with the signing identity a device updates its games with (sendIdentityIfNeeded: expired,
-    /// revoked, or a replacement the person refused to export) and what to do, for the main window; nil when
-    /// nothing is, as of the last Play or Update Client.
+    /// What was wrong with the signing identity a device updated its games with, for the main window. Always
+    /// nil now: the device needs none (pushIdentity).
     var identityNotice: String? { identityNotices[device.udid] }
     private var identityNotices: [String: String] = [:]
     /// The Slashplayed certificate's standing (DeviceIdentity.standing), for Settings; nil until checked.
@@ -262,7 +261,7 @@ final class Pipeline {
         storeUpdatesGames(on, for: device)
     }
 
-    /// The setting itself, also for sendIdentityIfNeeded, which turns it off while it runs (isBusy).
+    /// The setting itself.
     private func storeUpdatesGames(_ on: Bool, for device: Device) {
         device.setUpdatesGames(on)
         gamesRevision += 1
@@ -416,7 +415,6 @@ final class Pipeline {
             try await self.installBuild()
             let clients = try await self.checkDeviceUpdates()
             try await self.setUpHelper()
-            try await self.sendIdentityIfNeeded()
             try await self.copyGameClients(clients)
         }
     }
@@ -433,21 +431,18 @@ final class Pipeline {
             try await self.installBuild()
             let clients = try await self.checkDeviceUpdates()
             try await self.setUpHelper()
-            try await self.sendIdentityIfNeeded()
             try await self.copyGameClients(clients)
             try await self.syncGameFiles(self.device.flavors, copy: false)
             try await self.sendLoginFiles(nil)
         }
     }
 
-    /// -push-identity: what Play and Update Client do about the device's signing identity (DeviceIdentity),
-    /// alone, with what's built and installed now. The log says what it did. Setup Assistant's last step
-    /// runs it for the device whose Update Games on This Device it just changed (`device`).
+    /// -push-identity and Setup Assistant's Update Games on This Device: nothing to send any more. The
+    /// device's launcher updates and installs games without a signing identity, and deletes one an older
+    /// Slashplayed sent it at its next start (apps/client/launcher.m, forget_identity), so a push now would be
+    /// deleted, and sent again at every Play.
     func pushIdentity(to device: Device? = nil) {
-        start([.device], on: device) {
-            try await self.waitForDevice()
-            try await self.sendIdentityIfNeeded()
-        }
+        appendLog("[companion] identity: nothing sent to \((device ?? self.device).name): its games update on it without a signing identity")
     }
 
     /// Settings' Make Certificate Request (and -certificate-request): the Slashplayed certificate's key (made
@@ -726,7 +721,6 @@ final class Pipeline {
         try await installBuild()
         let clients = try await checkDeviceUpdates()
         try await setUpHelper()
-        try await sendIdentityIfNeeded()
         try await copyGameClients(clients)
         // Copying needs a game install here; without one, the device's client fetches its data itself. With
         // copying off the install isn't read at all (GameInstall.reads), so a stalled drive can't hold Play.
@@ -980,15 +974,13 @@ final class Pipeline {
         set(.install, .done, title: "Installed the new client")
     }
 
-    /// The updates the device made itself (Library/spgames, ClientBuild.deviceUpdates), once the companion's
-    /// image is installed: Play, Update Client (the weekly re-sign on a free team), and Copy Game Files. One
-    /// the installed image has caught up with is deleted by the launcher at its next start (spcdn.m's
-    /// sp_update_caught_up, the same rule); one ahead of it keeps its game data's row and configs
-    /// (aheadProducts, for the files step) and is named in the main window. Nothing here stops the action:
-    /// a device that can't be read is logged, and .build.info's own check (GameStore.deviceBuildInfo) still
-    /// keeps a newer row. A client this Mac copied (copyGameClients) is the image's build, so it's never
-    /// ahead, and the launcher leaves it alone. Returns what Library/spgames holds, for copyGameClients; nil
-    /// when the device couldn't be read.
+    /// The device's game clients (Library/spgames, ClientBuild.deviceClients), once the companion's app is
+    /// installed: Play, Update Client, and Copy Game Files. One the device got itself (an Update or an install
+    /// there) that's ahead of the app's image keeps its game data's row and configs (aheadProducts, for the
+    /// files step) and is named in the main window; one this Mac has a newer build of is replaced by
+    /// copyGameClients. Nothing here stops the action: a device that can't be read is logged, and
+    /// .build.info's own check (GameStore.deviceBuildInfo) still keeps a newer row. Returns what
+    /// Library/spgames holds, for copyGameClients; nil when the device couldn't be read.
     @discardableResult
     private func checkDeviceUpdates() async throws -> [Flavor: ClientBuild.DeviceClient]? {
         let device = device
@@ -1001,8 +993,10 @@ final class Pipeline {
                 switch ClientBuild.deviceUpdate(image: image, update: update) {
                 case .caughtUp where client.fromMac:
                     appendLog("[companion] the \(device.noun) has \(flavor.name) \(update.version)'s client from this Mac (Library/spgames), and its app has \(installed)")
+                case .caughtUp where client.source == nil:
+                    appendLog("[companion] the \(device.noun) has \(flavor.name) \(update.version) in Library/spgames with no spsource: an older Slashplayed's image, which the client replaces (its app has \(installed))")
                 case .caughtUp:
-                    appendLog("[companion] \(flavor.name) \(update.version) was updated on the \(device.noun), and its app now has \(installed): the \(device.noun) deletes its update at Slashplayed's next start")
+                    appendLog("[companion] the \(device.noun) has \(flavor.name) \(update.version)'s client, which it got itself (Library/spgames, spsource \(client.source ?? "none")), and its app has \(installed): Play replaces it once this Mac has a newer one")
                 case .ahead:
                     ahead[flavor] = update.version
                     appendLog("[companion] \(flavor.name) \(update.version) was updated on the \(device.noun), ahead of its app's \(installed): it plays that, and its game data's build stays \(update.version)")
@@ -1022,18 +1016,20 @@ final class Pipeline {
     }
 
     /// Each ticked game's client into the device's Library/spgames (ClientBuild.copyClient): the unchanged
-    /// arm64 slice, which the launcher that loads it with spguest needs there, when the device's (`onDevice`,
-    /// checkDeviceUpdates': nil copies nothing, as the device may hold a newer build) is missing or older
-    /// than Blizzard's current build (ClientBuild.clientCopy). While the device app still carries the
-    /// images, only a game whose image is that build gets its client: the slice the build was made from
-    /// and checked against the shims (BindCheck), so the device never holds a client this Slashplayed can't
-    /// run, and the launcher, which loads the bundled image, leaves it alone (launcher.m's is_slice). The
-    /// rest are copied once the build has them. Borrows the install step's row as setUpHelper does. Nothing
-    /// here stops the action: a copy that fails is logged, and the next action copies it again.
+    /// arm64 slice, which the launcher loads with spguest (apps/client/spguestlaunch.m), when the device's
+    /// (`onDevice`, checkDeviceUpdates': nil copies nothing, as the device may hold a newer build) is missing
+    /// or older than Blizzard's current build (ClientBuild.clientCopy). Only a game whose bundled image is that
+    /// build gets its client: the slice the build was made from and checked against the shims (BindCheck),
+    /// so the device never holds a client this Slashplayed can't run. updateBuild rebuilds for every ticked
+    /// game's current build before this, so each one that binds is copied at the same action. A client running
+    /// on the device maps the file it loaded (Library/spgames/wow-<flavor>), so it's stopped before the first
+    /// copy over one. Borrows the install step's row as setUpHelper does. Nothing here stops the action: a
+    /// copy that fails is logged, and the next action copies it again.
     private func copyGameClients(_ onDevice: [Flavor: ClientBuild.DeviceClient]?) async throws {
         guard let onDevice else { return }
         let device = device, installed = steps.first { $0.id == .install }
         defer { if let installed, let i = steps.firstIndex(where: { $0.id == .install }) { steps[i] = installed } }
+        var stopped = false
         for flavor in device.flavors {
             guard let version = latest[flavor] else { continue }
             let mac = ClientAssembly.Stamp.from(product: flavor.product, version: version), have = onDevice[flavor]?.stamp
@@ -1041,12 +1037,29 @@ final class Pipeline {
                 appendLog("[companion] \(flavor.name) \(version.versionsName)'s client is copied to the \(device.noun) once the client build has it")
                 continue
             }
-            switch ClientBuild.clientCopy(device: have, mac: mac) {
+            var decision = ClientBuild.clientCopy(device: have, mac: mac)
+            // A client of this build with no spsource is an older Slashplayed's own image (an MH_BUNDLE it made
+            // and signed there, which never wrote one): the launcher retires it and would fetch the slice over
+            // the network, so the Mac copies it now. A newer one stays: its game data is that build, which the
+            // launcher fetches.
+            if decision == .upToDate, onDevice[flavor]?.source == nil {
+                decision = .copy
+            }
+            switch decision {
             case .upToDate: continue
             case .newerOnDevice:
                 appendLog("[companion] the \(device.noun) has \(flavor.name) \(have?.version ?? "")'s client, newer than \(version.versionsName): it's kept")
                 continue
             case .copy: break
+            }
+            if !stopped {
+                stopped = true
+                if let pid = try? await device.clientPID() {
+                    set(.install, .active, title: "Stopping the client running on the \(device.noun)…")
+                    appendLog("[companion] stopping the client running on the \(device.noun) (pid \(pid)) before copying over its file")
+                    await device.kill(pid: pid)
+                    try await Task.sleep(for: .seconds(2))
+                }
             }
             set(.install, .active, title: "Copying \(flavor.name) to the \(device.noun)…")
             let start = Date()
@@ -1100,140 +1113,6 @@ final class Pipeline {
         if let installed, let i = steps.firstIndex(where: { $0.id == .install }) { steps[i] = installed }
     }
 
-    /// Sends the device the signing identity it updates games with, or asks it to forget it, as
-    /// DeviceIdentity.decide says, from Update Games on This Device, the team, the identity the device's app
-    /// is signed with, and the device's Library/spidentity.txt. Borrows the install step's row as
-    /// setUpHelper does. Nothing here stops Play: a refused export turns the setting off (the person said no
-    /// to macOS's prompt), and any other failure is logged and tried again at the next action.
-    private func sendIdentityIfNeeded() async throws {
-        let device = device, on = device.updatesGames
-        let pushed = UserDefaults.standard.string(forKey: DeviceIdentity.pushedKey(device))
-        // Nothing was sent and nothing is wanted: no need to ask the device.
-        guard on || pushed != nil else {
-            setIdentityNotice(nil, for: device)
-            appendLog("[companion] identity: Update Games on This Device is off for \(device.name), and nothing was sent to it")
-            return
-        }
-        let installed = steps.first { $0.id == .install }
-        defer { if let installed, let i = steps.firstIndex(where: { $0.id == .install }) { steps[i] = installed } }
-        set(.install, .active, title: "Checking the \(device.noun)'s signing identity…")
-        do {
-            let state = try await DeviceIdentity.deviceState(device)
-            let source = DeviceIdentity.source ?? .b
-            var identity: (hash: String, validUntil: String)?
-            var certificate: SecCertificate?
-            var notice: String?
-            if on, source == .a, FileManager.default.fileExists(atPath: Paths.clientApp(device).path) {
-                let signer = try await Signing.signer(of: Paths.clientApp(device),
-                                                      work: FileManager.default.temporaryDirectory.appending(path: "spsigner-\(UUID().uuidString)"))
-                certificate = DeviceIdentity.certificate(hash: signer.hash)
-                if let day = DeviceIdentity.validUntil(hash: signer.hash) { identity = (signer.hash, day) }
-                else { appendLog("[companion] identity: \(signer.name)'s certificate isn't in this Mac's keychain") }
-            }
-            let certificateState = SlashplayedCertificate.state
-            if on, source == .b, case .ready(let cert) = certificateState {
-                identity = (cert.hash, cert.validUntil)
-                certificate = SlashplayedCertificate.current().flatMap(SlashplayedCertificate.certificate(in:))
-            }
-            // A key another copy of the companion made can't be exported here: say what to do, rather than try and
-            // have the export refused (rc9). The setting stays on, so a new certificate is sent at the next Play.
-            if on, source == .b, case .otherCopy = certificateState {
-                notice = Self.otherCopyNotice(device)
-                appendLog("[companion] identity: the Slashplayed certificate's key was made by another copy of Slashplayed Companion, which this copy can't use: nothing is sent")
-            }
-            // Before each push and at every Play and Update Client (so a free team's weekly re-sign): an identity
-            // that has expired or been revoked isn't sent, and the window says what to do.
-            if identity != nil, let certificate {
-                let standing = await DeviceIdentity.standing(of: certificate)
-                if source == .b { certificateStanding = standing }
-                switch standing {
-                case .good:
-                    break
-                case .unknown(let why):
-                    appendLog("[companion] identity: whether the certificate is still good couldn't be checked (\(why)); going on")
-                case .expired, .revoked:
-                    let what = standing == .revoked ? "was revoked on developer.apple.com" : "has expired"
-                    notice = source == .a
-                        ? "The certificate Slashplayed signs with \(what), so it isn't sent to the \(device.noun), and updates the \(device.noun) makes with it may not load. Make a new Apple Development certificate in Xcode (Settings > Apple Accounts, your account, the team, Manage Certificates…), then press Play: Slashplayed signs with it and sends it."
-                        : "The Slashplayed certificate \(what), so it isn't sent to the \(device.noun), and updates the \(device.noun) makes with it may not load. In Settings > Updates on Devices, stop using it and make a new one."
-                    appendLog("[companion] identity: the \(source == .a ? "signing" : "Slashplayed") certificate \(what): nothing is sent")
-                    identity = nil
-                }
-            }
-            defer { setIdentityNotice(notice, for: device) }
-            let status = state.status.map { "\($0.state.rawValue)" + ($0.validUntil.map { " until \($0)" } ?? "") } ?? "unknown"
-            let certificateHash: String? = if case .ready(let cert) = certificateState { cert.hash } else { nil }
-            let pushedSource = DeviceIdentity.pushedSource(recorded: UserDefaults.standard.string(forKey: DeviceIdentity.pushedSourceKey(device)),
-                                                           pushed: pushed, certificate: certificateHash)
-            let decision = DeviceIdentity.decide(on: on, source: source, identity: identity, pushed: pushed,
-                                                 pushedSource: pushedSource, status: state.status, pending: state.pending)
-            switch decision {
-            case .nothing(let why):
-                appendLog("[companion] identity: nothing sent to the \(device.noun) (source \(source.rawValue), device: \(status)): \(why)")
-                // A regenerated profile (the weekly re-sign, a new build) may have dropped B's certificate: the
-                // device's identity is only of use while some profile there lists it.
-                if source == .b, let identity, state.status?.state == .present { _ = try await profileListsCertificate(identity.hash) }
-            case .turnOff:
-                storeUpdatesGames(false, for: device)
-                UserDefaults.standard.removeObject(forKey: DeviceIdentity.pushedKey(device))
-                UserDefaults.standard.removeObject(forKey: DeviceIdentity.pushedSourceKey(device))
-                appendLog("[companion] identity: the signing identity was forgotten in the \(device.noun)'s Settings, so Update Games on This Device is off for \(device.name) now")
-            case .forget:
-                set(.install, .active, title: "Asking the \(device.noun) to delete its signing identity…")
-                try await DeviceIdentity.sendForget(to: device)
-                UserDefaults.standard.removeObject(forKey: DeviceIdentity.pushedKey(device))
-                UserDefaults.standard.removeObject(forKey: DeviceIdentity.pushedSourceKey(device))
-                appendLog("[companion] identity: Update Games on This Device is off; sent \(DeviceIdentity.forgetPath), and the \(device.noun) deletes its signing identity at Slashplayed's next start")
-            case .push(let why):
-                guard let identity else { return }
-                // B's certificate is new to the team, so the device may have no profile that lists it yet.
-                if source == .b, try await !profileListsCertificate(identity.hash) { return }
-                // Xcode replaced the certificate the app is signed with (A): the device's updates were signed with the
-                // old one, and the launcher signs them again with this one at its next start if the old one isn't
-                // in the new profile (launcher.m, library_signed). Only when A was sent last: a switch from B to A
-                // (the override, or the team's kind) is another identity too, but nothing of Xcode's changed.
-                let replaced = source == .a && pushedSource == .a && pushed != identity.hash
-                set(.install, .active, title: "Sending the signing identity to the \(device.noun)…",
-                    detail: source == .a ? (replaced ? "Xcode replaced the certificate Slashplayed signs with, so the \(device.noun) gets the new one. " : "")
-                        + "If macOS asks to allow Slashplayed Companion to export a key from your keychain, choose Allow: it's the key Slashplayed signs with, for the \(device.noun) to sign game updates." : nil)
-                appendLog("[companion] identity: sending it to the \(device.noun) (source \(source.rawValue), device: \(status)): \(why)")
-                do {
-                    let sizes = try await (source == .a
-                        ? DeviceIdentity.push(hash: identity.hash, to: device)
-                        : DeviceIdentity.push(hash: identity.hash, to: device) { hash, password in
-                            guard let store = SlashplayedCertificate.current() else { throw Failure("The Slashplayed certificate isn't set up any more.") }
-                            return try SlashplayedCertificate.export(store, hash: hash, password: password)
-                        })
-                    UserDefaults.standard.set(identity.hash, forKey: DeviceIdentity.pushedKey(device))
-                    UserDefaults.standard.set(source.rawValue, forKey: DeviceIdentity.pushedSourceKey(device))
-                    appendLog("[companion] identity: sent \(DeviceIdentity.p12Path) (\(sizes.p12) bytes) and \(DeviceIdentity.passwordPath) (\(sizes.password) bytes); the \(device.noun) imports them at Slashplayed's next start")
-                } catch let refused as DeviceIdentity.Refused where source == .b {
-                    // The store's key asks nothing of the copy that made it, so a refusal means another copy did:
-                    // turning the setting off and asking again would only be refused again.
-                    notice = Self.otherCopyNotice(device)
-                    appendLog("[companion] identity: \(refused.localizedDescription) The Slashplayed certificate's key was made by another copy of Slashplayed Companion; nothing was sent")
-                } catch let refused as DeviceIdentity.Refused {
-                    storeUpdatesGames(false, for: device)
-                    if replaced { notice = "Xcode replaced the certificate Slashplayed signs with, and the export of the new one was refused, so Update Games on This Device is off for \(device.name). Turn it on and press Play to send it: until then, updates the \(device.noun) made may not load." }
-                    appendLog("[companion] identity: \(refused.localizedDescription) Nothing was sent, and Update Games on This Device is off for \(device.name) again; turn it on to be asked again.")
-                }
-            }
-        } catch let e as CancellationError {
-            throw e
-        } catch {
-            appendLog("[companion] identity: couldn't check or send the \(device.noun)'s signing identity: \(error.localizedDescription)")
-        }
-    }
-
-    /// The main window's notice when the Slashplayed certificate's key is another copy's (`.otherCopy`).
-    private static func otherCopyNotice(_ device: Device) -> String {
-        "The Slashplayed certificate can't be sent to the \(device.noun): another copy of Slashplayed Companion made its key, and this copy can't use it. In Settings > Updates on Devices, stop using it and make a new one."
-    }
-
-    private func setIdentityNotice(_ notice: String?, for device: Device) {
-        identityNotices[device.udid] = notice
-    }
-
     /// Settings' Slashplayed Certificate, when it's shown: whether the certificate is still good.
     func checkCertificateStanding() async {
         guard case .ready = certificate, let cert = SlashplayedCertificate.current().flatMap(SlashplayedCertificate.certificate(in:)) else {
@@ -1241,56 +1120,6 @@ final class Pipeline {
             return
         }
         certificateStanding = await DeviceIdentity.standing(of: cert)
-    }
-
-    /// Whether some profile on the device lists the Slashplayed certificate (B), so an image it signs loads
-    /// (research/dlopentest, 5.3: any installed profile will do, and installing one needs no reinstall). The
-    /// app's own profile does once Xcode has made it since the certificate existed; else a profile the
-    /// companion installed (ClientBuild.certificateProfile) that's still on the device. Otherwise Xcode's
-    /// cached profile is forgotten and the stub built again, so Xcode fetches the team's current one, which
-    /// lists every development certificate the team has, and that one is installed with devicectl. False,
-    /// logged, if even that doesn't list it: nothing is sent, and the next action tries again.
-    private func profileListsCertificate(_ hash: String) async throws -> Bool {
-        let device = device
-        let log: (String) -> Void = { [weak self] line in self?.appendLog("[companion] \(line)") }
-        if ClientBuild.isInstalled(device),
-           let app = try? Data(contentsOf: Paths.clientApp(device).appending(path: "embedded.mobileprovision")),
-           SlashplayedCertificate.lists(profile: app, hash: hash) {
-            log("identity: the app's profile lists the Slashplayed certificate")
-            return true
-        }
-        let kept = ClientBuild.certificateProfile(device)
-        if let data = try? Data(contentsOf: kept), SlashplayedCertificate.lists(profile: data, hash: hash),
-           let info = Signing.profileInfo(data), info.expires.timeIntervalSinceNow > Signing.renewWithin,
-           try await device.hasProfile(uuid: info.uuid) {
-            log("identity: profile \(info.uuid), which Slashplayed installed on the \(device.noun), lists the Slashplayed certificate")
-            // devicectl skips a copy whose size and date match, so this costs nothing once it's there.
-            try await device.copy(kept, to: DeviceIdentity.profilePath)
-            return true
-        }
-        set(.install, .active, title: "Getting a profile that lists the Slashplayed certificate…")
-        log("identity: no profile on the \(device.noun) lists the Slashplayed certificate; asking Xcode for the team's current one")
-        if let old = ClientBuild.profile(device) { Signing.forgetCachedProfile(uuid: old.uuid, log: log) }
-        let team = try Signing.resolveTeam()
-        if try await waitForUnlock(.install, to: "get its profile") {
-            set(.install, .active, title: "Getting a profile that lists the Slashplayed certificate…")
-        }
-        let identity = try await Signing.provision(team: team, bundleID: Signing.bundleID, udid: device.udid,
-                                                   stub: Paths.resource("signing"),
-                                                   work: Paths.clientDir(device).appending(path: "signing-certificate"),
-                                                   dropped: Signing.dropped(for: team), onLine: log)
-        guard let data = try? Data(contentsOf: identity.profile), SlashplayedCertificate.lists(profile: data, hash: hash),
-              let info = Signing.profileInfo(data) else {
-            log("identity: Xcode's profile for \(Signing.bundleID) doesn't list the Slashplayed certificate yet, so nothing was sent to the \(device.noun); the next Play or Update Client asks again")
-            return false
-        }
-        try? FileManager.default.removeItem(at: kept)
-        try FileManager.default.copyItem(at: identity.profile, to: kept)
-        set(.install, .active, title: "Installing a profile that lists the Slashplayed certificate…")
-        try await device.installProfile(kept)
-        try await device.copy(kept, to: DeviceIdentity.profilePath)
-        log("identity: installed profile \(info.uuid) on the \(device.noun), which lists the Slashplayed certificate, and a copy as \(DeviceIdentity.profilePath) for the launcher (the app's own profile is unchanged until its next build)")
-        return true
     }
 
     /// Copies the game files the device is missing or has old copies of (GameFiles), or without `copy` just
