@@ -49,7 +49,7 @@
 #include <string.h>
 #include <CommonCrypto/CommonDigest.h>
 #import "spassemble.h"
-#import "spcdn.h"  // sp_table_row, sp_build_info_for_image
+#import "spcdn.h"  // sp_table_row, sp_build_info_for_image, sp_flavor_info
 #import "spsign.h"
 
 static void say(NSString *s) {
@@ -255,6 +255,26 @@ static void skip_intro(NSString *flavor) {
         say([NSString stringWithFormat:@"skip intro: set %@ in Config.wtf%@", [added componentsJoinedByString:@", "],
                                        agent ? @"" : @" (the game's first launch here)"]);
     else if (agent) say(@"skip intro: Config.wtf already has the intro and narrator settings");
+}
+
+// The game folder's .flavor.info, which names its product (sp_flavor_info), as Battle.net and the companion
+// write it, every start before the client loads. Classic Era, TBC Anniversary, and MoP Classic are one client
+// (as are Retail and Forever), and it reads the file to know which game it is: without it, it read another
+// game's static data, and TBC Anniversary stopped on the loading screen with #134, "Invalid schema
+// WOWSTATIC_5_5_4_… for Table StartupFiles" (MoP Classic's; the iPhone, 2026-10-31 and 11-07). The companion
+// sends it only for the games ticked for the device, so a game whose image came another way (a dev build has
+// them all) had none, and nothing put it back. Written only when it isn't already this.
+static void flavor_info(NSString *flavor) {
+    NSString *product = flavor_entry(flavor)[@"product"], *text = sp_flavor_info(product);
+    NSString *folder = [NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Documents/_%@_", flavor]];
+    NSString *info = [folder stringByAppendingPathComponent:@".flavor.info"];
+    if ([[NSString stringWithContentsOfFile:info encoding:NSUTF8StringEncoding error:nil] isEqual:text]) return;
+    BOOL had = [NSFileManager.defaultManager fileExistsAtPath:info];
+    [NSFileManager.defaultManager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
+    say([text writeToFile:info atomically:YES encoding:NSUTF8StringEncoding error:nil]
+            ? [NSString stringWithFormat:@"flavor: wrote _%@_/.flavor.info (%@), which %@", flavor, product,
+                                         had ? @"named another product" : @"was missing"]
+            : [NSString stringWithFormat:@"flavor: couldn't write _%@_/.flavor.info: the game may not start", flavor]);
 }
 
 // .build.info's (or a stamp's) row for a product. nil if there's no file or row.
@@ -778,6 +798,7 @@ int main(int argc, char **argv) {
     game_region(flavor, choice);
     default_render_scale(flavor);
     skip_intro(flavor);
+    flavor_info(flavor);
     // The addons the app carries, into the game's folder before the client loads (sp_addons_place): SPMovie
     // everywhere, SPHover on the headset. The device's own copy, so a game it installed has them too.
     NSString *addons = nil;

@@ -381,8 +381,7 @@ still ships images, and an app with images behaves as before.
   one the screen says which it is, none, forgotten, expired, unreadable, or not in the app's profile,
   and that the companion's Update Games on This Device sends one), then the patch service's current
   build, the slice and its bind check (asking first on cellular), and the update's configs, assembly,
-  signing, and stamp into `Library/spgames/`, plus the game folder's `.flavor.info` if it has none (what
-  the companion sends, `sp_flavor_info`). It installs in the game's region ([below](#a-games-region)),
+  signing, and stamp into `Library/spgames/`. It installs in the game's region ([below](#a-games-region)),
   which the screen names ("Installing Classic Era for Europe…"). Any failure
   shows why with **Back**, which returns to the start screen; a launch that named the game
   (`SP_LAUNCH_FLAVOR`) stops on the reason instead. The log has `patch: install: …` lines, versions only.
@@ -815,7 +814,11 @@ version, the cdns row's CDN columns, and the Tags of a US English install, or th
 the build, CDN, and KeyRing configs it names, so the device's data always names the build of its
 image. The companion first reads the device's `.build.info`; a game whose image is older keeps the
 device's row, as does a product whose build on the device is newer (by `Version`), which gets none of
-the Mac's files (`GameStore.deviceBuildInfo`). `.flavor.info` is written by the companion too. Old
+the Mac's files (`GameStore.deviceBuildInfo`). `.flavor.info` is written by the companion too, for the
+ticked games, and by the launcher at every start when it isn't the game's (`flavor_info` in `launcher.m`):
+Classic Era, TBC Anniversary, and MoP Classic are one client, which reads it to know which game it is, and
+TBC Anniversary without one, its image from a dev build, read MoP Classic's static data and stopped with #134
+("Invalid schema … for Table StartupFiles", the iPhone). Old
 indexes are listed in `Library/spdelete.txt` only when the store was copied, and only ones older than
 the device's `.build.info` (which carries a date no later than the last copy): an index the device's
 client wrote is never deleted. `devicectl device copy` skips a file whose size and modification time

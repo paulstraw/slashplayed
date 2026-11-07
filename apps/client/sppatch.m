@@ -557,7 +557,7 @@ static NSDictionary<NSString *, NSString *> *current_row(NSString *product, NSSt
 // the update's chain from nothing: the patch service's current build in the game's region (`choice`,
 // sp_game_region: the region file, else the device's region and languages), its
 // slice fetched (asking first on a costly network) and its imports checked (check_new_build), then its configs,
-// image, and stamp made and signed here (update), and the game's .flavor.info if its folder has none. Its
+// image, and stamp made and signed here (update); the launcher writes the game's .flavor.info (flavor_info). Its
 // screen says each step; there's no Play Anyway, as there's nothing else to play. A signing identity is checked
 // first, before anything is downloaded: without one it says what's missing (no_identity). The screen names the
 // region ("Installing Classic Era for Europe"), and once the build is checked the region and its languages,
@@ -638,14 +638,6 @@ NSString *sp_patch_install(NSString *flavor, NSDictionary<NSString *, NSString *
         say([NSString stringWithFormat:@"install: failed after %.1f s: %@", now() - t, why]);
         *problem = failed(cant, @"Try again later.", sentence(why));
         return nil;
-    }
-    // The game's folder as Battle.net (and the companion) start it: .flavor.info names its product.
-    NSString *folder = [NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Documents/_%@_", flavor]];
-    NSString *info = [folder stringByAppendingPathComponent:@".flavor.info"];
-    if (![NSFileManager.defaultManager fileExistsAtPath:info]) {
-        [NSFileManager.defaultManager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
-        if (![sp_flavor_info(product) writeToFile:info atomically:YES encoding:NSUTF8StringEncoding error:nil])
-            say(@"install: couldn't write the game's .flavor.info");
     }
     say([NSString stringWithFormat:@"install: %@ %@ is Library/spgames/%@, %.1f s in all; %@ (%@), text %@, speech %@",
                                    product, version, image.lastPathComponent, now() - t, region, where, settled[@"Text"],

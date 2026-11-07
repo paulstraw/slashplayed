@@ -2,7 +2,7 @@ import XCTest
 
 /// The launcher's install of a game on the device, for an app built with no client images (build.sh's
 /// SP_NO_IMAGES=1): which games the start screen offers and which it installs (sp_games), and the game
-/// folder's .flavor.info it writes (sp_flavor_info, against the companion's GameFiles.flavorInfo). The install
+/// folder's .flavor.info the launcher writes at every start (sp_flavor_info, against the companion's GameFiles.flavorInfo). The install
 /// itself is the update's chain (spcdn.m, spbind.m, spassemble.m, spsign.m), which their own tests cover, and
 /// its region is DeviceRegionTests'. Made-up rows, no Blizzard file.
 final class DeviceInstallTests: XCTestCase {
@@ -67,7 +67,7 @@ final class DeviceInstallTests: XCTestCase {
         XCTAssertTrue((line as String?)?.contains("FAILED SPMovie/SPMovie.toc (not in the app)") == true, "\(String(describing: line))")
     }
 
-    /// The .flavor.info the device writes for a game it installed is the one the companion sends.
+    /// The .flavor.info the launcher writes for a game is the one the companion sends.
     func testFlavorInfoIsTheCompanions() {
         for flavor in Flavor.allCases {
             XCTAssertEqual(sp_flavor_info(flavor.product), GameFiles.flavorInfo(flavor), flavor.rawValue)
