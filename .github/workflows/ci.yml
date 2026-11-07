@@ -187,6 +187,18 @@ jobs:
       # shims/generated/rewrite-map.txt, and the tests that read build/<platform>/exports.json are opt-in.
       - uses: ./.github/actions/companion-deps
 
+      # spguest, the launcher's loader (apps/client/spguest.c), loading the guest toy on this runner's
+      # macOS: its checks (constructors, Objective-C, exceptions, thread-locals, binds, self-queries, a
+      # 44 MB __TEXT) fail the step. SP_GUEST_REFS=none builds the toy from our own code alone, with no
+      # game's imports (those need a local recon and client); clang, dyld_info, and an ad hoc codesign are
+      # all it needs. It also shows the private hooks spguest registers through (_objc_map_images,
+      # _objc_load_image, __unw_add_find_dynamic_unwind_sections) still work on the runner's macOS. Seconds,
+      # so a step here rather than a job of its own on another macOS runner.
+      - name: Test the guest loader
+        env:
+          SP_GUEST_REFS: none
+        run: apps/client/guesttest/build.sh mac
+
       - name: Test the companion
         run: apps/companion/test.sh
 

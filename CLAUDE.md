@@ -44,7 +44,7 @@ the push, the export), `SlashplayedCertificate.swift` (a paid team's own certifi
   launcher, the companion's `Flavor.swift`, and `scripts/flavor.sh`), `spguest.c`/`.h` and `spguest_tlv.S`
   (spguest, a loader of our own: the unchanged, unsigned client mapped, bound, and run without dyld;
   `spguestlaunch.m` loads it behind the `SP_GUEST_CLIENT` dev switch), `guesttest/` (spguest's test: a toy
-  guest of our own, `build.sh mac` on the Mac, and `build.sh device`/`run.sh` on a device;
+  guest of our own, `build.sh mac` on the Mac, which CI runs, and `build.sh device`/`run.sh` on a device;
   `research/guestloadtest/README.md` has the research and the device runs),
   `helper/` (the
   on-device JIT helper, a classic app extension on idevice, `Pair.swift` its pair-setup;
@@ -101,7 +101,7 @@ SP_PLATFORM=ios SP_NO_INSTALL=1 apps/client/build.sh   # the script build of the
 scripts/build-zsign.sh source; (cd apps/companion-rs && cargo test --locked && cargo build --release --locked)
                                            # slashplayed-companion; a device run needs --kit <zip>:
                                            # scripts/release/device-kit.sh <bundle-resources.sh --build dir> <zip>
-SP_GUEST_REFS=none apps/client/guesttest/build.sh mac   # spguest's toy on the Mac, from our own code alone
+SP_GUEST_REFS=none apps/client/guesttest/build.sh mac   # spguest's toy on the Mac, as CI runs it
 research/<harness>/build.sh                # research harnesses (they install; no no-install switch)
 ```
 

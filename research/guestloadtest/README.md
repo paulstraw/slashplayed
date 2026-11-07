@@ -10,8 +10,9 @@ team-signed image is needed for dyld).
 The code has moved out of this directory, which keeps the research's record: the loader is the launcher's
 now, `apps/client/spguest.c`, `spguest.h`, and `spguest_tlv.S` (built by `apps/client/build-launcher.sh`), and
 the toy with its two hosts is spguest's test, [`apps/client/guesttest/`](../../apps/client/guesttest)
-(`build.sh`, `run.sh`, `toy.mm`, `host.c`, `device.c`, `Info.plist`). The files below are named as they
-were here.
+(`build.sh`, `run.sh`, `toy.mm`, `host.c`, `device.c`, `Info.plist`). CI runs the toy on its macOS runner
+(`SP_GUEST_REFS=none apps/client/guesttest/build.sh mac`, in `companion-test`); the device runs stay manual.
+The files below are named as they were here.
 
 - `spguest.h`, `spguest.c`, `spguest_tlv.S`: the loader, modelled on Tolkara's (MIT,
   github.com/tolkara/tolkara, `runtime/`). It maps the segments into one reserved span, applies the rebase,
