@@ -119,3 +119,59 @@ waits in the client's own startup for most of it, a stall reported every 3 s fro
 client opened and deleted `login.txt` at 19.8 s, and once in the world it held 60 fps (worst frame 18 to
 42 ms) at about 4.2 GB footprint, 1.9 GB left, thermal fair, as large as the dyld-loaded Retail on the
 headset.
+
+### The dyld baseline, Retail on the iPhone
+
+The same client loaded the usual way, iPhone 16 Pro (iOS 27), Retail 12.1.5.70688, 2026-11-06: the same
+command without `SP_GUEST_CLIENT`, the app's bundled `wow-retail` now a real iOS image (`build.sh`'s steps,
+`install_name_tool`, `vtool` to iOS 26.0, `retype.py`, on the companion's cached arm64 slice of that build,
+the one the guest loads; the same steps to visionOS give the companion's image byte for byte up to the
+signature), signed and dlopen'ed. Same app, same bundle ID and container, same launcher. A newer build
+(12.1.5.70783) is out, which the guest path never looks for but the dyld path stops for on its newer-build
+screen, so these runs passed `SP_PATCH_SERVICE=Library/sppatchtest` with a one-row `versions` naming the
+image's build (written from its stamp): "up to date" in 0.0 s, no screen, nothing fetched. Then three runs of
+each path back to back, to character select (nobody pressed Enter World), seconds on run.sh's clock:
+
+| Run | Attached | Prepare | `main` | First frame | 3 s stalls | `login.txt` | 30 s | 60 s at character select |
+|---|---|---|---|---|---|---|---|---|
+| guest 1 (above) | 2.18 | 0.093 s | 2.55 | 15.9 s | 4 | 19.8 | 21.9 fps | (in the world) |
+| guest 2 | 2.89 | 0.122 s | 3.29 | 6.0 s | 1 | 10.7 | 31.7 fps | 60.0 fps, 3385 MB, 2758 left |
+| guest 3 | 2.27 | 0.128 s | 2.60 | 5.6 s | 1 | 9.6 | 30.3 fps | 60.0 fps, 3358 MB, 2785 left |
+| dyld 1 | 2.28 | 0.123 s | 2.78 | 6.3 s | 1 | 10.4 | 36.4 fps | 60.0 fps, 3481 MB, 2662 left |
+| dyld 2 | 2.56 | 0.119 s | 2.97 | 5.8 s | 1 | 10.2 | 30.8 fps | 59.9 fps, 3467 MB, 2676 left |
+| dyld 3 | 2.65 | 0.124 s | 3.08 | 5.7 s | 1 | 10.1 | 29.7 fps | 59.7 fps, 3470 MB, 2673 left |
+
+Prepare is the helper's write time for dyld and spguest's prepare for the guest (both 3,268 pages). `main` is
+spguest's "calling main", and for dyld the end of the dlopen ("loaded the bundled image"), initializers
+included in both. From the helper's attach to `main`: 0.33 to 0.40 s through spguest, 0.41 to 0.50 s through
+dyld. First frame is "after the client was asked for". Every run: one client image, no class loaded twice.
+
+Our own loader costs nothing at startup: the client's start is 5.6 to 6.3 s either way, with one 3 s stall,
+and spguest reaches `main` a little sooner than dyld. The first guest run's 15.9 s and four stalls aren't the
+loader: run again, the guest starts like dyld. That run was the first Retail start in days and the phone
+was cooler (thermal nominal at 30 s; these runs were fair, then serious from 30 or 60 s on), so a cold
+cache is the likely cause, not checked. At character select both hold 60 fps; the guest's footprint is
+about 100 MB smaller (3358 to 3385 MB against 3467 to 3481 MB), but that doesn't hold in the world (below).
+
+In the world, 2026-11-07: the same setup, alternating guest and dyld, Enter World pressed by hand as
+character select showed (about 10 s in), each run to the same spot (Murloc Hideaway, the Wandering Isle, a
+level-3 character, at 61.8, 79.8 for guest 4 and 62.2, 81.5 for the rest; guest 1 was in the same sub-zone).
+The stats, fps / worst frame /
+footprint / left / thermal:
+
+| Run | First frame | 60 s | 90 s | 120 s |
+|---|---|---|---|---|
+| guest 1 (above) | 15.9 s | 40.2 / 1431 ms / 4288 / 1855 / fair | 60.0 / 18 ms / 4241 / 1902 / fair | 60.0 / 42 ms / 4267 / 1876 / fair |
+| guest 4 | 5.6 s | 55.9 / 655 ms / 4287 / 1856 / nominal | 60.0 / 17 ms / 4316 / 1827 / nominal | 59.9 / 43 ms / 4338 / 1805 / nominal |
+| guest 5 | 5.4 s | 57.3 / 843 ms / 4187 / 1956 / serious | 60.0 / 18 ms / 4213 / 1930 / serious | 60.0 / 18 ms / 4227 / 1916 / serious |
+| dyld 4 | 5.4 s | 58.3 / 831 ms / 4245 / 1898 / fair | 59.9 / 70 ms / 4263 / 1880 / fair | 60.0 / 26 ms / 4275 / 1868 / fair |
+| dyld 5 | 6.1 s | 53.5 / 874 ms / 4238 / 1905 / serious | 60.0 / 17 ms / 4247 / 1896 / serious | 60.0 / 17 ms / 4255 / 1888 / serious |
+
+(A dyld run where Enter World was pressed late, still at character select at 30 s, is left out: 46.3 fps at
+60 s, then 60.0 at 90 and 120 s, 4266 to 4272 MB.) At 60 s every run is still streaming the world in (the
+world's first frames, a worst frame of 0.7 to 0.9 s); from 90 s every run holds 60 fps with worst frames of
+17 to 70 ms. In the world the footprints overlap, guest 4213 to 4338 MB, dyld 4247 to 4275 MB at 90 and 120 s,
+so the character-select gap isn't the loader's: just after the client loads both are 140 to 176 MB, and the
+gap opens while the client streams character select in (likely what it streams varies run to run; not checked). Thermal varied with the
+order of the runs, not the path. Every run: one client image, no class loaded twice. Loading through spguest
+costs nothing in play either.
