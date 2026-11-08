@@ -201,8 +201,7 @@ enum GameFiles {
         let finishing = copy && !asked
         var mac: (date: Date, table: GameStore.BuildInfo)?
         if copy {
-            guard let text = try? String(contentsOf: buildInfo, encoding: .utf8), let date = attributes(buildInfo)?.date,
-                  let table = GameStore.BuildInfo(text) else {
+            guard let date = attributes(buildInfo)?.date, let table = try? GameStore.installTable(Flavor.installRoot) else {
                 throw Failure("There's no game install on this Mac to copy game files from (no \(buildInfo.path)).")
             }
             mac = (date, table)

@@ -12,6 +12,11 @@ All notable changes to Slashplayed are documented here. The format is based on
   15 Pro's chip and 8 GB of memory. It can now be picked and played on. It hasn't been played on yet,
   so the companion marks it untested, as it does M1 iPads: if you try one, please report how it goes,
   working or not, on GitHub with the zip from Help > Export Diagnostics….
+- Copy Game Files from This Mac copies every game installed on your Mac, even one that Battle.net's record
+  of the install has lost track of. That can happen when Battle.net is reset or reinstalled and then
+  installs another game into the same folder. Before, the companion said those games weren't the build
+  Blizzard has out now and left the device's game data as it was, and it couldn't show how much space
+  they'd take.
 
 ## [1.4.0] - 2026-11-06
 

@@ -14,15 +14,49 @@ The companion runs its Swift port (apps/companion/Sources/GameStore.swift); keep
 Formats: https://wowdev.wiki/CASC (local .idx v7, encoding file, BLTE).
 """
 import os
+import plistlib
 import struct
 import sys
 import zlib
 
 
-def build_info(root):
-    lines = open(os.path.join(root, ".build.info")).read().splitlines()
+def table(path):
+    """A |-separated table whose header names carry a !type suffix (.build.info, .flavor.info), as rows."""
+    lines = open(path).read().splitlines()
     cols = [c.split("!")[0] for c in lines[0].split("|")]
-    return {r["Product"]: r for r in (dict(zip(cols, l.split("|"))) for l in lines[1:] if l)}
+    return [dict(zip(cols, l.split("|"))) for l in lines[1:] if l]
+
+
+def build_info(root):
+    """.build.info's rows by product, with a row for each installed game it doesn't list: the build config
+    in Data/config for the build of the client in the game's folder (GameStore.installTable; Battle.net's
+    file doesn't always list every game in the install)."""
+    rows = {r["Product"]: r for r in table(os.path.join(root, ".build.info"))}
+    configs = None
+    for folder in sorted(os.listdir(root)):
+        info = os.path.join(root, folder, ".flavor.info")
+        if not (len(folder) > 2 and folder[0] == folder[-1] == "_" and os.path.isfile(info)):
+            continue
+        product = (table(info) or [{}])[0].get("Product Flavor")
+        if not product or product in rows:
+            continue
+        if configs is None:
+            d = os.path.join(root, "Data/config")
+            configs = {k: c for k, c in ((k, config(root, k)) for a in os.listdir(d) for b in os.listdir(os.path.join(d, a))
+                                         for k in os.listdir(os.path.join(d, a, b))) if "build-uid" in c}
+        for app in sorted(a for a in os.listdir(os.path.join(root, folder)) if a.endswith(".app")):
+            try:
+                version = plistlib.load(open(os.path.join(root, folder, app, "Contents/Info.plist"), "rb"))["CFBundleVersion"]
+            except (OSError, KeyError, plistlib.InvalidFileException):
+                continue
+            short, _, build = version.rpartition(".")
+            name = f"-{build}patch{short}"
+            key = next((k for k in sorted(configs) if configs[k]["build-uid"] == [product]
+                        and name in (configs[k].get("build-name") or [""])[0]), None)
+            if short and key:
+                rows[product] = {"Product": product, "Build Key": key, "Version": version}
+                break
+    return rows
 
 
 def config(root, key):

@@ -795,6 +795,13 @@ them:
   missing, another size, or the same size with another date, and the first of each with the device's
   size or date against the Mac's).
 
+The Mac's build of a game is its row in the install's `.build.info`, or, for an installed game the file
+doesn't list, the build config in `Data/config/` whose `build-uid` is the game's product and whose
+`build-name` names the build of the client in its folder (`GameStore.installTable`). Battle.net can
+leave installed games out: on 2026-11-07 its agent's record of the installs was reset, and Forever's
+install then wrote a `.build.info` with Forever's row alone, beside four other games. Nothing else in
+the install says such a game's region or language, so it gets `Flavor`'s defaults (`us`, US English).
+
 No order of the store's files leaves it readable if a copy stops partway: over a store the device's
 client streamed, the copy replaces the client's archives before it sends the indexes that point into
 them, and in between the client's own indexes, still the newest, point into the Mac's bytes. Every

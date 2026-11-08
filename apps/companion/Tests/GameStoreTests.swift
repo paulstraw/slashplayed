@@ -52,20 +52,44 @@ final class GameStoreTests: XCTestCase {
         }
         try index([(key(1), 5, 0, 10)]).write(to: data.appending(path: String(format: "%02x%08x.idx", 0, 1)))
 
-        for (product, enc) in [("product_a", key(0xA0)), ("product_b", key(0xB0))] {
-            let buildKey = hex(key(product == "product_a" ? 0xC1 : 0xC2))
+        // product_b's build config is found by its client's build (installTable): two more build configs
+        // pointing at product_a's encoding file miss it by one detail each, the build or the product.
+        for (n, uid, name, enc) in [(0xC1, "product_a", "WOW-100patch1.0.0_Retail", key(0xA0)),
+                                    (0xC2, "product_b", "WOW-456patch1.2.3_ClassicRetail", key(0xB0)),
+                                    (0xC3, "product_b", "WOW-455patch1.2.3_ClassicRetail", key(0xA0)),
+                                    (0xC4, "product_c", "WOW-456patch1.2.3_ClassicRetail", key(0xA0))] as [(UInt8, String, String, [UInt8])] {
+            let buildKey = hex(key(n))
             let dir = root.appending(path: "Data/config/\(buildKey.prefix(2))/\(buildKey.dropFirst(2).prefix(2))")
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try "# Build Configuration\n\nroot = 00\nencoding = \(hex(key(0xEE))) \(hex(enc))\nencoding-size = 1 2\n"
+            try "# Build Configuration\n\nroot = 00\nbuild-name = \(name)\nbuild-uid = \(uid)\nencoding = \(hex(key(0xEE))) \(hex(enc))\nencoding-size = 1 2\n"
                 .write(to: dir.appending(path: buildKey), atomically: true, encoding: .utf8)
         }
+        // product_a has a row; product_b is installed in _b_ (its .flavor.info and client) but has none, as
+        // Battle.net left four of five games out of the file on 2026-11-07.
         try """
-            Branch!STRING:0|Active!DEC:1|Build Key!HEX:16|Product!STRING:0
-            us|1|\(hex(key(0xC1)))|product_a
-            us|1|\(hex(key(0xC2)))|product_b
+            Branch!STRING:0|Active!DEC:1|Build Key!HEX:16|Version!STRING:0|Product!STRING:0
+            us|1|\(hex(key(0xC1)))|1.0.0.100|product_a
 
             """.write(to: root.appending(path: ".build.info"), atomically: true, encoding: .utf8)
+        for (folder, product, version) in [("_a_", "product_a", "1.0.0.100"), ("_b_", "product_b", "1.2.3.456")] {
+            let contents = root.appending(path: "\(folder)/Game.app/Contents")
+            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            try "Product Flavor!STRING:0\n\(product)\n".write(to: root.appending(path: "\(folder)/.flavor.info"), atomically: true, encoding: .utf8)
+            XCTAssertTrue(NSDictionary(dictionary: ["CFBundleVersion": version]).write(to: contents.appending(path: "Info.plist"), atomically: true))
+        }
         return root
+    }
+
+    /// A game the install's .build.info doesn't list gets the row its folder and Data/config say: the build
+    /// config of its client's build, not another build of it or another game's same build. A listed game
+    /// keeps the file's row.
+    func testRowForAnInstalledGameTheFileLeavesOut() throws {
+        let rows = try GameStore.buildInfo(try makeStore())
+        XCTAssertEqual(rows["product_b"], ["Branch": "", "Active": "", "Build Key": hex(key(0xC2)), "Version": "1.2.3.456",
+                                           "Product": "product_b"])
+        XCTAssertEqual(rows["product_a"], ["Branch": "us", "Active": "1", "Build Key": hex(key(0xC1)), "Version": "1.0.0.100",
+                                           "Product": "product_a"])
+        XCTAssertEqual(rows.count, 2)
     }
 
     func testArchivesPerProduct() throws {

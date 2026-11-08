@@ -50,12 +50,77 @@ enum GameStore {
 
     // MARK: Install files
 
-    /// .build.info's rows by product: a |-separated table whose header names carry a !type suffix.
+    /// .build.info's rows by product (installTable's: one for every installed game).
     static func buildInfo(_ root: URL) throws -> [String: [String: String]] {
-        guard let table = BuildInfo(try String(contentsOf: root.appending(path: ".build.info"), encoding: .utf8)) else {
+        try installTable(root).byProduct
+    }
+
+    /// The install's .build.info, with a row added for each installed game it doesn't list (installedRow).
+    /// Battle.net's file doesn't always list every game in the install. On 2026-11-07 its agent's record of
+    /// what's installed was reset (the old agent's log ends on a DELETE /agent; the new one's product.db
+    /// names only the game installed next), and Forever's install then wrote a .build.info holding Forever's
+    /// row alone, with Classic Era, Anniversary, MoP Classic, and Retail still installed beside it.
+    static func installTable(_ root: URL) throws -> BuildInfo {
+        guard var table = BuildInfo(try String(contentsOf: root.appending(path: ".build.info"), encoding: .utf8)) else {
             throw Failure("The game install's .build.info is empty.")
         }
-        return table.byProduct
+        let listed = table.byProduct
+        let missing = flavorFolders(root).filter { listed[$0.product] == nil }
+        guard !missing.isEmpty else { return table }
+        let configs = buildConfigs(root)
+        for game in missing {
+            guard let row = installedRow(root, game, configs: configs) else { continue }
+            table.lines.append(table.columns.map { row[$0] ?? "" }.joined(separator: "|"))
+        }
+        return table
+    }
+
+    /// The install's game folders (_retail_ and the like) with the product each one's .flavor.info names:
+    /// Battle.net writes it in every game's folder as a one-column table (Product Flavor).
+    static func flavorFolders(_ root: URL) -> [(product: String, folder: String)] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []
+        return names.sorted().filter { $0.count > 2 && $0.hasPrefix("_") && $0.hasSuffix("_") }.compactMap { folder in
+            guard let text = try? String(contentsOf: root.appending(path: "\(folder)/.flavor.info"), encoding: .utf8),
+                  let table = BuildInfo(text), let line = table.lines.first,
+                  let product = table.row(line)["Product Flavor"], !product.isEmpty else { return nil }
+            return (product, folder)
+        }
+    }
+
+    /// The build configs in Data/config (config/ab/cd/<key>, the ones with a build-uid), by key.
+    static func buildConfigs(_ root: URL) -> [String: [String: [String]]] {
+        let dir = root.appending(path: "Data/config")
+        let ls = { (url: URL) in (try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? [] }
+        var out: [String: [String: [String]]] = [:]
+        for a in ls(dir) { for b in ls(dir.appending(path: a)) { for key in ls(dir.appending(path: "\(a)/\(b)")) {
+            guard let text = try? String(contentsOf: dir.appending(path: "\(a)/\(b)/\(key)"), encoding: .utf8) else { continue }
+            let config = parseConfig(text)
+            if config["build-uid"] != nil { out[key] = config }
+        } } }
+        return out
+    }
+
+    /// The game's row as far as the install says it without .build.info: its product, the build of its
+    /// client (the app in its folder's CFBundleVersion, 12.1.5.70688, which is .build.info's Version), and the
+    /// key of the build config for that build (build-uid the product, build-name WOW-70688patch12.1.5_Retail).
+    /// That's what Battle.net's own row holds for those three columns (Forever's, 2026-11-07). Nothing in the
+    /// install names a game's region or tags apart from its row, so those stay empty (Flavor's defaults).
+    /// Nil when no build config is the client's build.
+    static func installedRow(_ root: URL, _ game: (product: String, folder: String),
+                             configs: [String: [String: [String]]]) -> [String: String]? {
+        let dir = root.appending(path: game.folder)
+        let apps = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).filter { $0.hasSuffix(".app") }.sorted()
+        for app in apps {
+            guard let version = NSDictionary(contentsOf: dir.appending(path: "\(app)/Contents/Info.plist"))?["CFBundleVersion"] as? String,
+                  let dot = version.lastIndex(of: ".") else { continue }
+            let name = "-\(version[version.index(after: dot)...])patch\(version[..<dot])"
+            if let key = configs.keys.sorted().first(where: { key in
+                configs[key]!["build-uid"] == [game.product] && configs[key]!["build-name"]?.first?.contains(name) == true
+            }) {
+                return ["Product": game.product, "Build Key": key, "Version": version]
+            }
+        }
+        return nil
     }
 
     /// A .build.info as text: the header line (column names with their !type suffixes) and the row lines,
