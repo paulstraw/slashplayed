@@ -374,7 +374,10 @@ pub fn p12(id: &Identity, password: &str) -> Result<Zeroizing<Vec<u8>>, Report> 
 }
 
 /// Both profiles, checked: the app's with increased-memory-limit (and extended-virtual-addressing on a paid
-/// team), the helper's with neither (Signing.helperDropped). Returns them and whether the team is free.
+/// team). The helper's may grant them too (a team whose helper App ID has the capabilities, as Xcode's
+/// profile on the Mac does then): it's signed with its own template's entitlements, which leave them out
+/// (Signing.helperDropped), and a signature may claim less than its profile grants. Returns them and whether
+/// the team is free.
 pub async fn profiles(
     session: &mut DeveloperSession,
     team: &DeveloperTeam,
@@ -398,7 +401,7 @@ pub async fn profiles(
     profile::check(&parsed, &team.team_id, &app_id.identifier, udid, &id.cert_der, want, &[])?;
     let helper = session.download_team_provisioning_profile(team, helper_id, None).await?;
     let helper_bytes: Vec<u8> = helper.encoded_profile.as_ref().to_vec();
-    profile::check(&profile::Profile::parse(&helper_bytes)?, &team.team_id, &helper_id.identifier, udid, &id.cert_der, &[], &[IML, EVA])?;
+    profile::check(&profile::Profile::parse(&helper_bytes)?, &team.team_id, &helper_id.identifier, udid, &id.cert_der, &[], &[])?;
     if let Some(exp) = parsed.expires() {
         let days = exp.duration_since(std::time::SystemTime::now()).map(|d| d.as_secs() / 86400).unwrap_or(0);
         say(&format!(

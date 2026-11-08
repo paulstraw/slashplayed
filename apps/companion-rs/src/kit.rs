@@ -285,6 +285,19 @@ mod tests {
         );
     }
 
+    // The helper's profile may grant the memory entitlements (provision::profiles doesn't refuse it), so its
+    // own template is what keeps them out of its signature, as Signing.helperDropped does on the Mac.
+    #[test]
+    fn helper_template_has_no_memory_entitlements() {
+        let t = include_str!("../../client/helper/entitlements.plist");
+        let ents = entitlements(t, "ABCDE12345", "ABCDE12345.slashplayed.helper", &[]).unwrap();
+        let d: plist::Dictionary = plist::from_bytes(ents.as_bytes()).unwrap();
+        assert!(d.contains_key("get-task-allow"));
+        for k in ["com.apple.developer.kernel.increased-memory-limit", "com.apple.developer.kernel.extended-virtual-addressing"] {
+            assert!(!d.contains_key(k), "{k}");
+        }
+    }
+
     #[test]
     fn unknown_placeholder_fails() {
         assert!(entitlements("<string>@OTHER@</string>", "T", "b", &[]).is_err());

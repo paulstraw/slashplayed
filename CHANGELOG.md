@@ -8,6 +8,8 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ### Fixed
 
+- slashplayed-companion no longer stops with "…helper's profile grants … which it shouldn't" on a paid team
+  whose Slashplayed helper has the memory capabilities turned on, as Xcode's setup can leave it.
 - The iPad mini (A17 Pro) was refused as an iPad that can't run the game, though it has the iPhone
   15 Pro's chip and 8 GB of memory. It can now be picked and played on. It hasn't been played on yet,
   so the companion marks it untested, as it does M1 iPads: if you try one, please report how it goes,
