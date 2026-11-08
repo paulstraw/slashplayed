@@ -1,9 +1,8 @@
-// Credentials on the way to the device. The owner's rules (CLAUDE.md, "Signing identities are credentials",
-// "Pairing records are credentials"): a .p12, its password, and a pairing record go from memory to the
-// device's container, never through a log; where one has to touch the disk it's a file only this user can
-// read, zeroed, then deleted. This tool pushes them straight from memory over AFC (src/device.rs), so the
-// disk is touched only by the scratch folder below, which never holds a credential: the unsigned app, the
-// IPA, and the kit.
+// Credentials on the way to the device. The owner's rule (CLAUDE.md, "Pairing records are credentials"): a
+// pairing record goes from memory to the device's container, never through a log; where one has to touch
+// the disk it's a file only this user can read, zeroed, then deleted. This tool pushes it straight from
+// memory over AFC (src/device.rs), so the disk is touched only by the scratch folder below, which never
+// holds a credential: the unsigned app, the IPA, and the kit.
 
 use std::path::{Path, PathBuf};
 
@@ -42,14 +41,6 @@ impl Drop for Scratch {
     }
 }
 
-/// A random password for the .p12 the device imports (it's deleted there after the import, and here when
-/// dropped): 24 random bytes as hex, like the companion's.
-pub fn p12_password() -> zeroize::Zeroizing<String> {
-    let mut b = zeroize::Zeroizing::new([0u8; 24]);
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), b.as_mut());
-    zeroize::Zeroizing::new(hex::encode(b.as_ref()))
-}
-
 /// An error as the chain of what failed, without the attachments isideload hangs on its reports (raw
 /// response bodies, plists), which can hold account data.
 pub fn safe_error(e: &Report) -> String {
@@ -76,12 +67,5 @@ mod tests {
         }
         drop(s);
         assert!(!p.exists());
-    }
-
-    #[test]
-    fn password_is_48_hex() {
-        let p = p12_password();
-        assert_eq!(p.len(), 48);
-        assert!(p.bytes().all(|b| b.is_ascii_hexdigit()));
     }
 }

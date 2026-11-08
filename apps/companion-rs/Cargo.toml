@@ -33,9 +33,7 @@ serde_json = "1"
 rsa = "0.9.10"
 rcgen = { version = "0.14.7", default-features = false, features = ["ring", "pem"] }
 x509-cert = "0.2.5"
-p12-keystore = { version = "0.3.0-rc4", package = "isideload-p12-keystore" }
 sha2 = "0.11.0"
-sha1 = "0.11.0"
 hex = "0.4.3"
 rand = "0.8.5"
 http = "1.4"
@@ -51,8 +49,8 @@ keyring = { version = "3.6.3", default-features = false, features = [
 
 [build-dependencies]
 cc = "1.2"
-# zsign's OpenSSL, built from source and linked statically: openssl-src's 3.5 line, the release
-# scripts/build-zsign.sh pins for the device (docs/architecture.md, "The host tool").
+# zsign's OpenSSL, built from source and linked statically: openssl-src's 3.5 line, OpenSSL's
+# long-term-support series (docs/architecture.md, "The host tool").
 openssl-src = "=300.5.5"
 
 [dev-dependencies]

@@ -7,11 +7,11 @@
 //   3. the Apple ID sign-in, held in memory only, and the team (account.rs);
 //   4. the device, App IDs, capabilities, certificate, and profiles (provision.rs);
 //   5. the app signed with zsign (sign.rs) and installed over USB;
-//   6. the RemotePairing record, the developer disk image (ddi.rs), and the signing identity into its
-//      container, for the JIT helper and the device's own game installs.
+//   6. the RemotePairing record and the developer disk image (ddi.rs) into its container, for the JIT helper.
 //
-// The device does the rest: it installs and updates games itself and picks their region (PR #35, #41), so
-// this never writes .build.info, a region, or addons. Vision Pro stays Mac-only.
+// The device does the rest: it installs and updates games itself, with no credential on it (it loads each
+// game's unchanged client with spguest, so nothing there is signed), and picks their region (PR #35, #41),
+// so this never writes .build.info, a region, or addons. Vision Pro stays Mac-only.
 
 mod account;
 mod ddi;
@@ -217,7 +217,7 @@ async fn install(args: &Args) -> Result<(), Report> {
     device::install(&d, &ipa).await?;
     say("installed");
 
-    // 6. Into the container: the pairing record, the developer disk image, the signing identity.
+    // 6. Into the container: the pairing record and the developer disk image.
     let mut afc = device::container(&d, &bundle_id).await?;
     let has_pairing = device::size(&mut afc, device::PAIRING_PATH).await.unwrap_or(0) > 0;
     if has_pairing && !args.flag("--pair-again") {
@@ -229,14 +229,6 @@ async fn install(args: &Args) -> Result<(), Report> {
     if !ddi::send_if_needed(&mut afc).await? {
         say("the app already has this developer disk image");
     }
-    // The .p12 first: the launcher imports only a whole pair, and deletes a half one (DeviceIdentity.swift).
-    let password = secret::p12_password();
-    let p12 = provision::p12(&id, &password)?;
-    device::put(&mut afc, "Library/spidentity.p12", &p12).await?;
-    device::put(&mut afc, "Library/spidentity.pass", password.as_bytes()).await?;
-    drop(p12);
-    drop(password);
-    say("sent the signing identity, for installing and updating games on the device");
 
     eprintln!();
     eprintln!("Slashplayed is on {}.", d.name);

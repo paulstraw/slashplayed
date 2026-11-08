@@ -6,8 +6,7 @@
 //
 // Where there's no store (a Linux box with no Secret Service running, say), the run still works: a fresh
 // key, a new certificate, and the previous Slashplayed certificate revoked if the team is full
-// (provision.rs). The key is never printed or logged, and leaves this process only for the store and, as a
-// .p12, for the device.
+// (provision.rs). The key is never printed or logged, and leaves this process only for the store.
 
 use rootcause::prelude::*;
 use rsa::{

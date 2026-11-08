@@ -34,7 +34,6 @@ use rsa::{
     pkcs8::{EncodePrivateKey, LineEnding},
 };
 use serde_json::{Value as Json, json};
-use sha1::{Digest, Sha1};
 use x509_cert::{
     Certificate,
     der::{Decode, Encode},
@@ -356,23 +355,6 @@ pub async fn identity(
     Ok(Identity { key, cert_der })
 }
 
-/// The identity as a .p12 the launcher imports (spsign.m): our key and certificate only, opened with
-/// `password`. Built in memory; the caller pushes it and drops it (zeroed).
-pub fn p12(id: &Identity, password: &str) -> Result<Zeroizing<Vec<u8>>, Report> {
-    let key_der = Zeroizing::new(id.key.to_pkcs8_der()?.as_bytes().to_vec());
-    let cert = p12_keystore::Certificate::from_der(&id.cert_der).map_err(|e| report!("the certificate didn't parse: {e:?}"))?;
-    let local_key_id = Sha1::digest(key_der.as_slice())[..8].to_vec();
-    let chain = p12_keystore::PrivateKeyChain::new(
-        local_key_id,
-        p12_keystore::PrivateKey::from_der(&key_der).map_err(|e| report!("the key didn't encode: {e:?}"))?,
-        vec![cert],
-    );
-    let mut store = p12_keystore::KeyStore::new();
-    store.add_entry("Slashplayed", p12_keystore::KeyStoreEntry::PrivateKeyChain(chain));
-    let out = store.writer(password).write().map_err(|e| report!("couldn't make the .p12: {e:?}"))?;
-    Ok(Zeroizing::new(out))
-}
-
 /// Both profiles, checked: the app's with increased-memory-limit (and extended-virtual-addressing on a paid
 /// team). The helper's may grant them too (a team whose helper App ID has the capabilities, as Xcode's
 /// profile on the Mac does then): it's signed with its own template's entitlements, which leave them out
@@ -480,13 +462,5 @@ mod tests {
         c.cert_content = Some(plist::Data::new(der));
         assert!(is_ours(&c, &key).is_some());
         assert!(is_ours(&c, &other).is_none());
-        // And the .p12 made from it opens with its password.
-        let x = is_ours(&c, &key).unwrap();
-        let id = Identity { cert_der: x.to_der().unwrap(), key };
-        let password = crate::secret::p12_password();
-        let p12 = p12(&id, &password).unwrap();
-        let strict = p12_keystore::Pkcs12ImportPolicy::Strict;
-        assert!(p12_keystore::KeyStore::from_pkcs12(&p12, &password, strict).is_ok());
-        assert!(p12_keystore::KeyStore::from_pkcs12(&p12, &crate::secret::p12_password(), strict).is_err());
     }
 }
