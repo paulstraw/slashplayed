@@ -270,11 +270,13 @@ enum ClientBuild {
     /// the unchanged client with spguest (apps/client/spguest.c): the CDN's arm64 slice as wow-<flavor>, then its
     /// .build.info row (spbuildinfo-<flavor>, as an update on the device keeps it), spsource-<flavor>
     /// (`mac`), and the stamp last, so a stamp is only ever beside a whole client of its build. devicectl
-    /// can't delete, so a stamp already there (`replacing`) is emptied first: a copy cut short leaves no
-    /// stamp naming the old build beside the new client. Returns the slice's size.
+    /// can't delete, so the stamp is emptied first, whatever the listing said was there (one it couldn't
+    /// parse included): a copy cut short leaves no stamp naming the old build beside the new client.
+    /// `beforeWrite` runs once the slice is in hand, just before the first write (the caller stops a client
+    /// running on the device there), so a download that fails touches nothing on it. Returns the slice's size.
     @discardableResult
-    static func copyClient(_ flavor: Flavor, version: BlizzardCDN.Version, to device: Device, replacing: Bool,
-                           log: (String) -> Void) async throws -> Int64 {
+    static func copyClient(_ flavor: Flavor, version: BlizzardCDN.Version, to device: Device, log: (String) -> Void,
+                           beforeWrite: () async throws -> Void) async throws -> Int64 {
         let (slice, stamp) = try await clientSlice(flavor, latest: [flavor: version], log: log)
         let cdn = try await cdn.connected(product: flavor.product, region: flavor.region)
         guard let cdns = cdn.cdns else { throw Failure("Blizzard's patch service lists no CDN for \(flavor.name).") }
@@ -290,7 +292,8 @@ enum ClientBuild {
             return url
         }
         let dir = "Library/spgames/", stampPath = dir + ClientAssembly.Stamp.fileName(flavor.rawValue)
-        if replacing { try await device.copy(try staged("empty", ""), to: stampPath) }
+        try await beforeWrite()
+        try await device.copy(try staged("empty", ""), to: stampPath)
         try await device.copy(slice, to: dir + "wow-\(flavor.rawValue)")
         try await device.copy(try staged("row", row), to: dir + "spbuildinfo-\(flavor.rawValue)")
         try await device.copy(try staged("source", "mac\n"), to: dir + sourceFile(flavor))

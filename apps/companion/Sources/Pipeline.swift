@@ -401,7 +401,7 @@ final class Pipeline {
             try await self.updateBuild(for: nil)
             try await self.waitForDevice()
             try await self.installBuild()
-            try await self.checkDeviceUpdates()
+            try await self.copyGameClients()
             try await self.syncGameFiles(self.device.flavors, copy: true)
         }
     }
@@ -413,9 +413,8 @@ final class Pipeline {
             try await self.updateBuild(for: nil)
             try await self.waitForDevice()
             try await self.installBuild()
-            let clients = try await self.checkDeviceUpdates()
             try await self.setUpHelper()
-            try await self.copyGameClients(clients)
+            try await self.copyGameClients()
         }
     }
 
@@ -429,9 +428,8 @@ final class Pipeline {
             try await self.updateBuild(for: nil)
             try await self.waitForDevice()
             try await self.installBuild()
-            let clients = try await self.checkDeviceUpdates()
             try await self.setUpHelper()
-            try await self.copyGameClients(clients)
+            try await self.copyGameClients()
             try await self.syncGameFiles(self.device.flavors, copy: false)
             try await self.sendLoginFiles(nil)
         }
@@ -719,9 +717,8 @@ final class Pipeline {
         try await updateBuild(for: launch.flavor)
         try await waitForDevice()
         try await installBuild()
-        let clients = try await checkDeviceUpdates()
         try await setUpHelper()
-        try await copyGameClients(clients)
+        try await copyGameClients()
         // Copying needs a game install here; without one, the device's client fetches its data itself. With
         // copying off the install isn't read at all (GameInstall.reads), so a stalled drive can't hold Play.
         var copies = false
@@ -980,8 +977,7 @@ final class Pipeline {
     /// files step) and is named in the main window; one this Mac has a newer build of is replaced by
     /// copyGameClients. Nothing here stops the action: a device that can't be read is logged, and
     /// .build.info's own check (GameStore.deviceBuildInfo) still keeps a newer row. Returns what
-    /// Library/spgames holds, for copyGameClients; nil when the device couldn't be read.
-    @discardableResult
+    /// Library/spgames holds, for copyGameClients, which runs this first; nil when the device couldn't be read.
     private func checkDeviceUpdates() async throws -> [Flavor: ClientBuild.DeviceClient]? {
         let device = device
         do {
@@ -1015,18 +1011,20 @@ final class Pipeline {
         }
     }
 
-    /// Each ticked game's client into the device's Library/spgames (ClientBuild.copyClient): the unchanged
-    /// arm64 slice, which the launcher loads with spguest (apps/client/spguestlaunch.m), when the device's
-    /// (`onDevice`, checkDeviceUpdates': nil copies nothing, as the device may hold a newer build) is missing
+    /// Each ticked game's client into the device's Library/spgames (ClientBuild.copyClient), the one step Play,
+    /// Update Client, Setup, and Copy Game Files each run once the app is installed: the unchanged arm64 slice,
+    /// which the launcher loads with spguest (apps/client/spguestlaunch.m), when the device's (read first,
+    /// checkDeviceUpdates: a device that can't be read gets nothing, as it may hold a newer build) is missing
     /// or older than Blizzard's current build (ClientBuild.clientCopy). Only a game whose bundled image is that
     /// build gets its client: the slice the build was made from and checked against the shims (BindCheck),
     /// so the device never holds a client this Slashplayed can't run. updateBuild rebuilds for every ticked
     /// game's current build before this, so each one that binds is copied at the same action. A client running
-    /// on the device maps the file it loaded (Library/spgames/wow-<flavor>), so it's stopped before the first
-    /// copy over one. Borrows the install step's row as setUpHelper does. Nothing here stops the action: a
-    /// copy that fails is logged, and the next action copies it again.
-    private func copyGameClients(_ onDevice: [Flavor: ClientBuild.DeviceClient]?) async throws {
-        guard let onDevice else { return }
+    /// on the device maps the file it loaded (Library/spgames/wow-<flavor>), so it's stopped just before the
+    /// first write to the device, once a slice is in hand: a download that fails leaves a game being played.
+    /// Borrows the install step's row as setUpHelper does. Nothing here stops the action: a copy that fails is
+    /// logged, and the next action copies it again.
+    private func copyGameClients() async throws {
+        guard let onDevice = try await checkDeviceUpdates() else { return }
         let device = device, installed = steps.first { $0.id == .install }
         defer { if let installed, let i = steps.firstIndex(where: { $0.id == .install }) { steps[i] = installed } }
         var stopped = false
@@ -1052,21 +1050,21 @@ final class Pipeline {
                 continue
             case .copy: break
             }
-            if !stopped {
-                stopped = true
-                if let pid = try? await device.clientPID() {
-                    set(.install, .active, title: "Stopping the client running on the \(device.noun)…")
-                    appendLog("[companion] stopping the client running on the \(device.noun) (pid \(pid)) before copying over its file")
-                    await device.kill(pid: pid)
-                    try await Task.sleep(for: .seconds(2))
-                }
-            }
             set(.install, .active, title: "Copying \(flavor.name) to the \(device.noun)…")
             let start = Date()
             do {
-                let size = try await ClientBuild.copyClient(flavor, version: version, to: device, replacing: have != nil) { [weak self] in
+                let size = try await ClientBuild.copyClient(flavor, version: version, to: device, log: { [weak self] in
                     self?.appendLog("[companion] \($0)")
-                }
+                }, beforeWrite: {
+                    guard !stopped else { return }
+                    stopped = true
+                    guard let pid = try? await device.clientPID() else { return }
+                    self.set(.install, .active, title: "Stopping the client running on the \(device.noun)…")
+                    self.appendLog("[companion] stopping the client running on the \(device.noun) (pid \(pid)) before copying over its file")
+                    await device.kill(pid: pid)
+                    try await Task.sleep(for: .seconds(2))
+                    self.set(.install, .active, title: "Copying \(flavor.name) to the \(device.noun)…")
+                })
                 appendLog("[companion] copied \(flavor.name) \(version.versionsName)'s client to the \(device.noun)'s Library/spgames (\(Self.bytes(size)), \(String(format: "%.1f", Date().timeIntervalSince(start))) s)\(have.map { ", replacing \($0.version)" } ?? "")")
             } catch let e as CancellationError {
                 throw e
