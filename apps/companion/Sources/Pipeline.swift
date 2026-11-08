@@ -63,24 +63,12 @@ final class Pipeline {
     private(set) var playGame: Flavor?
     /// Whether Play copies game files to the device (Device.copiesGameFiles). Change it with setCopiesGameFiles.
     private(set) var copiesGameFiles: Bool
-    /// Whether the device may update its games itself (Device.updatesGames), which puts a signing identity on
-    /// it (DeviceIdentity). Change it with setUpdatesGames.
-    private(set) var updatesGames: Bool
     /// The device's games whose client it got itself is newer than Blizzard's build as the last action
     /// asked (ClientBuild.clientCopy's newerOnDevice), by version: the main window says so.
     private(set) var updatedOnDevice: [Flavor: String]
-    /// What was wrong with the signing identity a device updated its games with, for the main window. Always
-    /// nil now: the device needs none (pushIdentity).
-    var identityNotice: String? { identityNotices[device.udid] }
-    private var identityNotices: [String: String] = [:]
-    /// The Slashplayed certificate's standing (DeviceIdentity.standing), for Settings; nil until checked.
-    private(set) var certificateStanding: DeviceIdentity.Standing?
     /// Moves on whenever any device's games change: views that list every device's games (onboarding,
     /// Settings) read it, since Device.flavors is in UserDefaults, which SwiftUI doesn't watch.
     private(set) var gamesRevision = 0
-    /// The Slashplayed certificate (SlashplayedCertificate: a paid team's key for devices, B), for Settings:
-    /// its state is in a keychain, which SwiftUI doesn't watch, so it's read again whenever this moves on.
-    private(set) var certificate = SlashplayedCertificate.state
     /// What the games need on the device (GameFiles.size); nil while it's worked out, or if that failed.
     private(set) var gamesSize: Int64?
     /// The device's free space, as its Settings app counts it (Device.freeSpaceNow: now for an iPad or
@@ -173,7 +161,6 @@ final class Pipeline {
         games = device.flavors
         playGame = device.playGame
         copiesGameFiles = device.copiesGameFiles
-        updatesGames = device.updatesGames
         updatedOnDevice = ClientBuild.aheadOnDevice(device)
         steps = Self.freshSteps(device)
         launcher.onLog = { [weak self] in self?.appendLog($0) }
@@ -213,6 +200,12 @@ final class Pipeline {
         appendLog("[companion] Slashplayed Companion \(info["CFBundleShortVersionString"] as? String ?? "?") "
                   + "(\(info["CFBundleVersion"] as? String ?? "?")) on macOS \(ProcessInfo.processInfo.operatingSystemVersionString); "
                   + (Onboarding.isDone ? "device: \(device == .none ? "none yet" : device.name)" : "setup isn't finished, so Setup Assistant opens"))
+        // Update Games on This Device's settings and the Slashplayed certificate's keychain, from an older
+        // companion: nothing uses them now.
+        let forgotten = ClientBuild.forgetDeviceUpdates() + ClientBuild.forgetCertificate()
+        if !forgotten.isEmpty {
+            appendLog("[companion] deleted what Update Games on This Device left on this Mac: \(forgotten.joined(separator: ", "))")
+        }
         // The install's snapshot (GameInstall) is last run's until this read comes back.
         GameInstall.shared.onChange = { [weak self] in self?.installChanged() }
         GameInstall.refresh()
@@ -254,21 +247,6 @@ final class Pipeline {
             steps = Self.freshSteps(device)
             refreshGamesSize()
         }
-    }
-
-    /// Turns Update Games on This Device on or off for a device (Settings, onboarding), once the person
-    /// has read what it sends (the caller asks). Takes effect at the next Play, Update Client, or
-    /// -push-identity with the device reachable: on sends the identity, off asks the device to delete it.
-    func setUpdatesGames(_ on: Bool, for device: Device) {
-        guard !isBusy else { return }
-        storeUpdatesGames(on, for: device)
-    }
-
-    /// The setting itself.
-    private func storeUpdatesGames(_ on: Bool, for device: Device) {
-        device.setUpdatesGames(on)
-        gamesRevision += 1
-        if device == self.device { updatesGames = on }
     }
 
     /// The game install changed (Settings, onboarding, or a read found it changed: GameInstall.onChange):
@@ -436,69 +414,6 @@ final class Pipeline {
             try await self.syncGameFiles(self.device.flavors, copy: false)
             try await self.sendLoginFiles(nil)
         }
-    }
-
-    /// -push-identity and Setup Assistant's Update Games on This Device: nothing to send any more. The
-    /// device's launcher updates and installs games without a signing identity, and deletes one an older
-    /// Slashplayed sent it at its next start (apps/client/launcher.m, forget_identity), so a push now would be
-    /// deleted, and sent again at every Play.
-    func pushIdentity(to device: Device? = nil) {
-        appendLog("[companion] identity: nothing sent to \((device ?? self.device).name): its games update on it without a signing identity")
-    }
-
-    /// Settings' Make Certificate Request (and -certificate-request): the Slashplayed certificate's key (made
-    /// once) and its request, saved to SlashplayedCertificate.requestFile for the person to upload. Returns
-    /// the file; throws, logged, if the key or keychain couldn't be made.
-    @discardableResult
-    func makeCertificateRequest() throws -> URL {
-        do {
-            let file = try SlashplayedCertificate.makeRequest()
-            certificate = SlashplayedCertificate.state
-            appendLog("[companion] certificate: saved the Slashplayed certificate request to \(file.path) (the key stays in Slashplayed's own keychain, off the search list)")
-            return file
-        } catch {
-            appendLog("[companion] certificate: couldn't make the certificate request: \(error.localizedDescription)")
-            throw error
-        }
-    }
-
-    /// Settings' Choose Certificate (or a drop): the .cer the person downloaded, checked against the key and
-    /// the team, and kept.
-    func addCertificate(_ file: URL) throws {
-        do {
-            let team = try Signing.resolveTeam()
-            let cert = try SlashplayedCertificate.add(try Data(contentsOf: file), team: team.id)
-            certificate = SlashplayedCertificate.state
-            appendLog("[companion] certificate: kept \(cert.name), valid until \(cert.validUntil), for devices that update games themselves")
-        } catch {
-            appendLog("[companion] certificate: \(file.lastPathComponent) wasn't taken: \(error.localizedDescription)")
-            throw error
-        }
-    }
-
-    /// Stop Using the Slashplayed Certificate (or Start Over before there is one): deletes the key, the
-    /// certificate, and the request here, and turns Update Games on This Device off for every device it was
-    /// sent to, so each one's next Play, Update Client, or -push-identity asks it to delete its copy
-    /// (DeviceIdentity.decide's .forget). Returns those devices' names, for the message.
-    @discardableResult
-    func stopUsingCertificate() -> [String] {
-        guard !isBusy else { return [] }
-        var sentTo: [String] = []
-        // Another copy's certificate may have gone to devices too (that copy sent it, and kept the record here).
-        let hash: String? = switch certificate {
-        case .ready(let cert), .otherCopy(let cert?): cert.hash
-        default: nil
-        }
-        if let hash {
-            for device in devices where UserDefaults.standard.string(forKey: DeviceIdentity.pushedKey(device)) == hash {
-                storeUpdatesGames(false, for: device)
-                sentTo.append(device.name)
-            }
-        }
-        SlashplayedCertificate.remove()
-        certificate = SlashplayedCertificate.state
-        appendLog("[companion] certificate: " + SlashplayedCertificate.deletedLine(sentTo: sentTo))
-        return sentTo
     }
 
     /// Pair Again (and -pair): a new RemotePairing record for the app. An iPad or iPhone gets one made
@@ -1103,15 +1018,6 @@ final class Pipeline {
         if let installed, let i = steps.firstIndex(where: { $0.id == .install }) { steps[i] = installed }
     }
 
-    /// Settings' Slashplayed Certificate, when it's shown: whether the certificate is still good.
-    func checkCertificateStanding() async {
-        guard case .ready = certificate, let cert = SlashplayedCertificate.current().flatMap(SlashplayedCertificate.certificate(in:)) else {
-            certificateStanding = nil
-            return
-        }
-        certificateStanding = await DeviceIdentity.standing(of: cert)
-    }
-
     /// Copies the game files the device is missing or has old copies of (GameFiles), or without `copy` just
     /// what the client needs to start and stream the rest. A copy can take hours,
     /// and Battle.net, still running, can replace files meanwhile: an index file the plan named was deleted
@@ -1397,7 +1303,6 @@ final class Pipeline {
             games = device.flavors
             playGame = device.playGame
             copiesGameFiles = device.copiesGameFiles
-            updatesGames = device.updatesGames
             updatedOnDevice = ClientBuild.aheadOnDevice(device)
             pendingFree = 0
             refreshGamesSize()

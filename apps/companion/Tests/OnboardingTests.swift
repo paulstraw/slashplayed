@@ -211,15 +211,6 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(SetupStatus.count(141, "old index file"), "141 old index files")
     }
 
-    /// Stop Using It names one device in the singular: "Paul's Apple Vision Pro delete their copies" (rc9).
-    func testStopUsingItAgreesWithItsDevices() {
-        XCTAssertEqual(SlashplayedCertificate.deletedLine(sentTo: []), "deleted the Slashplayed certificate and its key from this Mac")
-        XCTAssertEqual(SlashplayedCertificate.deletedLine(sentTo: ["Vision Pro"]),
-                       "deleted the Slashplayed certificate and its key from this Mac; Vision Pro deletes its copy at its next Play or Update Client")
-        XCTAssertEqual(SlashplayedCertificate.deletedLine(sentTo: ["Vision Pro", "iPad"]),
-                       "deleted the Slashplayed certificate and its key from this Mac; Vision Pro and iPad delete their copies at their next Play or Update Client")
-    }
-
     /// Retail on an iPad or iPhone: space is only warned about when the device is short of it, by the free
     /// space the companion shows (a 1 TB iPhone with 810 GB free was told it was more than most have).
     func testRetailNoteGoesByFreeSpace() {

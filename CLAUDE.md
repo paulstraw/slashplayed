@@ -16,10 +16,10 @@ the owner asks for it.
 
 - `apps/companion/`: the Mac companion (SwiftUI, XcodeGen `project.yml`, target `SPCompanion`,
   `com.strawdynamics.slashplayed.companion`). `Sources/` is the whole user-time pipeline in Swift:
-  `ClientAssembly.swift` (thin, rewrite, set platform, retype, assemble), `BindCheck.swift`,
-  `Signing.swift`, `DeviceIdentity.swift` (the signing identity a device updates games with: the opt-in,
-the push, the export), `SlashplayedCertificate.swift` (a paid team's own certificate for that: key, request,
-  `.cer` checks, in a keychain off the search list), `GameStore.swift`/`GameFiles.swift` (archive selection, sync), `BlizzardCDN.swift` (the
+  `ClientAssembly.swift` (the device app, which holds no game), `ClientBuild.swift` (its build and install,
+  and each game's unchanged slice copied into the device's `Library/spgames` when the device's is missing or
+  older), `BindCheck.swift` (each slice's imports against the shims, before it's copied), `Signing.swift`,
+  `GameStore.swift`/`GameFiles.swift` (archive selection, sync), `BlizzardCDN.swift` (the
   patch service and CDN: version rows, configs, and the client's arm64 slice), `ClientLauncher.swift`
   (launch, following the on-device prepare), `TokenRelay.swift`, `Pairing.swift` (the device's
   RemotePairing record over USB, through idevice, and lockdown's free space), `DeveloperDiskImage.swift` (Xcode's DDI into the
@@ -50,9 +50,7 @@ the push, the export), `SlashplayedCertificate.swift` (a paid team's own certifi
   entitlements templates, `icons/` (the app icon catalogs, compiled by `build-icons.sh`),
   `signing/` (stub project for the explicit-App-ID profile), and
   dev scripts (`build.sh`, the app with no game in it, `run.sh`, `seed.sh`, `seed-client.sh`, the Mac's
-  client into `Library/spgames`, `pull-logs.sh`, `grab-token.sh`, `casc_archives.py`). The companion's
-  `ClientAssembly.swift` still bundles each game's image, which this launcher never loads, until the Mac
-  stops assembling them.
+  client into `Library/spgames`, `pull-logs.sh`, `grab-token.sh`, `casc_archives.py`).
 - `apps/companion-rs/`: `slashplayed-companion`, the host tool for an iPad or iPhone without a Mac (Windows, Linux, a
   Mac without Xcode; Rust, `rust-toolchain.toml` pins it): `src/kit.rs` (the device kit, the unsigned app
   `scripts/release/device-kit.sh` makes at release), `device.rs` (usbmuxd, trust, Developer Mode, install,
@@ -113,9 +111,7 @@ the device; add `-skip-intro` to start without the intro movie or Retail's Scree
 `SP_SKIP_INTRO=1` does for `apps/client/run.sh`; it sets them in the device's `Config.wtf`, so they stay
 skipped there), `-update`, `-sync`, `-pull-logs`, `-export-diagnostics`, `-setup-step <n>`,
 `-check-for-updates`, `-pair` (Pair Again: an iPad or iPhone on USB gets a new RemotePairing record;
-the headset's is cleared, so its next launch pairs), `-push-identity` (sends nothing now: the device updates
-its games without a signing identity), `-certificate-request`
-(a paid team's Slashplayed certificate: its key and request, `SlashplayedCertificate.swift`). These act inside the running
+the headset's is cleared, so its next launch pairs). These act inside the running
 GUI app, which doesn't quit afterwards: follow `~/Library/Logs/Slashplayed/companion.txt` and quit it.
 
 ## config/local.env
@@ -144,7 +140,7 @@ again (over an hour for Retail on the headset). Don't change it casually.
 
 - **Signing identities are credentials.** A `.p12`, its password, or a keychain export is never read
   into a log, printed or committed: sizes and validity dates only, files 0600, zeroed and deleted after the
-  copy, as the companion's `DeviceIdentity.swift` does. Test identities are made at test time in `$TMPDIR`.
+  copy. Test identities are made at test time in `$TMPDIR`.
 - **Pairing records are credentials.** A RemotePairing record (and the Mac's lockdown pair record, which
   idevice holds in memory to make one) is never read, printed or logged: sizes only, files 0600 and
   deleted after the copy, as `Pairing.swift` and `research/jittest/push-pairing.sh` do.

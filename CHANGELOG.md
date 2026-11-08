@@ -8,6 +8,9 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ### Changed
 
+- A game patch no longer rebuilds and reinstalls Slashplayed. Play copies just the new game client to
+  your iPad, iPhone, or Vision Pro, in a few seconds, and ticking or unticking a game no longer rebuilds
+  it either.
 - Updating and installing games on the iPad, iPhone, or Vision Pro works on every team, free Apple IDs
   included, with nothing to turn on: when a new build is out, the device offers Update and sets it up in
   seconds.
@@ -16,8 +19,11 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ### Removed
 
-- The Game Updates section of Settings on the device, and the signing key Update Games on This Device
-  sent to it: the device no longer needs one, and deletes it the first time Slashplayed starts.
+- Update Games on This Device, the signing key it sent to your device, and the Slashplayed certificate:
+  they're no longer needed. The companion's Updates on Devices settings and Setup Assistant's updates
+  step are gone, the key is deleted from your device the first time Slashplayed starts there, and the
+  certificate's key from your Mac the first time the companion starts. On a paid team, you can revoke the
+  "Slashplayed" certificate on Apple's developer site (Certificates, IDs & Profiles > Certificates).
 
 ### Fixed
 

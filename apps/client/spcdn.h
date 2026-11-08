@@ -50,7 +50,8 @@ BOOL sp_version_newer(NSString *_Nullable a, NSString *_Nullable b);
 // Whether the bundled image's build (its stamp's row, `bundled`) equals or passes an update the device made
 // (`update`, its Library/spgames stamp's row): the same Build Key or Version, or a later Version. The launcher
 // then deletes the update (launcher.m's retire_caught_up), since the companion has installed that build or a
-// later one; ClientBuild.deviceUpdate is the companion's side of the same rule. NO when either is missing.
+// later one; ClientBuild.clientCopy is the companion's side of the same rule (a client it copies over is one
+// this calls caught up with the Mac's). NO when either is missing.
 BOOL sp_update_caught_up(NSDictionary<NSString *, NSString *> *_Nullable bundled,
                          NSDictionary<NSString *, NSString *> *_Nullable update);
 

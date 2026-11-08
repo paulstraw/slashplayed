@@ -142,7 +142,7 @@ enum Paths {
         directory(FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Logs/Slashplayed"))
     }
 
-    /// ~/Library/Application Support/Slashplayed: thinned clients and the assembled device apps.
+    /// ~/Library/Application Support/Slashplayed: the CDN's client slices and the assembled device apps.
     static var support: URL {
         directory(URL.applicationSupportDirectory.appending(path: "Slashplayed"))
     }

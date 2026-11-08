@@ -148,6 +148,38 @@ final class ClientInstallTests: XCTestCase {
                                                app: .present(url: there)), .notFromThisMac)
     }
 
+    /// An older companion's Update Games on This Device settings go, and so do the games its install records
+    /// listed; the record itself, and every other setting, stays. Run again, it finds nothing.
+    func testUpdateGamesOnThisDevicesSettingsAreForgotten() throws {
+        let name = "sp-install-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+        let phone = Device(name: "Phone", udid: "phone", kind: .iPhone), pad = Device(name: "Pad", udid: "pad", kind: .iPad)
+        defaults.set(true, forKey: "updateGames.phone")
+        defaults.set("ABCDEF", forKey: "identityPushed.phone")
+        defaults.set("A", forKey: "identityPushedSource.phone")
+        defaults.set("B", forKey: "signingSource")
+        defaults.set(["build": "b1", "flavors": ["classic_era", "retail"], "url": here, "bundleID": "TEAM.slashplayed"],
+                     forKey: ClientBuild.installedKey(phone))
+        ClientBuild.setInstalled(record(), for: pad, defaults)
+        defaults.set(["classic_era", "retail"], forKey: "games.phone")
+        defaults.set("retail", forKey: "playGame.phone")
+        defaults.set(false, forKey: "updateGamesSoon")  // not one of its keys, only alike
+
+        XCTAssertEqual(ClientBuild.forgetDeviceUpdates(defaults),
+                       ["identityPushed.phone", "identityPushedSource.phone", "installedClient.phone.flavors", "signingSource", "updateGames.phone"])
+        for key in ["updateGames.phone", "identityPushed.phone", "identityPushedSource.phone", "signingSource"] {
+            XCTAssertNil(defaults.object(forKey: key), key)
+        }
+        XCTAssertNil(defaults.dictionary(forKey: ClientBuild.installedKey(phone))?["flavors"])
+        XCTAssertEqual(ClientBuild.installed(phone, defaults), ClientBuild.Installed(build: "b1", url: here, bundleID: "TEAM.slashplayed"))
+        XCTAssertEqual(ClientBuild.installed(pad, defaults), record())
+        XCTAssertEqual(defaults.stringArray(forKey: "games.phone"), ["classic_era", "retail"])
+        XCTAssertEqual(defaults.string(forKey: "playGame.phone"), "retail")
+        XCTAssertNotNil(defaults.object(forKey: "updateGamesSoon"))
+        XCTAssertEqual(ClientBuild.forgetDeviceUpdates(defaults), [])
+    }
+
     /// devicectl's error for a copy into the data container of an app that isn't installed (as rc6's
     /// companion.txt has it), and others that aren't that.
     func testAMissingContainerIsRecognised() {

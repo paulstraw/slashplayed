@@ -26,7 +26,7 @@ struct OnboardingView: View {
             .background(.background.secondary)
             Divider()
             VStack(alignment: .leading, spacing: 16) {
-                // Scrolls, so a step with several devices (or the certificate) never pushes the buttons off.
+                // Scrolls, so a step with several devices never pushes the buttons off.
                 ScrollView {
                     Group {
                         if let step = setup.current {
@@ -126,7 +126,6 @@ private struct StepPage: View {
         case .games: return "Choose the games for each device."
         case .install: return "Nothing to do here, unless World of Warcraft is on this Mac in another folder."
         case .firstInstall: return "Install Slashplayed on each device you'll play on."
-        case .updates: return "Optional: let a device update a game itself when Blizzard patches it."
         }
     }
 
@@ -147,9 +146,7 @@ private struct StepPage: View {
         case .install:
             "You sign in to Battle.net on the device. A game Battle.net installed here adds two things: copying its files to a device instead of streaming, and Play with My Mac's Battle.net, a fallback sign-in in the menu by Play."
         case .firstInstall:
-            "Install builds the app (about a minute the first time), signs it with your team, installs it, and pairs an iPad or iPhone over USB. Keep the iPad or iPhone unlocked and on its cable, or wear the headset, until it's done."
-        case .updates:
-            "Without it, the device asks you to press Play on this Mac after a patch. You can change this later in Settings."
+            "Install builds the app (about a minute the first time), signs it with your team, installs it, copies each game you chose, and pairs an iPad or iPhone over USB. Keep the iPad or iPhone unlocked and on its cable, or wear the headset, until it's done."
         }
     }
 
@@ -233,8 +230,6 @@ private struct StepPage: View {
             }
         case .firstInstall:
             InstallList(setup: setup)
-        case .updates:
-            UpdatesChooser(setup: setup)
         }
     }
 
@@ -439,7 +434,7 @@ private struct InstallList: View {
     }
 }
 
-/// What the pipeline is doing for an install or an identity push started from setup, or what stopped it.
+/// What the pipeline is doing for an install started from setup, or what stopped it.
 private struct PipelineProgress: View {
     let pipeline: Pipeline
     let active: Bool
@@ -466,61 +461,6 @@ private struct PipelineProgress: View {
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
-        }
-    }
-}
-
-/// The last step: the Slashplayed certificate a paid team needs first, then each device's Update Games
-/// on This Device, sent to it at once (Onboarding.setUpdatesGames).
-private struct UpdatesChooser: View {
-    let setup: Onboarding
-    /// The form's content height, as its scroll view measures it: the form is as tall as what it holds,
-    /// so only the step page scrolls (a guessed fixed height made the form scroll inside it once the
-    /// certificate section outgrew the guess: rc19's E.2). nil until the first measure.
-    @State private var formHeight: CGFloat?
-
-    var body: some View {
-        let pipeline = setup.pipeline
-        if let source = DeviceIdentity.source {
-            let ready = source == .a || { if case .ready = pipeline.certificate { true } else { false } }()
-            VStack(alignment: .leading, spacing: 10) {
-                if !ready {
-                    Text("First, make the Slashplayed certificate: a paid team's devices sign updates with a certificate of their own.")
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                // One grouped form, so the switches line up as they do in Settings. Its height is its
-                // content's, so it has nothing to scroll, and with no bounce it hands the wheel to the step
-                // page around it, the one scroller (.scrollDisabled kept the wheel and scrolled nothing).
-                let _ = pipeline.gamesRevision
-                Form {
-                    if source == .b { CertificateSection(pipeline: pipeline) }
-                    Section("Update games on") {
-                        ForEach(setup.usable) { d in
-                            Toggle(d.device.name, isOn: Binding(
-                                get: { d.device.updatesGames },
-                                set: { on in
-                                    if !on || UpdateGamesConsent.confirm(d.device, source: source) { setup.setUpdatesGames(on, for: d.device) }
-                                }))
-                                .toggleStyle(.switch)
-                                .disabled(pipeline.isBusy || (!ready && !d.device.updatesGames))
-                        }
-                    }
-                }
-                .formStyle(.grouped)
-                .scrollContentBackground(.hidden)
-                .scrollBounceBehavior(.basedOnSize)
-                .onScrollGeometryChange(for: CGFloat.self) { geo in
-                    geo.contentSize.height + geo.contentInsets.top + geo.contentInsets.bottom
-                } action: { _, height in
-                    if height > 0 { formHeight = height.rounded(.up) }
-                }
-                // Before the first measure, a rough height; it settles to the content's on the next layout.
-                .frame(height: formHeight ?? CGFloat(source == .a ? 70 : ready ? 200 : 280) + CGFloat(setup.usable.count) * 46)
-                .padding(.horizontal, -20)
-                PipelineProgress(pipeline: pipeline, active: setup.installing != nil)
-            }
-        } else {
-            Text("Choose a team on the Apple Account step first.").foregroundStyle(.secondary)
         }
     }
 }
@@ -594,7 +534,7 @@ private struct ReadyPage: View {
                 Text("• A game's first start takes a few minutes while it fetches its data.")
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text("Press Play on this Mac after a patch, to add games, or to set up another device\(setup.teamIsFree ? ", and every 7 days on a free team" : ""). Settings (⌘,) has the team and the games; Help > Setup Assistant runs these checks again.")
+            Text("Slashplayed updates its games on the device itself when Blizzard patches them. Press Play on this Mac to set up another device\(setup.teamIsFree ? ", and every 7 days on a free team" : ""). Settings (⌘,) has the team and the games; Help > Setup Assistant runs these checks again.")
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

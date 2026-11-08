@@ -9,14 +9,14 @@ import Observation
 /// Mac isn't one of them: every game's client comes from Blizzard's CDN (ClientBuild) and the game on the
 /// device fetches its own data, so the install step only says what the Mac has, for the two things that
 /// use it (Copy Game Files from This Mac and Play with My Mac's Battle.net), and always passes. The last
-/// two steps act rather than check: the first install on each device (Pipeline.installForSetup), after
-/// which Slashplayed opens on the device alone, and, optionally, Update Games on This Device.
+/// step acts rather than checks: the first install on each device (Pipeline.installForSetup), after which
+/// Slashplayed opens on the device alone, and updates its games itself.
 @MainActor @Observable
 final class Onboarding {
     static let doneKey = "onboarded"
 
     enum StepID: Int, CaseIterable, Identifiable {
-        case xcode, account, device, helper, games, install, firstInstall, updates
+        case xcode, account, device, helper, games, install, firstInstall
 
         var id: Int { rawValue }
 
@@ -29,7 +29,6 @@ final class Onboarding {
             case .games: "Games"
             case .install: "Game on this Mac (optional)"
             case .firstInstall: "Install Slashplayed"
-            case .updates: "Updates on the device (optional)"
             }
         }
     }
@@ -63,7 +62,7 @@ final class Onboarding {
     /// Each usable device's install (ClientBuild.installNeed, the device asked when reachable), as of the
     /// install step's last check; missing while it's asked.
     private(set) var installed: [String: ClientBuild.InstallNeed] = [:]
-    /// The device the install step is installing on (Pipeline.installForSetup), or pushing an identity to.
+    /// The device the install step is installing on (Pipeline.installForSetup).
     private(set) var installing: String?
     private(set) var xcode: URL?
 
@@ -83,7 +82,7 @@ final class Onboarding {
 
     // MARK: Navigation
 
-    /// Starts at the first step (or the launch argument -setup-step <n>'s, 0-based, 8 for Ready: for
+    /// Starts at the first step (or the launch argument -setup-step <n>'s, 0-based, 7 for Ready: for
     /// checking a step, or a screenshot of it), and keeps checking the one on screen (every 3 s) for
     /// things the user fixes elsewhere: Xcode, its accounts, pairing, LocalDevVPN. Not the install step:
     /// the 3 s check would replace what it says about a folder the user picked that holds no game.
@@ -156,7 +155,6 @@ final class Onboarding {
         case .games: result = await checkGames()
         case .install: result = checkInstall()
         case .firstInstall: result = await checkFirstInstall()
-        case .updates: result = await checkUpdates()
         }
         if let line = result.logLine(step.title, was: status[step]) { pipeline.appendLog(line) }
         status[step] = result
@@ -434,17 +432,6 @@ final class Onboarding {
         afterPipeline { await self.check(.firstInstall) }
     }
 
-    /// The last step's toggle: Update Games on This Device for `device`, sent to it at once
-    /// (Pipeline.pushIdentity), so it can update without a Play from this Mac first.
-    func setUpdatesGames(_ on: Bool, for device: Device) {
-        guard !pipeline.isBusy else { return }
-        pipeline.setUpdatesGames(on, for: device)
-        pipeline.appendLog("[setup] Update Games on This Device \(on ? "on" : "off") for \(device.name)")
-        installing = device.udid
-        pipeline.pushIdentity(to: device)
-        afterPipeline { await self.check(.updates) }
-    }
-
     /// Runs `then` once the action just started has finished.
     private func afterPipeline(_ then: @escaping () async -> Void) {
         Task {
@@ -452,14 +439,6 @@ final class Onboarding {
             installing = nil
             await then()
         }
-    }
-
-    /// Optional, so it always passes: what's on now.
-    private func checkUpdates() async -> Status {
-        if devices.isEmpty { _ = await checkDevices() }
-        let on = usable.filter { $0.device.updatesGames }.map(\.device.name)
-        return .ok(on.isEmpty ? "Off on every device. You can turn it on later in Settings."
-                   : "On for \(Self.list(on)).")
     }
 
     static func list(_ names: [String], or: Bool = false) -> String { SetupStatus.list(names, or: or) }

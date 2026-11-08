@@ -142,10 +142,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("-update") { Pipeline.shared.updateClient() }
         // -pair: Pair Again (the iPad's or iPhone's RemotePairing record made over USB and sent; the headset's cleared).
         if CommandLine.arguments.contains("-pair") { Pipeline.shared.pairDevice() }
-        // -push-identity: send the device its signing identity (or ask it to forget it), as Play would.
-        if CommandLine.arguments.contains("-push-identity") { Pipeline.shared.pushIdentity() }
-        // -certificate-request: make the Slashplayed certificate's key and request (a paid team's, B).
-        if CommandLine.arguments.contains("-certificate-request") { try? Pipeline.shared.makeCertificateRequest() }
         // -pull-logs: fetch the device's logs into ~/Library/Logs/Slashplayed/triage/.
         if CommandLine.arguments.contains("-pull-logs") { Pipeline.shared.pullDeviceLogs() }
         // -export-diagnostics: write the diagnostics zip into ~/Library/Logs/Slashplayed/diagnostics/.
@@ -348,12 +344,6 @@ struct GamesFooter: View {
             ForEach(pipeline.updatedOnDevice.sorted { $0.key.rawValue < $1.key.rawValue }, id: \.key) { flavor, version in
                 Text("\(flavor.name) \(version), updated on the \(device.noun)")
                     .help("The \(device.noun) updated itself to this version. Play keeps it there until this Mac has a newer one.")
-            }
-            // Nothing sets it since the device needs no signing identity; it goes with the rest of it.
-            if let notice = pipeline.identityNotice {
-                Text(notice)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             if pipeline.pendingFree > 0 {
                 Text("\(bytes(pipeline.pendingFree)) is freed when the client next starts.")

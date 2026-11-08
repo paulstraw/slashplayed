@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Security
 
 /// The device app (Paths.clientApp: one build per platform), assembled by ClientAssembly as
 /// apps/client/build.sh does, and each game's client beside it on the device. The app holds no game: it's
@@ -91,6 +92,65 @@ enum ClientBuild {
 
     static func setInstalled(_ record: Installed, for device: Device, _ defaults: UserDefaults = .standard) {
         defaults.set(["build": record.build, "url": record.url, "bundleID": record.bundleID], forKey: installedKey(device))
+    }
+
+    /// What Update Games on This Device left in this Mac's settings, which nothing needs now that a device
+    /// updates and installs its games with no signing identity (apps/client/sppatch.m), deleted: each
+    /// device's setting (updateGames.*), the identity last pushed to it (identityPushed.*,
+    /// identityPushedSource.*), the source's test override (signingSource), and the games each install
+    /// record listed (installedClient.*'s flavors: the app holds none). Run at every start, with
+    /// forgetCertificate, for two releases, as the launcher's forget_identity is. Returns the keys it changed
+    /// (never a value), for the log; empty once there's nothing left.
+    @discardableResult
+    static func forgetDeviceUpdates(_ defaults: UserDefaults = .standard) -> [String] {
+        var gone: [String] = []
+        for (key, value) in defaults.dictionaryRepresentation() {
+            if ["updateGames.", "identityPushed.", "identityPushedSource."].contains(where: key.hasPrefix) || key == "signingSource" {
+                defaults.removeObject(forKey: key)
+                gone.append(key)
+            } else if key.hasPrefix("installedClient."), var record = value as? [String: Any], record["flavors"] != nil {
+                record["flavors"] = nil
+                defaults.set(record, forKey: key)
+                gone.append(key + ".flavors")
+            }
+        }
+        return gone.sorted()
+    }
+
+    /// The Slashplayed certificate a paid team's devices signed their game updates with, deleted from this
+    /// Mac: its own keychain under Application Support (certificate/: the key Slashplayed made and only
+    /// Slashplayed used), that keychain's password in the login keychain, and the profiles made for it
+    /// (client-*/certificate-profile.mobileprovision, signing-certificate/). Nothing is read from either
+    /// keychain, and the request in Downloads (a public key) is left. The certificate itself stays valid on
+    /// developer.apple.com until it's revoked there. Returns what it deleted, by name, for the log.
+    @discardableResult
+    static func forgetCertificate(support: URL = Paths.support) -> [String] {
+        var gone: [String] = []
+        let fm = FileManager.default
+        let certificate = support.appending(path: "certificate")
+        for name in (try? fm.contentsOfDirectory(atPath: certificate.path)) ?? [] {
+            var keychain: SecKeychain?
+            if name.hasSuffix(".keychain-db"), SecKeychainOpen(certificate.appending(path: name).path, &keychain) == errSecSuccess,
+               let keychain {
+                SecKeychainDelete(keychain)
+            }
+            gone.append("certificate/" + name)
+        }
+        if fm.fileExists(atPath: certificate.path) { try? fm.removeItem(at: certificate) }
+        // The keychain's password, one item per keychain file the certificate had (SecItemDelete takes them all).
+        if SecItemDelete([kSecClass: kSecClassGenericPassword, kSecAttrService: "Slashplayed certificate keychain"] as CFDictionary)
+            == errSecSuccess {
+            gone.append("the certificate keychain's password")
+        }
+        for dir in (try? fm.contentsOfDirectory(atPath: support.path))?.filter({ $0.hasPrefix("client-") }) ?? [] {
+            for name in ["certificate-profile.mobileprovision", "signing-certificate"] {
+                let url = support.appending(path: "\(dir)/\(name)")
+                guard fm.fileExists(atPath: url.path) else { continue }
+                try? fm.removeItem(at: url)
+                gone.append("\(dir)/\(name)")
+            }
+        }
+        return gone.sorted()
     }
 
     /// Why the build is installed on a device (installNeed), or that it's there.

@@ -109,10 +109,9 @@ enum BindCheck {
     /// The device's patch drill: rehearses the device's newer-build screen (apps/client/sppatch.m) without a
     /// newer build on Blizzard's CDN. `defaults write com.strawdynamics.slashplayed.companion SPDevicePatchDrill
     /// binds` has Play launch the game with SP_PATCH_DRILL=binds (ClientLauncher): the device treats the
-    /// current build as newer than its image, fetches its slice, and finds it binds, so it offers "Update on
-    /// your Mac" (or Update, with Update Games on This Device on). A symbol instead (`_NSApp`) is withheld from
-    /// the device's check too, so it says "This patch needs a Slashplayed update". Only Play passes it, so a
-    /// start from the device alone never drills. Honoured only in Debug builds and pre-release versions
+    /// current build as newer than its client, fetches its slice, and finds it binds, so it offers Update. A
+    /// symbol instead (`_NSApp`) is withheld from the device's check too, so it says "This patch needs a
+    /// Slashplayed update". Only Play passes it, so a start from the device alone never drills. Honoured only in Debug builds and pre-release versions
     /// (`drill`); apps/client/run.sh passes SP_PATCH_DRILL for a dev build.
     static var deviceDrill: String? { drill("SPDevicePatchDrill") }
 
