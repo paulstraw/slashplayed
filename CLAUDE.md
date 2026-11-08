@@ -70,8 +70,8 @@ the owner asks for it.
   `fetch-font.sh` (Goodmountain, the start screen's and the site's face, OTF and woff2, and its license, at a
   pinned commit and checked SHA-256, into `work/fonts/`: its license forbids changing the file, so it's never
   committed), `site-preview.sh` (`site/` staged as Pages deploys it, font included, served on 127.0.0.1),
-  `build-zsign.sh` (zsign with `zsign.patch` and OpenSSL from source at pinned commits: `ios`/`xros` for the launcher's signer,
-  `macos` for the companion's tests; into `work/zsign/`, with the licenses the app ships), `crate-notices.py`
+  `build-zsign.sh source` (zsign's source at a pinned commit with `zsign.patch`, into `work/zsign/src/zsign`, for
+  slashplayed-companion's `build.rs`; git only, nothing built), `crate-notices.py`
   (build-idevice.sh's license texts of every linked crate, failing on one with none; `crate-licenses/` holds
   the texts of crates that ship none), `check-tree.sh` (scrub and
   no-hardcoding greps), `config.sh` (loads `config/local.env`),
@@ -88,7 +88,6 @@ the owner asks for it.
 ```sh
 scripts/build-idevice.sh macos             # once (and after re-pinning): the companion links it
 scripts/build-idevice.sh ios; scripts/build-idevice.sh xros   # the JIT helper links these
-scripts/build-zsign.sh                     # once: zsign + OpenSSL (ios, xros: the launcher; macos: the tests)
 scripts/fetch-font.sh                      # once: the start screen's font and its license, into work/fonts/
 shims/build.sh <xros|ios>                  # build/<platform>/*.dylib + exports.json
 apps/companion/build.sh                    # build/companion/Slashplayed Companion.app (needs xcodegen)
@@ -151,8 +150,7 @@ again (over an hour for Retail on the headset). Don't change it casually.
   typed by the person, uses it once for the sign-in, and zeroes it; the login lives in memory only and
   ends with the process. Nothing about it is logged or stored, not even sizes, and no tracing subscriber
   is ever installed (isideload's logs would carry account data). The person types it; test runs use the
-  owner's own Terminal. The tool's signing key goes only to the OS credential store and, as a .p12, to the
-  device. It never revokes a certificate a Slashplayed tool didn't make.
+  owner's own Terminal. The tool's signing key goes only to the OS credential store, never to the device. It never revokes a certificate a Slashplayed tool didn't make.
 - **Never read, print or log values from `net.battle` prefs** or the exported credentials file. Sizes
   and timestamps only, as `TokenRelay.swift` does.
 - **The Battle.net sign-in is a credential too.** Only the launcher's sign-in (`splogin.m`, and its

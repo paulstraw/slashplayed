@@ -35,20 +35,19 @@ In scope:
   debugger attach to Slashplayed, its requests from the launcher, and the pairing listener the
   launcher opens on 127.0.0.1. Anything that lets another app or a host on the network use the helper,
   the tunnel, or the record is in scope.
-- **Signing identities.** The identity the companion pushes to a device for Update Games on This
-  Device (your Apple Development identity, or a paid team's Slashplayed certificate, whose key the
-  companion keeps in its own keychain on the Mac), its import into the device's keychain, and its
-  removal (Forget Signing Identity in the app's Settings, or a revoked or expired
-  certificate). It must never be logged, synced, left in a file after the import, or usable by
-  anything but Slashplayed's own update.
+- **Signing identities.** The development identity the app is signed with (Xcode's, in your login
+  keychain) and `slashplayed-companion`'s signing key (in the OS's credential store). Neither ever goes
+  to a device or into a log. Slashplayed 1.4 and earlier sent an identity to devices for Update Games
+  on This Device; the device app deletes it at its next start, and the companion deletes the Slashplayed
+  certificate's key from the Mac. Anything that leaves one behind is in scope.
 - **The Battle.net sign-in on the device**: the sign-in screen, the email and password in the device's
   keychain (this device only, never synced), the `login.txt` written just before the game loads and
   deleted when it closes (while it exists, it's in the app's `Documents/`, which Finder and the Files
   app show), and Forget My Sign-In.
 - **Updating on the device**: the check for a newer build and its fetches from Blizzard's patch
-  service and CDN (checked against the keys they're named by), the bind check, and making and signing
-  the new client image with zsign and OpenSSL. Anything that lets someone on the network get code of
-  their choosing signed or loaded is in scope.
+  service and CDN (checked against the keys they're named by), the bind check, and the loader (spguest)
+  that loads the new client, unsigned, into the app. Anything that lets someone on the network, or
+  another app, get code of their choosing loaded is in scope.
 - **The token relay**, the "Play with My Mac's Battle.net" fallback: how the companion catches the
   Battle.net launch, moves your launch credentials to the device and deletes them there. The
   credentials must never be read, logged, left on disk longer than needed, readable by other users, or

@@ -19,13 +19,12 @@ Install these first:
   a Vision Pro, an M1-or-later iPad or the A17 Pro iPad mini, or an iPhone 15 Pro or later, paired, with Developer Mode on;
   and [LocalDevVPN](https://apps.apple.com/app/id6755608044) on the device.
 
-Then, from a fresh clone (the first three steps are once, and again after their pins change):
+Then, from a fresh clone (idevice and the font are once, and again after their pins change):
 
 ```sh
 scripts/build-idevice.sh macos   # idevice, from source, into work/idevice/
 scripts/build-idevice.sh ios
 scripts/build-idevice.sh xros
-scripts/build-zsign.sh           # zsign and OpenSSL, into work/zsign/
 scripts/fetch-font.sh            # the start screen's font, into work/fonts/
 apps/companion/build.sh          # build/companion/Slashplayed Companion.app, shims included
 apps/companion/test.sh           # the companion's unit tests
@@ -60,8 +59,9 @@ client from Blizzard's CDN. It needs no configuration and no game install on the
   broken game patch, use the "New game patch broke it" issue form (the companion's **Report It…** link
   fills it in).
 - Keep each PR to one focused change.
-- CI must pass: the tree checks, the addon tests, idevice and zsign built from source, the unsigned
-  companion build (with the shims for both platforms), and the companion tests.
+- CI must pass: the tree checks, the addon tests, idevice built from source, the unsigned companion
+  build (with the shims for both platforms), the companion tests, the guest loader's test, and
+  slashplayed-companion's build and tests on Linux and Windows.
 - Say what you tested and how: unit tests, and which game on which device and OS version. Reviewers
   can't see your device, so describe anything that only shows there.
 - Attach logs only from **Help > Export Diagnostics…**. It leaves out credentials and blanks device
@@ -90,8 +90,7 @@ client from Blizzard's CDN. It needs no configuration and no game install on the
 
 ## Advanced
 
-The dev scripts and `config/local.env`, the client assembly that must stay byte-identical in three
-places, the opt-in tests against a real install, and the steps after a game patch are in
+The dev scripts and `config/local.env`, the device app's assembly in two places, the opt-in tests against a real install, and the steps after a game patch are in
 [docs/maintaining.md](docs/maintaining.md).
 
 By contributing, you agree that your contributions are licensed under the [MIT License](LICENSE).

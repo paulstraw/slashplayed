@@ -13,8 +13,8 @@ It does what the Mac companion does with Xcode:
 - Signs in to your Apple ID.
 - Makes the app's signing profiles.
 - Signs Slashplayed and installs it over USB.
-- Gets the app ready to install games: its pairing record for starting games without a computer, the
-  developer disk image, and its signing identity.
+- Gets the app ready to install games: its pairing record for starting games without a computer, and
+  the developer disk image.
 
 You install the games on the device itself: open Slashplayed and tap one.
 
@@ -80,8 +80,8 @@ do this within 7 days of the last run, or the app won't open until you do.
 - **Certificates:** a free Apple ID can have only a few. When there's no room, the tool replaces one
   Slashplayed made. It never removes a certificate made by Xcode or another app; if those fill every
   slot, it says so and stops.
-- **On the device:** the app, its pairing record, the developer disk image, and its signing identity,
-  in Slashplayed's own data.
+- **On the device:** the app, its pairing record, and the developer disk image, in Slashplayed's own
+  data. No signing key goes to the device: it installs and updates games without one.
 
 ## Testing it
 

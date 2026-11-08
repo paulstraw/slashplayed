@@ -16,6 +16,9 @@ All notable changes to Slashplayed are documented here. The format is based on
   seconds.
 - Settings on the device says where each game came from: From your Mac, Updated on this device, or
   Installed on this device.
+- The first time each game starts after this update, the device downloads that game's client once (50 to
+  58 MB) as "Getting <game> ready…", since Slashplayed no longer carries the games inside the app. It
+  needs the network that one time. Pressing Play in the companion first copies it from your Mac instead.
 
 ### Removed
 
@@ -24,6 +27,8 @@ All notable changes to Slashplayed are documented here. The format is based on
   step are gone, the key is deleted from your device the first time Slashplayed starts there, and the
   certificate's key from your Mac the first time the companion starts. On a paid team, you can revoke the
   "Slashplayed" certificate on Apple's developer site (Certificates, IDs & Profiles > Certificates).
+- slashplayed-companion, the setup tool for Windows and Linux, no longer sends a signing key to your iPad
+  or iPhone: the device installs and updates games without one.
 
 ### Fixed
 

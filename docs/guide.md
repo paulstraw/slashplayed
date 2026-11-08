@@ -11,9 +11,7 @@ installs the app, and **Slashplayed** on the device, which runs the game.
 The companion's setup assistant goes one step at a time and offers a fix for each problem it finds:
 Xcode, your Apple ID and team, your devices, LocalDevVPN, and which games go on each device. An
 optional step shows which games are installed on the Mac, if any. Then it installs Slashplayed on
-each device you pick, and a last optional step sets up
-[Update Games on This Device](#update-games-on-this-device). **Help > Setup Assistant…** runs the
-checks again later.
+each device you pick. **Help > Setup Assistant…** runs the checks again later.
 
 - **Xcode** needs an administrator's password once, the first time it's set up. After that, a
   standard macOS account works ([details](troubleshooting.md#xcode)).
@@ -27,9 +25,10 @@ checks again later.
 Open Slashplayed on the device and tap a game. The Mac can be asleep or away.
 
 Or press **Play** in the companion, with the game picked in the menu next to it. Battle.net doesn't
-need to be running. Play updates the app first when it needs to: after a game patch, after you
-change a device's games, and every 7 days on a free Apple ID. Keep the device awake while it works:
-unlock the iPad or iPhone and connect its cable, or wear the headset.
+need to be running. After a game patch, Play copies just the new game program to the device (about
+50 MB). It updates the app itself only after a companion update, and every 7 days on a free Apple ID.
+Keep the device awake while it works: unlock the iPad or iPhone and connect its cable, or wear the
+headset.
 
 The first start of each game takes a few minutes while it fetches its data from Blizzard (about 2.5
 minutes to character select for Classic Era on an iPhone over Wi-Fi). After that, it fetches what
@@ -48,44 +47,21 @@ the game's Play button in Battle.net when the companion asks. The companion catc
 your Battle.net launch credentials to the device (it never reads their values), and closes the Mac's
 copy of the game. Your saved sign-in stays for the next Play.
 
-## Update Games on This Device
+## Game patches on the device
 
-With this on, a device updates a game itself when Blizzard patches it, with no Mac. It's off until
-you turn it on, per device, in the companion's Settings > **Updates on Devices**.
+A device updates a game itself when Blizzard patches it, with no Mac and nothing to set up, on a free
+Apple ID too. When you open a game and Blizzard has a newer build, Slashplayed says so before the game
+starts, downloads the new build's game program (about 50 MB; on cellular data or in Low Data Mode it
+asks first), and checks that this version of Slashplayed can run it. Tap **Update**, and a few seconds
+later the new version starts and fetches the patch's data as you play. **Play Anyway** plays the
+version you have.
 
-When you open a game and Blizzard has a newer build, Slashplayed says so before the game starts,
-downloads the new build's game program (about 50 MB; on cellular data or in Low Data Mode it asks
-first), and checks that this version of Slashplayed can run it. Tap **Update**, and a few seconds
-later the new version starts and fetches the patch's data as you play. With the setting off, the
-screen says to update on your Mac instead: the next Play from the companion installs the new build.
+The companion's next Play copies the new build too, if the device hasn't taken it yet. Whichever gets
+there first, the other leaves it alone, and a newer version the device took itself is never replaced by
+an older one.
 
-The device signs the new game program itself, so it needs a signing key from your team. Turning the
-setting on says what will be sent and asks first.
-
-- **A free Apple ID** sends a copy of the key the companion signs Slashplayed with: your team's
-  Apple Development certificate and its private key. macOS asks once to allow the export.
-- **A paid team** sends a certificate made only for Slashplayed, so nothing else on your Mac signs
-  with it and you can revoke it on its own. Set it up once in Settings > Updates on Devices:
-  1. **Make Certificate Request** saves `Slashplayed.certSigningRequest` to Downloads. Its key stays
-     in a keychain of the companion's own, which Xcode never uses.
-  2. On developer.apple.com, open Certificates, IDs & Profiles > Certificates, click +, choose Apple
-     Development, upload the request, and download the certificate.
-  3. **Choose Certificate…**, or drop it on the section. The companion checks it's for its key and
-     your team.
-
-  **Stop Using the Slashplayed Certificate** deletes it from the Mac, and each device deletes its
-  copy at its next Play or Update Client. Revoke it on developer.apple.com to end it everywhere at
-  once.
-
-At every Play and Update Client, the companion checks with Apple that the certificate hasn't expired
-or been revoked. If it has, nothing is sent, and the companion says what to make instead. When the
-key changes, a game the device updated with the old key is signed again with the new one at its next
-start; if no key on the device can sign it, the device plays the version the companion installed.
-
-On the device, the key lives in Slashplayed's keychain only (that device only, never synced or backed
-up) and signs only game programs. Turning the setting off deletes it at Slashplayed's next start;
-**Forget Signing Identity** in Slashplayed's Settings deletes it at once. More in
-[troubleshooting](troubleshooting.md#update-games-on-this-device).
+A game you haven't installed on the device reads **Install <game>** on Slashplayed's start screen: tap
+it to download the game program, with no Mac. The game then fetches its data as you play.
 
 ## Game files on the device
 
@@ -125,10 +101,10 @@ A paid **Apple Developer Program** membership signs for a year, with none of tho
 ## Settings
 
 - **The companion** (⌘,): team, bundle ID prefix, devices and their games, copying game files,
-  updating games on devices, the game install, and update checks. Changing the team or bundle ID
+  the game install, and update checks. Changing the team or bundle ID
   prefix makes a new app on each device, with no game files: they're fetched or copied again.
-- **The device** (the gear on Slashplayed's start screen): the saved sign-in, the signing identity,
-  each game's build, Open in Files, Reset Game Settings, and Display (the render scale).
+- **The device** (the gear on Slashplayed's start screen): the saved sign-in, each game's build and
+  where it came from, its region, Open in Files, Reset Game Settings, and Display (the render scale).
 
 ## Updates
 

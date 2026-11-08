@@ -92,17 +92,6 @@ body:
         - Don't know
     validations:
       required: true
-  - type: dropdown
-    id: update-on-device
-    attributes:
-      label: Update Games on This Device
-      description: Settings > Updates on Devices, for this device.
-      options:
-        - "Off"
-        - "On"
-        - Don't know
-    validations:
-      required: true
   - type: textarea
     id: what-happened
     attributes:

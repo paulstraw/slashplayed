@@ -65,8 +65,8 @@ In-game voice chat isn't supported on the device yet
    downloads its data from Blizzard; after that, it fetches each zone as you reach it.
 4. Sign in with your Battle.net email and password. Slashplayed keeps them in the device's keychain,
    so you sign in once. Type an authenticator code on the hardware keyboard.
-5. From then on, play from the device alone. Turn on **Update Games on This Device** in the
-   companion's Settings, and the device installs Blizzard's patches itself, too.
+5. From then on, play from the device alone. When Blizzard patches a game, the device updates it
+   itself, or the companion's next Play copies the new version over.
 
 Leaving the game for more than about 30 seconds (closing its window, taking off the headset, or
 switching apps) can disconnect it. Use **Exit** or **Log Out** first to keep that session's settings.
@@ -78,10 +78,11 @@ companion's **Help > Export Diagnostics…**.
 
 ## How it works
 
-The companion downloads the Mac client from Blizzard, rewrites its load commands to point at
-Slashplayed's shim libraries, and signs it with your Apple ID. On the device, the shims stand in for
-AppKit, CoreAudio, and the other macOS frameworks, and a small helper prepares the client's
-executable memory under TXM at each launch (that's what LocalDevVPN is for).
+The companion builds Slashplayed, signs it with your Apple ID, and installs it. The game itself is never
+changed or signed: the companion downloads the Mac client from Blizzard and copies it to the device as it
+is, or the device downloads it itself, and Slashplayed loads it with a loader of its own. On the device,
+the shims stand in for AppKit, CoreAudio, and the other macOS frameworks, and a small helper prepares the
+client's executable memory under TXM at each launch (that's what LocalDevVPN is for).
 [architecture.md](docs/architecture.md) has the whole pipeline, and [research.md](docs/research.md)
 the experiments behind it.
 

@@ -85,19 +85,23 @@ headset, and `main` is reached 1.96 s (iPhone) and 1.97 s (headset) after launch
 
 ## The real client, through the launcher
 
-`SP_GUEST_CLIENT=<path in the app's home>` (`apps/client/spguestlaunch.m`, a dev switch; `run.sh` passes it)
-has the launcher load that file, the game's client unchanged and unsigned, with spguest instead of dlopen'ing
-the bundled image. Everything before the load is the launcher's as for any start (flavor, region, the game
-data's checks, the saved sign-in and `login.txt`, the helper's attach, the loading screen), in the installed
-app's own container; the patch check is skipped (the file is the bundled image's build). The app still needs
-the game's bundled image, which names the build.
+The runs below were made with a dev switch the launcher had then, `SP_GUEST_CLIENT=<path in the app's
+home>` (passed by `run.sh`): the launcher loaded that file, the game's client unchanged and unsigned, with
+spguest instead of dlopen'ing the bundled image. Everything before the load was the launcher's as for any
+start (flavor, region, the game data's checks, the saved sign-in and `login.txt`, the helper's attach, the
+loading screen), in the installed app's own container; the patch check was skipped (the file was the
+bundled image's build), and the app still needed the game's bundled image, which named the build. The dev
+build's other switches named below (`build.sh`'s `SP_NO_IMAGES=1`, `retype.py`) belonged to that signed
+path too.
+
+The switch went when spguest became the launcher's only load path. The launcher now always loads
+`Library/spgames/wow-<flavor>`, and the app holds no game, so the same run today is:
 
 ```sh
-# The unchanged arm64 slice of the build the device's game data is (the companion's CDN cache keeps one per
-# build, cdn/<hash>.arm64; its LC_UUID matches the assembled image's), into the app's container:
-xcrun devicectl device copy to --device "$SP_DEVICE" --domain-type appDataContainer --domain-identifier "$SP_BUNDLE_ID" \
-  --source <slice> --destination Library/spguest/wow-classic_era
-SP_PLATFORM=ios SP_FLAVOR=classic_era SP_GUEST_CLIENT=Library/spguest/wow-classic_era SP_SKIP_INTRO=1 apps/client/run.sh
+# The Mac's installed client, thinned to its arm64 slice (the same file as the CDN's), with its stamp and
+# row, into the app's container:
+SP_PLATFORM=ios SP_FLAVOR=classic_era apps/client/seed-client.sh
+SP_PLATFORM=ios SP_FLAVOR=classic_era SP_SKIP_INTRO=1 apps/client/run.sh
 ```
 
 iPhone 16 Pro (iOS 27), Classic Era 1.15.9.70576, 2026-11-06: **character select**, signed in from the saved

@@ -3,9 +3,9 @@
 Slashplayed runs the unmodified Mac World of Warcraft clients (Classic Era, TBC Anniversary, MoP Classic, and Retail) on M1-or-later iPads and the A17 Pro iPad mini (iPadOS; untested on M1 and the mini), iPhone 15 Pro and later (iOS), and Apple Vision Pro (visionOS). It's a
 compatibility layer: the client's own arm64 code runs natively on the device, and a set of shim
 libraries stands in for the macOS frameworks it expects (AppKit, CoreGraphics, Carbon, CoreAudio,
-Security, …), translating to UIKit, RemoteIO and friends. No game code is changed beyond Mach-O
-header and load-command edits made on the user's Mac (or on the device, when it updates a game
-itself), and no game files ship with Slashplayed.
+Security, …), translating to UIKit, RemoteIO and friends. No game code is changed: the device loads
+the game's own arm64 client, unchanged and unsigned, with a loader of Slashplayed's own, and no game
+files ship with Slashplayed.
 
 This page is the map. The experiments behind each technique are in [research.md](research.md).
 
@@ -14,42 +14,38 @@ This page is the map. The experiments behind each technique are in [research.md]
 The Mac companion app (`apps/companion`) does all of this on the user's Mac, for whichever games
 they've chosen for the device, whether or not the game is installed on the Mac:
 
-1. **Fetch the client.** The companion asks Blizzard's patch service for the game's current build and
-   downloads just the arm64 slice of that build's Mac client from Blizzard's CDN (`BlizzardCDN.swift`:
-   one ranged request for the chunks that cover it, about 50 MB, each checked against its key, and
-   cached in `~/Library/Application Support/Slashplayed/cdn/`). The dev script `apps/client/build.sh`
-   takes the same slice from the Mac's install instead, with `lipo -thin arm64`. That's the only place
-   the two differ: their *input*. For the same build the slice is the same bytes, and so is every image
-   made from it (`ClientAssemblyTests.testMatchesBuildShOnInstalledClients`, opt-in, compares them).
-   Steps 2 to 4 have a third producer, the launcher's `apps/client/spassemble.m`, which makes the image
-   on the device (see [Updating on the device](#updating-on-the-device)).
-2. **Rewrite load commands.** Every macOS library the client links (about 30) is pointed at either
-   the device's real library (when visionOS/iPadOS has it with the same exports) or a Slashplayed shim
-   (`@rpath/libsp<Name>.dylib`), using `shims/generated/rewrite-map.txt` and `install_name_tool`. An
-   `@executable_path/Frameworks` rpath is added. Nothing in the client's code or data changes.
-3. **Set the platform.** `vtool -set-build-version` marks the image as visionOS or iOS, so the
-   device's dyld will load it.
-4. **Retype.** The client's header file type changes from `MH_EXECUTE` to `MH_BUNDLE`, and the
-   file offset of its zero-fill thread-local section is zeroed (header only; see
-   [One app, every game](#one-app-every-game)).
-5. **Check binds.** Every import of the rewritten client is looked up in the bundled
-   `exports.json` (what each shim and system library exports). An import nothing provides means a
-   game patch added something Slashplayed doesn't cover yet; the companion stops with a clear
-   message instead of installing something that would crash at launch (`BindCheck.swift`).
-6. **Assemble and sign.** The launcher, the on-device JIT helper (`PlugIns/SPJitHelper.appex`), the
-   shims, every chosen game's client image with its build stamp (`spbuild-<flavor>`), the system
-   root certificates (`sproots.plist`), the third-party licenses (`licenses/`), and the filled-in
-   Info.plist and entitlements go into `Slashplayed.app`. The companion makes or refreshes
+1. **Build the app.** The launcher, the on-device JIT helper (`PlugIns/SPJitHelper.appex`), the shims,
+   the shims' `exports.json` and `rewrite-map.txt`, the system root certificates (`sproots.plist`), the
+   addons, the third-party licenses (`licenses/`), and the filled-in Info.plist and entitlements go into
+   `Slashplayed.app` (`ClientAssembly.assemble`). The app holds no game. The companion makes or refreshes
    explicit-App-ID development profiles with the user's own team, one for the app and one for the
    helper (by building a tiny stub project with `xcodebuild -allowProvisioningUpdates`), signs
    everything, the helper before the app, and installs it with `devicectl`, unless the device still holds
-   the install this Mac made of this build (`ClientBuild.installNeed`). The iPad and the iPhone share one
-   build, and a device's app may have been deleted there or installed from another Mac, with other games.
-   So the companion keeps a record per device (the build and its games), and checks it against the app
-   `devicectl` lists there: every install puts the app in a new folder, so one made since is told apart.
-   Then it makes sure the app has what the helper needs (see [The on-device JIT
+   the install this Mac made of this build (`ClientBuild.installNeed`). There's one build per platform
+   (`client-ios`, shared by the iPad and the iPhone, and `client-xros`), the same whatever games a device
+   has: it's rebuilt only when the companion's resources, the bundle ID, or the entitlements change, or its
+   profile is about to run out (`ClientBuild.isComplete`). A device's app may have been deleted there or
+   installed from another Mac, so the companion keeps a record per device of the build it installed, and
+   checks it against the app `devicectl` lists there: every install puts the app in a new folder, so one
+   made since is told apart. Then it makes sure the app has what the helper needs (see [The on-device JIT
    helper](#the-on-device-jit-helper)), in its data container, which the install comes before.
-7. **Game data.** The client streams its own game data from Blizzard's CDN into the app's
+2. **Fetch the client.** The companion asks Blizzard's patch service for each game's current build and
+   downloads just the arm64 slice of that build's Mac client from Blizzard's CDN (`BlizzardCDN.swift`:
+   one ranged request for the chunks that cover it, about 50 MB, each checked against its key, and
+   cached in `~/Library/Application Support/Slashplayed/cdn/`). The dev script
+   `apps/client/seed-client.sh` takes the same slice from the Mac's install instead, with `lipo -thin
+   arm64`: for the same build it's the same bytes.
+3. **Check binds.** Every import of the slice is looked up in the bundled `exports.json` (what each shim
+   and system library exports, under the names the client gives its libraries). An import nothing
+   provides means a game patch added something Slashplayed doesn't cover yet; the companion stops with a
+   clear message instead of copying a client that would fail to load (`BindCheck.swift`).
+4. **Copy the client.** The companion reads each game's stamp back from the device
+   (`Library/spgames/spbuild-<flavor>`) and, when it's missing or older than the CDN's build, copies the
+   slice, unchanged and unsigned, as `Library/spgames/wow-<flavor>`, then its `.build.info` row,
+   `spsource-<flavor>` (`mac`), and the stamp last (`ClientBuild.copyClient`). A game patch comes to
+   that: a ~50 MB copy, not a new app. A newer client the device fetched itself stays (see [Updating on
+   the device](#updating-on-the-device)).
+5. **Game data.** The client streams its own game data from Blizzard's CDN into the app's
    `Documents/Data/`, so all it needs to start is `Documents/.build.info` and, in `Documents/Data/config/`,
    the build, CDN, and key configs its row names. That's what the companion sends by default. **Copy Game
    Files from This Mac** (a per-device choice in Settings > Games, on for devices
@@ -58,9 +54,10 @@ they've chosen for the device, whether or not the game is installed on the Mac:
    their content, only by size). When a device holds only some
    games, only the storage archives those games use are copied. See [Game data on the
    device](#game-data-on-the-device).
-8. **Launch and prepare.** At every launch the helper, on the device, attaches to the game and
-   services one stop, the JIT prepare described below, then detaches. The Mac isn't needed: a
-   launch from the home screen works the same as one from the companion.
+6. **Launch and load.** At every launch the helper, on the device, attaches to the app and services one
+   stop, the JIT prepare described below, then detaches, and the launcher loads the client with spguest
+   ([Loading the client](#loading-the-client-spguest)). The Mac isn't needed: a launch from the home
+   screen works the same as one from the companion.
 
 The entitlements are `get-task-allow` (a debugger may attach; development signing gives it),
 `com.apple.developer.kernel.increased-memory-limit` and `extended-virtual-addressing` (Retail needs
@@ -70,8 +67,7 @@ more than the default ~5 GB limit; with them it's ~8 GB). A free Personal Team c
 and the companion re-signs within two days of that.
 
 Every third-party component that ships carries its license text, generated at build time from the
-pinned sources. The device app's `licenses/` has zsign's and OpenSSL's (`scripts/build-zsign.sh`), and
-idevice's with every Rust crate the JIT helper links and the Rust standard library's notices
+pinned sources. The device app's `licenses/` has idevice's with every Rust crate the JIT helper links and the Rust standard library's notices
 (`scripts/build-idevice.sh` runs `scripts/crate-notices.py` over `cargo tree` for the same features and
 targets as the build, and fails on a crate whose source has no license text; the two crates that declare
 MIT but ship no file get the text from `scripts/crate-licenses/`). The companion's
@@ -97,22 +93,24 @@ What does work, on visionOS 27 and iPadOS 26 alike (measured in `research/jittes
 - A page made writable **in place** (`mprotect` RW, or even `vm_protect` with `VM_PROT_COPY`) can
   never be executable again.
 
-So the libSystem shim (`shims/system/spsystem.c`) services the client's rewrite through an alias
-mapping:
+So the client's rewrite is serviced through an alias mapping, by the launcher's loader and the libSystem
+shim (`shims/system/spsystem.c`):
 
+- The loader reserves the client's span before its code is in it, and asks the debugger, with one
+  `brk #0xf00d` (the StikDebug-compatible protocol), to prepare all of `__TEXT` (`prepare_text` in
+  `apps/client/spguestlaunch.m`). The debugger writes over every page (`research/jittest/jit.py`, mode
+  `bulkx`: raw binary `X` packets, the fewest round trips), then detaches. The loader maps a read-write
+  alias of `__TEXT`, copies the client's code in through it, and tells the shim where both are
+  (`sp_set_client`).
 - The client looks up its memory functions with `dlsym`. The shim's `dlsym` hides
   `pthread_jit_write_protect_np` (no `MAP_JIT` here), so the client takes its plain
   `mprotect`/`memcpy` path, and hands out the shim's own `mprotect` and `memcpy`.
-- The first `mprotect(rwx)` inside the main image's `__TEXT` copies `__TEXT` aside and asks the
-  debugger, with one `brk #0xf00d` (the StikDebug-compatible protocol), to prepare all of it. The
-  debugger writes over every page (`research/jittest/jit.py`, mode `bulkx`: raw binary `X` packets,
-  the fewest round trips), then detaches. The shim maps a read-write alias of `__TEXT` and restores
-  the saved contents through it.
-- From then on, `mprotect` inside `__TEXT` returns 0 without doing anything, and the shim's `memcpy`
-  writes into `__TEXT` through the alias. `__TEXT` itself is never writable.
+- `mprotect` inside `__TEXT` returns 0 without doing anything, and the shim's `memcpy` writes into
+  `__TEXT` through the alias. `__TEXT` itself is never writable.
 
-A `brk` with no debugger kills the process, so the shim checks `P_TRACED` first, and waits up to 60 s
-for it. The debugger is needed at every launch (the prepare can't happen after detach).
+A `brk` with no debugger kills the process, so the launcher waits for the helper's attach and checks
+`P_TRACED` before the stop. The debugger is needed at every launch (the prepare can't happen after
+detach).
 
 ## The on-device JIT helper
 
@@ -133,9 +131,10 @@ runs, before the client is loaded:
 1. **status**: the tunnel, and whether the developer disk image is mounted.
 2. **mount**, only when it isn't: debugserver is in the image. The helper personalizes the image's
    cryptex with Apple's signing server and installs it. On iOS 27 it stays mounted across a reboot.
-3. **attach**: the helper attaches, services the shim's prepare stop (one byte written to every 16 KB
-   page of `__TEXT`, about 2,900 pages in 0.1 s), and detaches. The launcher loads the client once it
-   sees `P_TRACED`.
+3. **attach**: the helper attaches, and once the launcher sees `P_TRACED` it starts loading the client.
+   The helper services the loader's prepare stop (one byte written to every 16 KB page of `__TEXT`,
+   2,800 to 3,300 pages in about 0.1 s) and detaches (`guest: detached`, the line the companion's launch
+   follows).
 
 A launch with the image mounted takes about 1.5 s from start to attached. On iOS the launcher shows
 the scene first (see [iPad](#ipad)), and if the helper can't do its part, the launcher puts the reason
@@ -175,18 +174,73 @@ except the headset's record:
   (`DeveloperDiskImage.swift`): the cryptex only, ~17 MB for iOS and ~13 MB for visionOS. It's copied
   again when Xcode has a newer one.
 
+## Loading the client: spguest
+
+visionOS won't `exec` or `posix_spawn` another executable from an app bundle, dyld won't `dlopen` an
+`MH_EXECUTE`, and the system runs no code that isn't signed. So the launcher loads the game's client
+itself, with spguest (`apps/client/spguest.c`, `spguest.h`, and `spguest_tlv.S`; its load step is
+`spguestlaunch.m`), a loader of our own modelled on Tolkara's (MIT, github.com/tolkara/tolkara,
+`runtime/`). The client is `Library/spgames/wow-<flavor>`, the arm64 slice of Blizzard's Mac file as it
+is: no load-command rewrite, no retype, no signature. dyld never sees it. spguest:
+
+- **maps** its segments into one reserved span. On the device `__TEXT` is prepared by the helper first and
+  written only through a read-write alias ([above](#executable-memory-under-txm));
+- **binds** it, applying the rebase, bind, lazy, and weak opcode streams (the clients' dyld-info fixups;
+  lazy pointers are bound at load). Each library the client names is opened through the app's
+  `rewrite-map.txt`, so the shims in `Frameworks/` take the macOS frameworks and the device's own
+  libraries the rest, as the bind check assumed. An import nothing provides fails the load with its name;
+- **registers** it with the Objective-C runtime (`_objc_map_images`, `_objc_load_image`) and the unwinder
+  (`__unw_add_find_dynamic_unwind_sections`), so its classes, categories, `+load`, C++ exceptions, and
+  NSExceptions work as from a dyld-loaded image, and serves its thread-locals through its own
+  `__tlv_bootstrap`;
+- runs its initializers and calls `main`.
+
+Those three hooks are private. The launcher checks for them before the start screen
+(`sp_guest_hooks_problem`), so a new OS that took one away says so before anything is downloaded. Before
+the sign-in it checks the client's file with spguest's own parse of its header and load commands
+(`spguest_check_file`, through `sp_guest_preflight`), so a file the device can't load (one with chained
+fixups, say, which spguest doesn't apply) says why before anyone types a password, not after the helper's
+attach. The start's retire and Update's check of a new slice use the same parse, so none of them passes a
+file the load refuses.
+
+**The client's questions about itself.** dyld never lists the client, so spguest answers for it: `dladdr`
+and the `_dyld_*` image calls give it as image 0, named by its own file. Its `dlsym` and
+`_NSGetExecutablePath` are the libSystem shim's, as for a dyld-loaded client; the executable path is the
+launcher's, which the [install-root redirect](#sandbox-redirects) expects. The loader tells the shim where
+the client and its `__TEXT` alias are (`sp_set_client`), so the shims' caller offsets and the `__TEXT`
+services find it, and `sp_dladdr` names the client's frames (`wow-<flavor>+offset`) in the shims' stall,
+render-callback, crash, and exception stacks, where dyld's `dladdr` has nothing.
+
+**The self-`dlopen`.** Once, early in `main`, the client `dlopen`s the path `dladdr` gives for its own
+code. Under dyld that returned the loaded image. For the client's own file, an unchanged `MH_EXECUTE`,
+dyld refuses ("cannot dlopen a main executable") and the client goes on with NULL. spguest's `dlopen`
+hook answers that path with NULL without asking dyld, in case a later dyld would load it. Every game has
+played into the world that way; what the client keeps the handle for isn't known.
+
+A load that fails after the attach ends the launch with spguest's reason (an unresolved import, an opcode
+it doesn't know, a refused hook). A file in `Library/spgames` that isn't a client spguest can load (not an
+arm64 `MH_EXECUTE`, cut short, or an image an older Slashplayed assembled there) is retired at the start
+with its stamp, row, and `spsource` (`sp_slice_retire`), so the next Play or Update replaces it. Loading
+through spguest costs nothing measurable against dyld, at startup or in play
+(`research/guestloadtest/README.md`, "The dyld baseline"). Its test is the guest toy in
+`apps/client/guesttest/`, a program of our own built like the client: CI runs its checks on the macOS
+runner (`SP_GUEST_REFS=none apps/client/guesttest/build.sh mac`), which also shows the private hooks still
+work there; the device runs are manual. The system's crash reports don't symbolicate the client, since
+dyld doesn't list it; the shims' own crash and stall stacks name it.
+
 ## One app, every game
 
-visionOS won't `exec` or `posix_spawn` another executable from an app bundle, and dyld won't `dlopen`
-an `MH_EXECUTE`. But it will `dlopen` an `MH_BUNDLE`, and the client's constructors, Objective-C
-classes and thread-local variables all work from one. So `Slashplayed.app` holds every chosen game
-as `wow-<flavor>` (retyped `MH_BUNDLE`), and its main executable is a small launcher
+`Slashplayed.app` holds no game. Each game's client sits in the app's data container
+([above](#loading-the-client-spguest)), and the app's main executable is a small launcher
 (`apps/client/launcher.m`) that:
 
 1. deletes the game files the companion listed in `Library/spdelete.txt` (devicectl can't delete
    files) and writes the device's free space to `Library/spfree.txt`: the figure Settings shows, which
    counts space iOS can clear, and the figure without it. Lockdown, all the Mac can read, gives only
-   the second, so the companion adds the difference to lockdown's figure now (`FreeSpace.now`);
+   the second, so the companion adds the difference to lockdown's figure now (`FreeSpace.now`). It retires
+   a `Library/spgames` file spguest can't load ([above](#loading-the-client-spguest)), and deletes the
+   signing identity Slashplayed 1.4 and earlier kept on the device for its game updates (its keychain
+   items and files; for two releases, `forget_identity`);
 2. on iPadOS, brings up UIKit and waits for an active scene first (see [iPad](#ipad));
 3. picks the game: the one the companion's Play or `run.sh` names (`SP_LAUNCH_FLAVOR`), else the one
    tapped on its start screen (`spstart.m`, every other launch, even with one game; its gear opens the
@@ -204,37 +258,41 @@ as `wow-<flavor>` (retyped `MH_BUNDLE`), and its main executable is a small laun
    first, and the intro it starts then never asks the CDN for the movie's data, so it would wait on its
    download bar forever (the next session plays it at once). For a run nobody watches
    (`SP_SKIP_INTRO=1`: `run.sh`, the companion's `-skip-intro`), it also adds what answering Retail's
-   Screen Narrator question writes. Only settings that are missing, so neither holds up the launch;
-4. logs the image's build against the game data's, and asks Blizzard's patch service whether a newer
-   build is out (both below); then, before the sign-in, refuses to load the game over a copy of game
-   files that stopped partway (`Library/spcopying.txt`, see
-   [Game data on the device](#game-data-on-the-device));
+   Screen Narrator question writes. Only settings that are missing, so neither holds up the launch.
+   A game with no client is installed first, and one with game data but no client gets its data's own
+   build ([Installing a game on the device](#installing-a-game-on-the-device));
+4. logs the client's build against the game data's, and asks Blizzard's patch service whether a newer
+   build is out (both below); then, before the sign-in, checks that the client can be loaded (the
+   preflight, [above](#loading-the-client-spguest)) and refuses to load the game over a copy of game files
+   that stopped partway (`Library/spcopying.txt`, see [Game data on the device](#game-data-on-the-device));
 5. puts up the loading screen (below), tells the libSystem shim which game folder is the install root,
-   `dlopen`s that game's image and calls its `LC_MAIN` entry point.
+   and loads the client with spguest, which calls its `main`.
 
-Each image carries the build it was made from in a file beside it, `spbuild-<flavor>` next to
-`wow-<flavor>`: the build columns of the game's `.build.info` row (`Product`, `Branch`, `Build Key`,
-`Version`), as a one-row table of the same `|`-separated shape, so one parser reads both.
-`apps/client/build.sh` takes them from the install's `.build.info`, the companion
-(`ClientAssembly.Stamp`) from the patch service's version row (`Region`, `BuildConfig`,
-`VersionsName`), and for the same build they write the same bytes. At each Play the companion asks the
-patch service for each of the device's games' current build (about 80 ms each) and rebuilds an image
-whose stamp isn't it; if the service can't be reached, an image that exists is played as it is. The
-stamp is named after the image, not the app, so an image placed elsewhere later (an on-device update
-in `Library/`) brings its own. The launcher reads the stamp of the image it's about to load and logs
-it against `Documents/.build.info`'s row for the product (`build: image and game data are both …`, or
-`build: MISMATCH: …`): today the image and the data are copied separately, so after a patch one can
-reach the device without the other.
+Each client carries its build in a file beside it, `spbuild-<flavor>` next to `wow-<flavor>`: the
+build columns of the game's `.build.info` row (`Product`, `Branch`, `Build Key`, `Version`), as a one-row
+table of the same `|`-separated shape, so one parser reads both. The companion (`ClientAssembly.Stamp`)
+writes it from the patch service's version row (`Region`, `BuildConfig`, `VersionsName`),
+`seed-client.sh` from the install's `.build.info`, and the device from the row it fetched; for the same
+build they write the same bytes. Beside them are the client's `.build.info` row (`spbuildinfo-<flavor>`),
+which the launcher writes into `Documents/.build.info` before the client loads when the row there isn't
+the client's build (`sp_build_info_for_image`), and `spsource-<flavor>`, one word for where the client
+came from (`mac`, `updated`, or `installed`), which Settings shows and which says who decides the game's
+region ([below](#a-games-region)). Every writer puts the stamp last, so a stamp is only ever beside a
+whole client of its build. At each Play the companion asks the patch service for each of the device's
+games' current build (about 80 ms each) and copies a client whose stamp is missing or older; if the
+service can't be reached, the device's clients are played as they are. The launcher reads the stamp of
+the client it's about to load and logs it against `Documents/.build.info`'s row for the product
+(`build: image and game data are both …`, or `build: MISMATCH: …`): the client and the data are copied
+separately, so after a patch one can reach the device without the other.
 
 Then the patch check (`apps/client/sppatch.m`), before the sign-in and the helper: the launcher fetches
 `https://<region>.version.battle.net/v2/products/<product>/versions` (the same `|`-separated table
 shape, one row per region; the region is the game's, [below](#a-games-region): the stamp's `Branch` for a
-game the app bundles) and compares that region's
-`BuildConfig` with the stamp's `Build Key`. The same means nothing shows. A different one means
-Blizzard has a newer build out than the image, so a screen says so (or offers to update it on the
-device: see [Updating on the device](#updating-on-the-device)), and first finds out whether this
-Slashplayed can run it at all. The device fetches the new build's client from Blizzard's CDN the way the companion does (`apps/client/spcdn.m`, the port of
-`BlizzardCDN.swift`: build config, install manifest, one encoding page, then one ranged request for the
+game the Mac copied) and compares that region's `BuildConfig` with the stamp's `Build Key`. The same
+means nothing shows. A different one means Blizzard has a newer build out than the client, so a screen
+says so, first finds out whether this Slashplayed can run it at all, and offers to update it on the
+device ([Updating on the device](#updating-on-the-device)). The device fetches the new build's client
+from Blizzard's CDN the way the companion does (`apps/client/spcdn.m`, the port of `BlizzardCDN.swift`: build config, install manifest, one encoding page, then one ranged request for the
 chunks covering the arm64 slice, everything checked against the key that names it; about 45 MB, 3 s on
 an iPhone on Wi-Fi), the sibling `/cdns` table giving the servers. On cellular, a hotspot, or Low Data
 Mode it asks first (**Download** or **Not Now**). Then it checks the slice's imports against the
@@ -242,17 +300,18 @@ Mode it asks first (**Download** or **Not Now**). Then it checks the slice's imp
 has no `dyld_info`, so `apps/client/spbind.m` reads the imports from the Mach-O itself, from either kind
 of fixup info (bind opcodes, which the clients have, or chained fixups), leaving weak imports out as
 `BindCheck` does. The companion's tests hold it to `BindCheck`'s answer on fixtures of both kinds and,
-opt-in, on every build the untethered research kept. It binds: "<Game> <version> is out. Update on your
-Mac to play it." It doesn't: "This patch needs a Slashplayed update." It couldn't tell (the download
-failed, Not Now, an app without `exports.json`): the first. Each has **Play Anyway**, which goes on with
-the image it has; the companion follows the screen as a wait on the person (`patch: showing the
-newer-build screen`, `patch: Play Anyway`). The slice stays in `Library/spslice/<flavor>.arm64` with its
-own stamp (`spbuild-<flavor>`, written once the slice is whole), so a later launch for the same build
-doesn't fetch it again, and an on-device update can build its image from it. A check that can't be made
-(offline, a timeout, no row) goes on without a word: the service fetch has a 3 s budget, and a refused
-connection fails at once. The log has a line for each step, versions only (`patch: up to date: …`,
+opt-in, on every build the untethered research kept. It binds: "<Game> <version> is out. This iPhone
+can update itself in a few seconds.", with **Update**. It doesn't: "This patch needs a Slashplayed
+update." It couldn't tell (the download failed, Not Now, an app without `exports.json`): "Whether
+Slashplayed can run it couldn't be checked." Each has **Play Anyway**, which goes on with the client it
+has; the companion follows the screen as a wait on the person (`patch: showing the newer-build screen`,
+`patch: Play Anyway`, `patch: Update`). The slice stays in `Library/spslice/<flavor>.arm64` with its own
+stamp (`spbuild-<flavor>`, written once the slice is whole), so a later launch for the same build doesn't
+fetch it again, and Update takes it from there. A check that can't be made (offline, a timeout, no row)
+goes on without a word: the service fetch has a 3 s budget, and a refused connection fails at once. The
+log has a line for each step, versions only (`patch: up to date: …`,
 `patch: newer build out: …`, `patch: slice: …`, `patch: imports: N of M resolve …` and any `UNRESOLVED`
-ones, `patch: message: update on your Mac: …` or `patch: message: needs a Slashplayed update: …`,
+ones, `patch: message: update here: …` or `patch: message: needs a Slashplayed update: …`,
 `patch: couldn't check …: going on`). `SP_PATCH_SERVICE` (passed by `run.sh`) replaces the base URL
 for tests: a URL, or a path in the app's home directory read as files (`Library/sppatchtest` with
 `Library/sppatchtest/<product>/versions` copied in by `devicectl`; a `cdns` file beside it is optional,
@@ -260,7 +319,7 @@ the real service's is used without one, so a row naming a real build tests the w
 `SP_PATCH_CELLULAR=1` makes it ask, as on cellular.
 
 The loading screen (`shims/appkit/sploading.m`, in the AppKit shim; the launcher calls
-`sp_uikit_loading` with the game's name) covers the time from the `dlopen` to the client's first
+`sp_uikit_loading` with the game's name) covers the time from the load to the client's first
 frame, which was black: a few seconds on a full store, and from an empty one the client's data setup
 (about 10 s on an iPhone; see [the data setup dialog](#shims)) and then up to a minute and a half
 with its window up and no frames while it streams its startup data. It shows the game's name and a
@@ -275,26 +334,23 @@ when the scene connects, once the client has started UIKit. With `SP_HOVER_OFF=1
 hooked, so there's no loading screen. Logged as `[sp:AppKit] loading: screen up …` and `[sp:AppKit]
 loading: first frame … s after the client was asked for, screen down`.
 
-The visionOS dyld also rejects a non-main image whose zero-fill section has a nonzero file offset
-(the macOS dyld checks neither this nor the file type), hence the second header edit.
-
 All games share one app container, so the shared `Data/` store is copied once.
 
 A game install on the Mac is optional, and so is Battle.net. The companion's pipeline doesn't read the
-install; it's the source of two choices only: **Copy Game Files from This Mac** (step 7) and **Play with
+install; it's the source of two choices only: **Copy Game Files from This Mac** (step 5) and **Play with
 My Mac's Battle.net** (see [Sandbox redirects](#sandbox-redirects)), which the menu by Play offers only
 when one of the device's games is installed. The small identity file login needs from the Mac needs no
 install. Onboarding (`Onboarding.swift`) requires Xcode, the team, the device, LocalDevVPN, and a game
 per device; its last step lists what the Mac has installed and always passes. The dev script
-`apps/client/build.sh` still builds from an install (step 1), or with `SP_NO_IMAGES=1` builds the app with
-no image at all ([Installing a game on the device](#installing-a-game-on-the-device)).
+`apps/client/build.sh` builds the app as the companion does, with no game in it; `seed-client.sh` copies a
+game's client from the Mac's install, and `seed.sh` its game data.
 
 ### The start screen and Settings
 
 Every launch that doesn't name a game (a launch from the home screen) opens on the start screen
 (`spstart.m`, its screen in SwiftUI, `spstartscreen.swift`): the app icon's medallion and a framed
-button per game in `flavors.plist`'s order, all drawn in code (**Install <game>** for one an app without
-images hasn't installed yet, [below](#installing-a-game-on-the-device)). Its face is Goodmountain, which the app
+button per game in `flavors.plist`'s order, all drawn in code (**Install <game>** for one the device
+has nothing of yet, [below](#installing-a-game-on-the-device)). Its face is Goodmountain, which the app
 ships unmodified with its license (`scripts/fetch-font.sh`; it's never committed). The gear opens
 Settings, a stock dark inset-grouped sheet in SwiftUI (`spsettings.swift`), one for iOS and visionOS:
 
@@ -302,14 +358,14 @@ Settings, a stock dark inset-grouped sheet in SwiftUI (`spsettings.swift`), one 
   read from the keychain inside `splogin.m` at the tap and hidden again when the app goes to the
   background, the sheet closes, or a game starts); **Forget My Sign-In**; or, with none saved,
   **Sign In…**, which presents the sign-in screen to save one ahead of time.
-- **Game Updates**: the signing identity's state, dates only (`sp_identity_reading`, the same reading
-  the log line and `Library/spidentity.txt` use), and **Forget Signing Identity**.
 - **Display**: Scale, Automatic, 1x, or 2x, the backing scale for every launch on this device (Render
   scale, under Window, screen and scene tracking).
-- **A section per game**: the build it starts with, shipped with the app, updated on this device, or
-  installed on it (`sp_game_build`, by the launcher's own rules; "Not Installed" for a game an app
-  without images hasn't installed yet, [below](#installing-a-game-on-the-device)), its **Region** (a picker
-  for a game the device made, the Mac's named for one it bundles: [A game's region](#a-games-region)),
+- **A section per game**: the build it starts with and where its client came from, from
+  `spsource-<flavor>`: "From your Mac", "Updated on this device", or "Installed on this device" (a client
+  with no word, which none of today's writers leaves, reads as the device's own); "Not Ready" for one
+  whose next start gets it ready, and "Not Installed" for a game the device has nothing of
+  ([below](#installing-a-game-on-the-device)). Then its **Region** (a picker for a game the device decides
+  it for, the Mac's named for one the Mac copied: [A game's region](#a-games-region)),
   **Open in Files**, and **Reset Game Settings**, which deletes the game's
   `WTF/Config.wtf` and `Library/sprenderscale-<flavor>` so the next start seeds them as on a first
   launch (the region and languages too); `WTF/Account/` (keybindings, macros, addons' saved settings) is kept.
@@ -322,79 +378,101 @@ or `Documents/` before the game's first start makes the folder. That exposes `Da
 or index leaves the store unreadable: "installation is damaged") and, for the moments it exists, the
 game's `login.txt`; both were weighed and accepted: the files are the person's own, on their own device.
 
-The forgets and the reset act at the tap, after a confirmation whose default is Cancel. Forgetting the
-identity rewrites `Library/spidentity.txt` at once with `forgotten`, so the companion turns Update Games
-on This Device off for that device rather than send the identity back.
+The forget and the reset act at the tap, after a confirmation whose default is Cancel.
 
 A dev-only drill opens the screen in a given state, so each can be screenshotted without taps:
 `SP_START_DRILL=<state> apps/client/run.sh`. `run.sh` alone passes it (a home-screen launch has no
-environment), and it launches with no console. The states are `settings`, `game-updates`, `display`,
-`games`, `about`, `sign-in`, `acknowledgements`, `license-<file>` (e.g. `license-rust-std`), the confirmations
-`alert-forget-signin`, `alert-forget-identity`, and `alert-reset`, and `reset-<flavor>`, which resets
+environment), and it launches with no console. The states are `settings`, `display`, `games`, `about`,
+`sign-in`, `sign-in-launch`, `vpn`, `pair`, `pair-code`, `acknowledgements`, `license-<file>` (e.g.
+`license-rust-std`), the confirmations `alert-forget-signin` and `alert-reset`, and `reset-<flavor>`, which resets
 that game's settings with no confirmation, for a test, `scale-<0|1|2>`, which saves that Scale
-(0 is Automatic), and `files-<flavor>`, that game's Open in Files tapped. `SP_START=1` shows the start screen alone, and
+(0 is Automatic), `files-<flavor>`, that game's Open in Files tapped, and `region-<flavor>-<region>`, that
+game's Region picked. `SP_START=1` shows the start screen alone, and
 `SP_START_TEXT_SIZE=<XS…XXXL, AX1…AX5>` sets its Dynamic Type size.
 
 ## Updating on the device
 
-When Blizzard puts out a build newer than the device's image of a game, a device that holds a signing
-identity of the team can make that build's image itself, with no Mac. **Update Games on This Device**,
-in the companion, puts the identity there; it's off for every device until the person turns it on. The
-chain, all in the launcher, between the patch check and the client's `dlopen`:
+When Blizzard puts out a build newer than the device's client of a game, the device can take it itself,
+with no Mac and nothing to sign, since spguest loads the new slice as it loads any. That works on every
+team, free ones included. The chain, all in the launcher, between the patch check and the load:
 
-1. **Find it.** The patch check sees the service's build differ from the image's stamp, fetches the new
+1. **Find it.** The patch check sees the service's build differ from the client's stamp, fetches the new
    build's arm64 slice from the CDN into `Library/spslice/` (`spcdn.m`; on cellular it asks first), and
    checks its imports (`spbind.m`), as [above](#one-app-every-game).
-2. **Offer it.** The build binds and the device's identity is usable (valid, and listed in a profile the
-   app can see): the screen offers **Update** beside Play Anyway. Otherwise it's the screen above.
-3. **Make it.** Update fetches the build's configs into `Documents/Data/config/`, assembles the image from
-   the kept slice (`spassemble.m`: the pipeline's steps 2 to 4, the same bytes as the Mac's), and signs it
-   (`spsign.m`, zsign) into `Library/spgames/wow-<flavor>`, its stamp beside it. Under a second on an
-   iPhone, after the slice's 2–3 s.
-4. **Load it.** The launcher `dlopen`s it and, only once that has succeeded, writes the new build's row
-   into `Documents/.build.info`. The client then streams the build's new content itself, as it does
-   into an empty store.
+2. **Offer it.** The build binds: the screen offers **Update** beside Play Anyway. Otherwise it's Play
+   Anyway alone, with why.
+3. **Take it.** Update fetches the build's configs (build, CDN, and Retail's KeyRing: the bytes
+   `BlizzardCDN.configData` gives, checked against their keys) into `Documents/Data/config/` unless
+   they're there. Then, in `Library/spgames/`, it renames the kept slice to `wow-<flavor>` (one volume, so
+   nothing is copied), writes the build's `.build.info` row (`spbuildinfo-<flavor>`) and `spsource-<flavor>`
+   (`updated`), and the stamp last. Nothing is assembled or signed. The configs go first: they're named by
+   their content, so they're harmless to the old build, and a failure leaves the old client. So does a
+   rename that fails: the old client's stamp goes back. A write that fails after the rename leaves the new
+   client with no stamp, which nothing loads; the old one is gone then, so there's no Play Anyway, and the
+   next start gets the game ready.
+4. **Load it.** Just before the client loads, the launcher writes the kept row into
+   `Documents/.build.info` (`sp_build_info_for_image`, through `sp_build_info_with`: the line
+   `BlizzardCDN.buildInfoLine` writes, the Tags kept from the device's row, or for a game the device
+   decides the region of, its region's, [below](#a-games-region); the other products' rows kept). It does
+   so at every start whose row isn't the client's build, not only the one that updated, so a start that
+   ended before the client loaded (at the sign-in, say), or game data emptied under the client, doesn't
+   leave the client streaming with no row for its build (#134, "Invalid schema … for Table StartupFiles",
+   issue #36). The client then streams the build's new content itself, as it does into an empty store.
 
-Which image a start loads, in order:
+Play Anyway leaves the client in `Library/spgames` untouched and the slice kept for a later Update. Once
+the client has caught up with a kept slice (`sp_update_caught_up` in `spcdn.m`: the same Build Key or
+Version, or a later Version), as after the companion copied that build or a later one, the launcher
+deletes the slice, stamp first, at its next start (`retire_caught_up`, `update: retired …`). The log has
+`update:` lines for each step (configs, the client chosen, the `.build.info` row), versions only. The test
+hook `SP_PATCH_CHOOSE=<a button's title>` (passed by `run.sh`) presses that button on the patch check's
+screen a second after it shows. The companion's tests hold the config store, `sp_build_info_with`, and the
+version comparison (`sp_version_newer`) to the companion's own code.
 
-- A `Library/spgames` image the bundled image has caught up with (its stamp has the update's build, or a
-  later version) is deleted first: the companion installed that build or a later one since.
-- The `Library/spgames` image, when its stamp is the patch service's current build, or when the service
-  couldn't be asked and it's later than the bundled image, **and** a profile the app can see lists its
-  signer. When none does, it's signed again with the device's identity if a profile lists that one;
-  if not, this start loads the bundled image and the update is kept for a later identity.
-- Otherwise the bundled image. When `dlopen` refuses the `Library/spgames` image it's deleted, a note
-  says so for a few seconds, and the bundled image loads with `.build.info` left as it was.
+The Mac and the device write the same files, so either can be ahead, and the device is the record. At
+Play, Update Client (and so a free team's weekly re-sign), and Copy Game Files, once its app is installed,
+the companion reads the device's stamps and `spsource` words (`ClientBuild.deviceClients`: `Library` is
+listed whole, since `devicectl` fails on a folder that isn't there, and each stamp beside its client is
+pulled) and compares each with Blizzard's current build (`ClientBuild.clientCopy`, by the same rule as
+`sp_update_caught_up`; the tests hold them to each other). Missing or older: it copies the slice, stopping
+a client running on the device just before the first write, since that maps its file (once the slice is
+downloaded and binds, so a download or a patch that fails leaves a game being played alone). Newer (the device updated or installed it
+ahead of the patch service the Mac asked): it's kept, and so are its game data's `.build.info` row and
+configs. Its build is left out of what the files step writes, and a copy leaves the store whole
+(`StoreKept.newerOnDevice`), as for a newer `.build.info` row (`GameStore.deviceBuildInfo`), so nothing of
+an older build goes to it. The main window lists those games ("Classic Era 1.15.9.70003, updated on the
+iPhone"), from `updatedOnDevice.<UDID>`, as the last action found them.
+
+What the device holds for it, all in the app's container:
+
+| What | Where | Written by | Gone when |
+|---|---|---|---|
+| A game's client | `Library/spgames/wow-<flavor>`, its stamp `spbuild-<flavor>`, its `.build.info` row `spbuildinfo-<flavor>`, and `spsource-<flavor>` | the companion's copy (`mac`), Update (`updated`), or an install (`installed`) | a newer build's replaces it, or it isn't a client spguest can load |
+| A newer build's slice | `Library/spslice/<flavor>.arm64`, `spbuild-<flavor>` | the patch check | Update takes it, or the client catches up with it |
+| A device-decided game's region | `Library/spregion-<flavor>` | an install or Update, and Settings' Region | never (it outlives the client, so an install again keeps it) |
+| The build's row and configs | `Documents/.build.info`, `Documents/Data/config/` | Update's configs, and the launcher's row before a load whose row isn't the client's build | a later build's are written |
 
 ### Installing a game on the device
 
-The same chain installs a game the app has no image of, so a host can install the app without shipping
-any client image (Blizzard's bytes) at all. `SP_NO_IMAGES=1 apps/client/build.sh` builds such an app:
-no `wow-<flavor>` and no `spbuild-<flavor>`, and no game install on the Mac needed. The Mac companion
-still ships images, and an app with images behaves as before.
+The same chain installs a game the device has no client of, so a host that installs only the app (the
+[host tool](#the-host-tool-no-mac)) needs nothing else, and no game install on the Mac.
 
-- **The games.** An app with images offers the games it bundles, as always. An app with none offers
-  every game in `flavors.plist`; those the device hasn't made a loadable `Library/spgames` image of read
-  **Install <game>** on the start screen (`sp_games`, in `spcdn.m`), and Settings says "Not Installed".
+- **The games.** The start screen offers every game in `flavors.plist`. One the device has nothing of
+  reads **Install <game>** (`sp_games`, in `spcdn.m`), and Settings says "Not Installed".
 - **The install.** Tapping one runs `sp_patch_install` (`sppatch.m`) before anything else for that game,
-  on the patch screen: the signing identity first (`sp_identity_usable`, before any download; without
-  one the screen says which it is, none, forgotten, expired, unreadable, or not in the app's profile,
-  and that the companion's Update Games on This Device sends one), then the patch service's current
-  build, the slice and its bind check (asking first on cellular), and the update's configs, assembly,
-  signing, and stamp into `Library/spgames/`. It installs in the game's region ([below](#a-games-region)),
-  which the screen names ("Installing Classic Era for Europe…"). Any failure
+  on the patch screen: the patch service's current build, the slice and its bind check (asking first on
+  cellular), and the update's configs, row, client, `spsource` (`installed`), and stamp into
+  `Library/spgames/`. Nothing is signed, so it works on a free team. It installs in the game's region
+  ([below](#a-games-region)), which the screen names ("Installing Classic Era for Europe…"). Any failure
   shows why with **Back**, which returns to the start screen; a launch that named the game
   (`SP_LAUNCH_FLAVOR`) stops on the reason instead. The log has `patch: install: …` lines, versions only.
-- **After it.** The launcher loads the new image and writes `.build.info` once it has loaded, as after
-  Update; the client then sets up its empty store and streams. The row comes from the copy Update keeps
-  beside the image (`Library/spgames/spbuildinfo-<flavor>`), and the launcher writes it on every start
-  of a device-made image whose `.build.info` row isn't that build's (`sp_build_info_for_image`), not
-  just the start that made it. Without that, a start that ended before the client loaded (at the
-  sign-in, say), or game data emptied under the image, left the client streaming with no row for its
-  build, and it stopped with #134, "Invalid schema … for Table StartupFiles" (issue #36). Later starts treat the `Library/spgames`
-  image as the game's only image: the patch check compares it, Update replaces it, and Play Anyway
-  plays it. With no bundled image to fall back on, an image `dlopen` refuses is deleted and the launch
-  stops on the reason; the next start offers Install again.
+- **Getting a game ready.** A game with game data but no client (the first start after upgrading from a
+  Slashplayed that bundled its clients, whose images were retired) runs the same chain for the data's own
+  build, not the current one ("Getting Classic Era ready…", 50 to 58 MB), and keeps the data's region. If
+  that build can't be downloaded (the CDN no longer serves it, say), it gets the current one instead, which
+  streams its content over the data's as after Update. The patch check after it offers any newer build as
+  usual. A Mac's next Play copies the same client, if it gets there first.
+- **After it.** The launcher loads the new client, writing `.build.info` from its kept row first, as after
+  Update; the client then sets up its empty store and streams.
 
 The small identity file login needs from the Mac isn't part of the install. The companion still sends it,
 for the Battle.net launch credentials it moves from the Mac. A device that signs in itself doesn't need it:
@@ -405,10 +483,11 @@ the host tool's install reached character select without one (iPhone, free team,
 Each game has its own region and languages, as Battle.net does it (`sp_game_region` in `spcdn.m`, read at
 each start by `sp_game_region_now` in `launcher.m`). Who decides depends on where the game came from:
 
-- **A game the app bundles** (the companion installed it, and syncs the Mac's game data): the Mac does.
-  Its `.build.info` row's Branch and Tags, which the companion sends again at every sync, else the image's
-  stamp. Settings names the region and says to change it in Battle.net on the Mac.
-- **A game the device made** (installed or updated here, in an app with no image of it): the device does,
+- **A game the Mac copied** (`spsource` `mac`: the companion copied its client, and syncs the Mac's game
+  data): the Mac does. Its `.build.info` row's Branch and Tags, which the companion sends again at every
+  sync, else the client's stamp. Settings names the region and says to change it in Battle.net on the Mac.
+- **A game the device decides** (installed or updated here, so it has a region file, or with no game
+  data yet, and not the Mac's): the device does,
   from `Library/spregion-<flavor>`, a one-row table of the region, its text and speech locales, and the
   locales the build ships. The install writes it: by default the device's region in Settings mapped to
   Blizzard's (`sp_region_for_country`: the Americas and Oceania `us`; Europe, Russia, the Middle East, and
@@ -422,11 +501,10 @@ each start by `sp_game_region_now` in `launcher.m`). Who decides depends on wher
 Everything else follows that file at each start, so a change isn't put back by a copy written before it:
 the patch check's region, an Update's kept row (its Branch and Tags, `sp_region_tags`) and stamp, the
 start-time `.build.info` rewrite (which also writes the row again when it's in another region,
-`sp_build_info_for_image`), and `Config.wtf` (`sp_config_with_region`). Before the image is chosen the
+`sp_build_info_for_image`), and `Config.wtf` (`sp_config_with_region`). Before the client is chosen the
 launcher moves the kept row and stamp into the region (`region_sync`, `region:` lines). The stamp's Branch
-stays, but decides nothing for these games. A game made before the region file keeps working from its kept
-row or stamp, as before. Tags are Battle.net's layout without its `acct-` and `geoip-` tags, which no
-install manifest lists. `SP_REGION_COUNTRY` and `SP_REGION_LANGUAGES` (`run.sh`) stand in for the device's
+stays, but decides nothing for these games. Tags are Battle.net's layout without its `acct-` and `geoip-`
+tags, which no install manifest lists. `SP_REGION_COUNTRY` and `SP_REGION_LANGUAGES` (`run.sh`) stand in for the device's
 region and languages in tests, and the Settings drill `region-<flavor>-<region>` picks one.
 
 ### The addons
@@ -440,216 +518,6 @@ differ (`addons: N up to date, wrote …`). Each TOC lists every flavor's Interf
 suits each game. The companion used to copy them with the game files; it doesn't any more, and a changed
 addon reaches a device with the rebuild the companion's resources digest asks for (`ClientBuild`).
 
-What the device holds for it, all in the app's container:
-
-| What | Where | Written by | Gone when |
-|---|---|---|---|
-| The signing identity | the app's keychain, service "Slashplayed signing identity" (this device only, never synced) | the launcher, from the pushed `Library/spidentity.p12` and `.pass` (deleted at once) | Forget Signing Identity on the device, or the companion's forget marker (the setting turned off, Stop Using the Slashplayed Certificate) |
-| What it holds | `Library/spidentity.txt` (`present <day>`, `expired`, `none`, `forgotten`) | the launcher, every start | rewritten every start |
-| B's profile | installed device-wide, and a copy in `Library/spprofile.mobileprovision` | the companion | it expires (an expired one lists nothing) |
-| A newer build's slice | `Library/spslice/<flavor>.arm64`, `spbuild-<flavor>` | the patch check | the bundled image catches up |
-| The updated image | `Library/spgames/wow-<flavor>`, `spbuild-<flavor>`, and its `.build.info` row, `spbuildinfo-<flavor>` | Update | the bundled image catches up, or `dlopen` refuses it |
-| A device-made game's region | `Library/spregion-<flavor>` | an install or Update, and Settings' Region | never (it outlives the image, so an install again keeps it) |
-| The build's row and configs | `Documents/.build.info`, `Documents/Data/config/` | Update, after the load, and every start of that image after, when the row isn't its build's | the companion writes a later build's |
-
-Forgetting the identity leaves the images: one already made keeps loading while a profile lists its
-signer, and the next newer build shows "Update on your Mac" again, with no Update button. Deleting the
-app deletes the container and everything in it, but iOS keeps an app's keychain items after the app is
-gone, and installed profiles stay too, so Forget Signing Identity comes first.
-
-The parts, in the order the chain uses them:
-
-
-The device can also make the client image itself from a kept slice: `apps/client/spassemble.m` does
-steps 2 to 4 of [the pipeline](#the-pipeline) in Foundation, with the `rewrite-map.txt` the app carries
-(`build.sh` and `ClientAssembly` both copy it in) and the platform and minimum OS of the launcher's own
-`LC_BUILD_VERSION` (`build-launcher.sh` compiles it for `scripts/platform.sh`'s target, the one `vtool`
-is given). Its output is the same bytes as `install_name_tool` and `vtool` write, so the three producers
-(`build.sh`, `ClientAssembly.prepareClient`, `spassemble.m`) make one unsigned image from one slice.
-What the tools do was read from their output: each `-change` rewrites its dylib command in place (the
-name at offset 24, zero padding to 8 bytes), the rpath and the new `LC_BUILD_VERSION` (no tools, the SDK
-set to the minimum OS) are appended at the end, every older build version is dropped, and what's left of
-the old commands' space is zeroed; nothing past the load commands changes. A shipped client's signature
-(`LC_CODE_SIGNATURE` and its bytes) is left where it is, stale, for signing to replace. The tools re-sign
-an image signed only by the linker (renaming its identifier after their output file); `spassemble.m`
-refuses one, since a client never is. The companion's tests compare it with `prepareClient` byte for byte
-on fixtures of our own (signed as a client is, and unsigned) and, opt-in
-(`TEST_RUNNER_SP_COMPARE_ASSEMBLY=1`), on every game's current CDN slice for both platforms; the opt-in
-`testMatchesBuildShOnInstalledClients` holds it to `build.sh`'s image too. An update on the device (below) loads it.
-The test hook `SP_ASSEMBLE_TEST=<flavor>` (pass it as `DEVICECTL_CHILD_SP_ASSEMBLE_TEST` to `devicectl
-device process launch`) assembles `Library/spslice/<flavor>.arm64` into the app's `tmp/wow-<flavor>`,
-logs `assemble: <product> <version> … <size> in <time>, platform …, minimum OS …, sha256 …` and a line per
-retype change, and ends the launch without loading anything: the SHA-256 is the one the opt-in test prints
-for the same build, or that `shasum` gives `build.sh`'s image of it. About 0.06 s for 50 MB on an iPhone.
-
-The device can sign such an image too: `apps/client/spsign.m` signs with a development identity kept in
-the app's keychain, through [zsign](https://github.com/zhlynn/zsign) (MIT; `apps/client/spzsign.cpp`)
-and OpenSSL (Apache-2.0), both built from source at pinned commits by `scripts/build-zsign.sh`, with
-`scripts/zsign.patch` applied, and linked into the launcher by `build-launcher.sh`. The device app
-carries their licenses in `licenses/`, with the JIT helper's (see [The pipeline](#the-pipeline)). The identity comes from the Mac as
-`Library/spidentity.p12` and `Library/spidentity.pass` (both 0600); at every start the launcher checks
-the pair with `SecPKCS12Import` (one identity, the password opens it), puts it in the keychain
-(`WhenUnlockedThisDeviceOnly`, never synchronized), and zeroes and deletes both files whatever happens.
-It logs `identity: imported …` or why not, then `identity: present, certificate valid until <date>` or
-`identity: none`: never the certificate's subject or hash, never the password. **Forget Signing
-Identity** in the start screen's Settings deletes it, and any pushed files not yet imported, at the tap. Signing takes the app's own `embedded.mobileprovision`
-for the team, and never puts entitlements in a non-executable's signature (iOS refuses a library or bundle
-with an entitlements blob, even an empty one; zsign writes one unpatched). Every image it signs gets the
-app's own bundle ID as its signature's identifier, whatever the file is called: a free team's profiles
-are local ones, and for code from outside the app bundle amfid only takes a local profile whose
-application-identifier is `<team>.<identifier>`, so an image signed as `wow-<flavor>` is refused there
-(paid teams' profiles don't check it; [research/isideload](../research/isideload/README.md)). zsign writes through a shared
-writable mapping, and an image loaded from such a file is killed in `dlopen` (CODESIGNING, Invalid
-Page), so `sp_sign` signs a copy, reads it back, writes the bytes into a new file with `write()`, and
-renames that into place; the file zsign wrote is never loaded. An image signed this way loads from
-`Library/` when some installed profile lists the certificate ([research](research.md),
-`research/dlopentest`). The companion's tests sign a fixture of our own on the Mac with a throwaway CA
-and identity made at test time, and check the signature (the chain, the team, both code directories,
-no entitlements blob). The dev script `apps/client/push-identity.sh <p12>` pushes an identity as the
-companion will, and the test hook `SP_SIGN_TEST=<path in the app's home>` signs a copy of that file into
-`tmp/` and loads it, logging `sign:` lines, and ends the launch. An update on the device (below) signs the client image.
-
-The companion sends that identity (`DeviceIdentity.swift`), only to a device whose **Update Games on This
-Device** is on (`updateGames.<hardware UDID>`, off by default; turning it on shows what's sent and how to
-take it back first). Where the key comes from depends on the team: a free team uses the identity the
-companion already signs the app with (**A**), and a paid team uses a Slashplayed certificate of its own
-(**B**: until it's set up, a paid team sends nothing). The `signingSource` default (`A` or `B`) overrides
-the team's choice for testing. For A, the identity is the built app's signer
-(`Signing.signer`), exported from the login keychain with `SecItemExport` as a `.p12` (the identity
-alone, as Keychain Access exports it: zsign takes the issuer from its own copies of Apple's WWDR
-intermediates); macOS's export prompt is the consent, and a refusal turns the setting off. Each push has
-a new random password; both files are written 0600 in a 0700 folder under `$TMPDIR`, copied with
-`devicectl`, and zeroed and deleted at once, as `Pairing.swift` does with the pairing record. The
-launcher writes what it holds to `Library/spidentity.txt` at every start (`present <day>`, `expired
-<day>`, `none`, `forgotten`, or `unreadable`, the day being the certificate's last valid one in UTC), and
-the companion decides from that, from the SHA-1 it last sent to the device (`identityPushed.<UDID>`, kept
-on the Mac, with its source, A or B, in `identityPushedSource.<UDID>`), and from its own identity and that
-certificate's last valid day (`DeviceIdentity.decide`): it pushes when the device has none, an expired or
-unreadable one, or one whose day isn't its own certificate's, or when the identity to send isn't the one
-sent last, and not while a push still waits for the launcher. The log says which change that was: the
-source switched (the device gets B instead of A, or A instead of B), Xcode replaced A's certificate, or
-there's a new Slashplayed certificate. Turning the setting off sends `Library/spidentity.forget`, which the launcher takes as
-Settings' Forget. When the device says `forgotten` (Settings' Forget) after a push, the companion turns
-the setting off instead of pushing it back, and forgets its record, so turning it on again sends the
-identity again. Play and Update Client run this after the install; the `-push-identity` launch flag runs
-it alone. Logs give sizes and the decision, never the `.p12`, its password, or the SHA-1. The companion's
-tests check the choice of source, the default, the status lines, and each decision, and export a
-throwaway identity from a keychain file of their own (never on the search list, deleted after): its
-password opens it, the device's signer (zsign, on the Mac) signs a fixture with it, a missing identity
-fails, and a refusal (macOS not allowed to ask) is reported as one.
-
-B's certificate (`SlashplayedCertificate.swift`) is the person's to make, with the companion's help, in
-Settings > Updates on Devices > Slashplayed Certificate (or `-certificate-request` for the first step). The companion makes an
-RSA-2048 key in a keychain file of its own (`Application Support/Slashplayed/certificate/`, 0600, a new
-name each time, since a keychain deleted and made again at one path stays the deleted one to the
-process). That file is never on the user's search list, and Xcode and codesign look for identities only
-there, so neither ever signs with it. Its random password is a generic password in the login keychain
-("Slashplayed certificate keychain"). The keychain is unlocked only around each use, with macOS's prompts
-off (a locked one would otherwise ask for its password), then locked again; it also locks itself after
-5 minutes and on sleep. The key's access list is the default one, the copy of the app that made it, so
-the export for a push asks nothing. Another copy, signed differently (a dev build and a release), is
-refused every use with the prompts off, and the keychain's password can't change the list (that needs a
-prompt), so a test signature finds it (`.otherCopy`) and Settings says to stop using the certificate and
-make a new one. The request is PKCS#10 written by hand (`CertificateRequest`: subject CN=Slashplayed, which
-Apple ignores, SHA-256 with RSA), saved to `~/Downloads/Slashplayed.certSigningRequest`. The same key
-gives the same request, so asking again is harmless. The `.cer` the person downloads (DER or PEM) must
-hold the key's public key, have the team ID as its subject's OU, and be valid now. It's then kept beside
-the key. Before a push, some profile installed on the device must list the certificate (5.3: profiles are
-device-wide, and installing one needs no reinstall). That's the app's own embedded profile, or one the
-companion installed (`client-<platform>/certificate-profile.mobileprovision`, still listed by `devicectl
-device profile list`). Otherwise the companion forgets Xcode's cached profile, builds the stub again so
-Xcode fetches the team's current one (which lists every development certificate of the team), checks
-it, and installs it with `devicectl device profile install`. If even that doesn't list it, nothing is
-sent. **Stop Using the Slashplayed Certificate** deletes the keychain file and its password, and turns
-the setting off for every device the certificate was sent to (`identityPushed.<UDID>` equal to its
-SHA-1), so each device's next action sends it the forget marker. The tests make the store in `$TMPDIR`,
-check the request with `openssl req -verify`, and issue certificates from a CA of their own with
-`openssl ca`: the team's for the key is kept, and another team's, another key's, an expired one, and
-garbage are refused. The export opens with its password with prompts off, and `lists` reads a profile of
-their own.
-
-With an identity on the device, the patch check's screen for a newer build that binds offers **Update**
-beside Play Anyway (`patch: message: update here: …`; without an identity it's the screen above). Update
-(`patch: Update`, which the companion follows as it does Play Anyway) fetches the build's configs (build,
-CDN, and Retail's KeyRing: the bytes `BlizzardCDN.configData` gives, checked against their keys) into
-`Documents/Data/config/` unless they're there, assembles the image from the kept slice, signs it, and puts
-it in `Library/spgames/wow-<flavor>`, its stamp `spgames/spbuild-<flavor>` beside it, written last (an
-older update's stamp is deleted first). On an iPhone that's under a second from a kept slice (configs
-0.2–0.4 s, assembly 0.03–0.07 s, signing 0.2 s). The launcher then loads that image, and only once
-`dlopen` has succeeded, before the client's entry point, writes `Documents/.build.info` with the
-product's row for the new build (`sp_build_info_with`: the line `BlizzardCDN.buildInfoLine` writes, the
-Tags kept from the device's row, or for a game the device made, its region's: [above](#a-games-region); the
-other products' rows kept), so a refused image leaves the old build's
-row beside the old image. The image the launcher loads: the `Library/spgames` one when its stamp is the
-patch service's current build, or when the service couldn't be asked and its version is later than the
-bundled image's; otherwise the bundled one (`update: image: …`). When `dlopen` refuses the `Library/spgames`
-image, the launcher deletes it and its stamp, says so on the screen for a few seconds (the helper is
-attached by then, so nothing waits on the person), and loads the bundled image, leaving `.build.info`
-alone; the next start offers the update again. The log has `update:` lines for each step (configs,
-assembly, signing, the image chosen, which image loaded, the `.build.info` row), versions only. The test
-hook `SP_PATCH_CHOOSE=<a button's title>` (passed by `run.sh`) presses that button on the patch check's
-screen a second after it shows. The companion's tests hold the config store, `sp_build_info_with`, and
-the version comparison (`sp_version_newer`) to the companion's own code.
-
-The companion always installs Blizzard's current build, so an update the device made is either ahead of
-the image just installed or caught up with by it. One rule decides which, on both sides: the bundled
-image's stamp has the update's Build Key or Version, or a later Version (`sp_update_caught_up` in
-`spcdn.m`, `ClientBuild.deviceUpdate` in the companion; the tests hold them to each other). The
-launcher applies it at every start, before choosing an image (`retire_caught_up`): a caught-up update
-is deleted, stamp first, and so is a kept slice (`Library/spslice/`) the bundled image has caught up
-with (`update: retired …`). That's the launcher's own rule rather than an entry in `spdelete.txt`,
-which only ever names game data, so it holds however the newer bundled image got there. The
-`.build.info` row stays: the update wrote its build's, and the companion has written the bundled
-image's by then if that's later. At Play, Update Client (and so a free team's weekly re-sign), and Copy
-Game Files, once its image is installed, the companion reads the device's `Library/spgames` stamps
-(`ClientBuild.deviceUpdates`: `Library` is listed whole, since `devicectl` fails on a folder that isn't
-there, and each stamp beside its image is pulled) and logs which are caught up (the device deletes them
-at its next start) and which are ahead. A game whose update is ahead keeps the device's `.build.info`
-row and configs: its build is left out of what the files step writes, and a copy leaves the store
-whole (`StoreKept.newerOnDevice`), as for a newer `.build.info` row (`GameStore.deviceBuildInfo`), so
-nothing of an older build goes to it. The main window lists those games ("Classic Era 1.15.9.70003,
-updated on the iPhone"), from `updatedOnDevice.<UDID>`, as the last action found them.
-
-An update's image keeps the signature it was made with while the identity behind it can change: Xcode
-replaces a free team's certificate (A) and the next install's profile lists only the new one, a
-regenerated profile no longer lists the Slashplayed certificate (B), or the companion switches a device
-from one source to the other. A reinstall (the companion's Play or Update Client, so a free team's weekly
-re-sign) keeps the app's container and its keychain, so the image and the identity are both still there;
-what can be missing is a profile that lists the image's signer, and `dlopen` refuses such an image as it
-does an ad hoc one (5.3). So before the launcher chooses an update's image (`library_signed` in
-`launcher.m`), it reads the certificates in the image's code signature (`sp_image_certificates`: the CMS
-blob's certificate set, read with `read()`, never a mapping) and looks for one in the profiles the app can
-see (`sp_listed_certificates`): its own `embedded.mobileprovision`, and `Library/spprofile.mobileprovision`,
-a copy of the profile the companion installed for B (the system's list of installed profiles is
-device-wide, but the app can't read it, so the companion copies the one it installed beside it; an expired
-profile lists nothing). Listed: the image is chosen as before (`update: … is signed with a certificate the
-app's profiles list`). Not listed: when the device's identity is valid and listed, the image is signed
-again in place with it (`sp_sign`, into a new file renamed over it; `update: … signed again with this
-device's identity in 0.2 s`); otherwise this start loads the bundled image and keeps the update, since a
-later identity that's listed can sign it again (`update: … loading the bundled image, keeping the
-update`). The identity itself counts as usable for Update only when a profile lists it too
-(`sp_identity_usable`), so a device never makes an update that can't load, and the launcher's `identity:`
-line says whether it's listed. The companion's tests sign a fixture with a throwaway identity and check
-`sp_image_certificates` (the signer and its issuer; nothing for the linker's ad hoc signature, an
-unsigned image, or garbage), `sp_profile_certificates` (a profile of their own, expired or not), and the
-decision both ways, including the signature in place with a second identity of the team.
-
-On the Mac, before each push and at every Play and Update Client, the companion checks that the identity
-it would send still stands (`DeviceIdentity.standing`): its last valid day, and whether it was revoked.
-macOS's own trust evaluation doesn't see a development certificate's revocation (SecTrust with an OCSP
-revocation policy requiring a positive answer, and `security verify-cert -R ocsp -R require`, both still
-called one trusted hours after it was revoked), so the companion asks Apple's OCSP responder itself, the
-address the certificate names, with `/usr/bin/openssl ocsp`, and takes its answer only when its signature
-verifies against the chain SecTrust builds (the WWDR intermediate and Apple's root). Only public
-certificates are written, to a scratch folder deleted after. An expired or revoked identity isn't sent,
-and the main window says so with the next step: for A, a new Apple Development certificate in Xcode,
-then Play; for B, Stop Using the Slashplayed Certificate and make a new one (Settings shows a revoked or
-expired B there too). When the answer can't be had (offline), it's logged and nothing changes. When Xcode
-has replaced A's certificate since the last push, the push says so; if its export is refused, the main
-window says that the device's updates may not load until it's sent. For B, every action (not only a push)
-checks that a profile on the device still lists the certificate, installing the team's current one if
-none does, and keeps the launcher's copy in place.
-
 ## The host tool (no Mac)
 
 `slashplayed-companion` (`apps/companion-rs`, Rust) sets up an iPad or iPhone from Windows, Linux, or a Mac without
@@ -660,10 +528,10 @@ pairing a headset without a Mac is unproven. The tool refuses a headset.
 
 One run, `slashplayed-companion [install]`, which is also the weekly re-sign on a free team:
 
-1. **The device kit** (`src/kit.rs`): the device app, unsigned and with no game images, one per platform,
-   which `scripts/release/device-kit.sh` assembles at release from what `bundle-resources.sh` stages, as
-   `ClientAssembly.assemble` does with no clients. Only the bundle ID is left to fill in (`@BUNDLE_ID@` in
-   the two Info.plists), plus the entitlements templates. A release build has the kit's SHA-256 compiled in
+1. **The device kit** (`src/kit.rs`): the device app, unsigned and, like every build of it, with no game
+   in it, one per platform, which `scripts/release/device-kit.sh` assembles at release from what
+   `bundle-resources.sh` stages, as `ClientAssembly.assemble` does. Only the bundle ID is left to fill in
+   (`@BUNDLE_ID@` in the two Info.plists), plus the entitlements templates. A release build has the kit's SHA-256 compiled in
    (`build.rs`, `SP_KIT_SHA256`) and downloads it from its own GitHub Release; `--kit` names a local one.
    The kit comes first, so a bad download doesn't cost a sign-in.
 2. **The device** (`src/device.rs`), over USB through usbmuxd: Apple's driver on Windows (Apple Devices or
@@ -700,8 +568,8 @@ One run, `slashplayed-companion [install]`, which is also the weekly re-sign on 
    - The RemotePairing record (`Library/sppairing.plist`, as `Pairing.send`), when the app has none or
      with `--pair-again`.
    - The developer disk image (below).
-   - The signing identity as `Library/spidentity.p12` and `.pass`, every run. The launcher imports it,
-     and the device installs games with it.
+
+   Nothing else: the device installs and updates games with no credential on it.
 
 **The signing key** stays between runs in the OS credential store, never a file: the macOS Keychain,
 Windows Credential Manager, or the Secret Service on Linux (`src/keystore.rs`). There's one item per
@@ -738,7 +606,6 @@ file checked against a pinned SHA-256. Slashplayed never hosts it. The files go 
 **Credentials** follow the companion's rules:
 - The pairing record goes from idevice's memory straight to the device over AFC, so it never touches the
   host's disk.
-- So does the `.p12`: built in memory and zeroed after the push, with a random password.
 - Logs give sizes only. The scratch folder (private, deleted at exit) holds only the kit, the app, and
   the IPA.
 
@@ -779,8 +646,8 @@ them:
   iPhone; after that the client fetches what each zone needs as it goes (`docs/research.md`).
 - **With copying**, the store goes whole: every archive and index that differs, archives first and
   `.build.info` last, or none of it. It stays as it is, and the log and the files step say why, when
-  the device's `.build.info` has a newer build of any product than its images (an on-device update
-  put it there), when the Mac's install of a chosen game isn't the build of its image (Battle.net
+  the device's `.build.info` has a newer build of any product than its clients (an on-device update
+  put it there), when the Mac's install of a chosen game isn't the build of its client (Battle.net
   hasn't updated it to Blizzard's current one yet; the device's client fetches the difference
   itself), when it is but hasn't run on the Mac since Battle.net put that build there (its build
   config in `Data/config/` is newer than every file in the game's `Logs/`; `GameFiles.Unplayed`:

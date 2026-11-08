@@ -11,7 +11,8 @@ device harness runs on visionOS (`SP_PLATFORM=xros`, the default) and iOS/iPadOS
 | [`research/jittest`](../research/jittest/README.md) | Can a development-signed app execute code it wrote, at the address the client needs, under TXM? | Yes, with a debugger preparing the pages once per launch and every write going through an RW alias. |
 | [`research/loadertest`](../research/loadertest/README.md) | Will the device's dyld load a macOS AppKit program whose load commands point at the shims, and bind every import the client has? | Yes: every import binds, AppKit subclasses work, no debugger needed. |
 | [`research/metaltest`](../research/metaltest/README.md) | Can macOS-built metallibs load and run on the device? | Yes, after clearing one header bit, for container versions v2.2–v2.5; v2.6+ load as they are. |
-| [`research/dlopentest`](../research/dlopentest/README.md) | Can the app load an image it didn't install with, from its data container, and can the device sign one itself? | Yes, when a profile installed on the device lists the signing certificate; ad hoc and unsigned are refused. The device signs with zsign, patched. |
+| [`research/dlopentest`](../research/dlopentest/README.md) | Can the app load an image it didn't install with, from its data container, and can the device sign one itself? | Yes, when a profile installed on the device lists the signing certificate; ad hoc and unsigned are refused. The device signs with zsign, patched. Superseded by guestloadtest: the launcher loads the unchanged client with spguest, and nothing is signed on the device. |
+| [`research/guestloadtest`](../research/guestloadtest/README.md) | Can the launcher load the client unchanged and unsigned, without dyld, as Tolkara does? | Yes: every game through spguest, our own loader, on the iPhone and the Vision Pro, with startup and play the same as dyld's. |
 | [`research/isideload`](../research/isideload/README.md) | Can the isideload crate replace Xcode for provisioning (Apple ID sign-in, teams, device, App IDs for the app and `.helper`, capabilities, certificate, profiles), so a Windows or Linux host can do it? | Yes, on iPhone, with free and paid teams: a zsign-signed app installs, and the JIT helper attaches (a free team's on-device-signed image needs the app's bundle ID as its signing identifier, which the launcher now uses). It needs Mac-ADI anisette (Android-ADI servers now get `-80045`), its lower-level API (the high-level one can revoke), and a decision on the LGPL signer it links. |
 
 ## Executable memory (jittest)
@@ -176,7 +177,9 @@ The one-app-every-game launcher came from the same kind of toy test on the heads
 `posix_spawn` of a bundled executable fails (`EPERM`), `execve` fails (`EACCES`), `dlopen` of an
 `MH_EXECUTE` is refused, and launching by executable path through devicectl is refused by
 LaunchServices. `dlopen` of the same file retyped `MH_BUNDLE`, then a call to its `LC_MAIN` entry,
-works.
+works. That was the launcher until it loaded the client with spguest
+([below](#loading-the-unchanged-client-guestloadtest-2026-11-06)): the client is no longer retyped or
+signed, and dyld never loads it.
 
 ## Metal shader libraries (metaltest)
 
@@ -353,6 +356,11 @@ shims: its connections and the sandbox redirects need nothing more. The tests:
 
 ## Loading and signing images on the device (2026-10-24)
 
+Superseded: the launcher loads the unchanged client with spguest
+([below](#loading-the-unchanged-client-guestloadtest-2026-11-06)), so the device makes and signs no image,
+and nothing below is in today's path. It stays as the record of the signed path, which is in git history
+(v1.4.0) as the way back.
+
 Every game patch is a new client executable, so an update on the device has to make, sign, and load a
 new image from the app's data container. `research/dlopentest` tested that with a `MH_BUNDLE` of our own
 (a function returning 42 and a 1 MB `__TEXT` filler), loaded with `dlopen` from `Library/`, on the iPhone
@@ -420,12 +428,47 @@ Xcode's signing. On the free team dyld refused the image the device signed: a fr
 local, and amfid matches a local profile to code from outside the bundle by the signature's identifier
 (`<team>.<identifier>` against the profile's application-identifier). The launcher signs images as
 `wow-<flavor>`, so nothing matches. Signed with the app's bundle ID instead, the image loaded, and the
-launcher now signs every image that way (checked again on both teams).
+launcher signed every image that way (checked again on both teams) until it loaded the client with
+spguest and stopped signing on the device.
 
 - Sign-in needs anisette from a Mac-ADI server: since mid-October 2026 Apple answers `-80045` to the
   Android-ADI servers most tools used.
 - listTeams can't tell a free team from a paid one; the profile can.
-- isideload links an LGPL-2.1 signer; zsign, the one the device already runs, is the one to use.
+- isideload links an LGPL-2.1 signer; zsign, the one the device ran then, is the one to use. The host
+  tool, `slashplayed-companion`, signs the app with it.
 - A no-image install into an empty container starts the client with no `.build.info`
   ([#36](https://github.com/paulstraw/slashplayed/issues/36)).
 - Open: how long the stored session lasts (measured daily).
+
+## Loading the unchanged client (guestloadtest, 2026-11-06)
+
+Can the launcher run the client as Blizzard ships it, unsigned, instead of rewriting, retyping, and
+signing it for dyld? [research/guestloadtest](../research/guestloadtest/README.md) answered that with
+spguest, a loader of our own modelled on Tolkara's (MIT), and the client's own on-device JIT helper for the
+prepare. It's the launcher's loader now
+([architecture.md](architecture.md#loading-the-client-spguest)).
+
+- **A toy first**, a program of our own built like the client (`MH_EXECUTE`, dyld-info opcode fixups),
+  with constructors, `+load`, categories, C++ exceptions and NSExceptions across its frames,
+  thread-locals, lazy binds, its own code rewritten through `dlsym`'d `mprotect`/`memcpy`, and a 44 MB
+  `__TEXT`: every check passed on the Mac, the iPhone 16 Pro (iOS 27, TXM), and the Vision Pro (visionOS
+  27, TXM). The prepare of 2,822 pages took 0.11–0.13 s. With every import Retail's client has, all 1,084
+  bound through the shims. CI runs the toy on its macOS runner (`apps/client/guesttest/`).
+- **The private hooks work on iOS 27 and visionOS 27**: Objective-C's `_objc_map_images` and
+  `_objc_load_image`, and the unwinder's `__unw_add_find_dynamic_unwind_sections`. A new OS can take them
+  away, so the launcher checks for them before the sign-in.
+- **Every game, unchanged and unsigned.** Retail, Classic Era, and Anniversary reached the world on the
+  Vision Pro; Retail the world, Classic Era and Forever character select, and MoP Classic character
+  creation on the iPhone. Every import bound, one client image, no class loaded twice.
+- **Startup and play match dyld.** Retail on the iPhone, three runs of each path back to back: the
+  helper's attach to `main` took 0.33–0.40 s through spguest and 0.41–0.50 s through dyld, the first frame
+  came 5.6–6.3 s after the client was asked for either way (a cold first run aside), and in the world both held 60 fps with the same
+  footprint.
+- **The guest must be named by its own file.** Once, early in `main`, the client `dlopen`s the path
+  `dladdr` gives for its own code. Named by the bundled image (an `MH_BUNDLE`), dyld loaded that too: a
+  second client, every class twice, and a hang. Named by its own file, an `MH_EXECUTE`, dyld refuses and the
+  client goes on with NULL, as every game has into the world. spguest answers that `dlopen` with NULL
+  itself, in case a later dyld would load the file.
+- **The system's crash reports don't symbolicate the client**, since dyld never lists it. The shims' own
+  stall and crash stacks name its frames (`wow-<flavor>+offset`) through what the loader told libSystem.
+- Not run: the iPad.
