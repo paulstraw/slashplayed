@@ -331,36 +331,13 @@ static void e6(int alias_first) {
 // ---- E7: the real libspSystem shim (shims/system), linked as this app's libSystem the way the
 // client's will be. Rewrites the big filler through dlsym-supplied calls, the way the client rewrites
 // its own code at startup (the shim services that through an alias mapping), then calls the first and
-// last instruction pairs. The shim prepares all of __TEXT in one debugger stop and detaches by itself.
+// last instruction pairs. The shim prepared all of __TEXT in one debugger stop and detached by itself.
+// Retired: that prepare went from the shim when the launcher began loading the client with spguest, which
+// prepares the client's __TEXT itself (apps/client/spguestlaunch.m), so the shim now refuses an rwx
+// mprotect of __TEXT it has no alias for. The experiment is in git history (v1.4.0); the results below
+// (README.md) are what it showed.
 static void e7(void) {
-    void *p = (void *)sp_big;
-    say("  sp_big=%p returns %d\n", p, sp_big());
-    int (*mp)(void *, size_t, int) = dlsym(RTLD_DEFAULT, "mprotect");
-    void *(*mc)(void *, const void *, size_t) = dlsym(RTLD_DEFAULT, "memcpy");
-    void (*ic)(void *, size_t) = dlsym(RTLD_DEFAULT, "sys_icache_invalidate");
-    void *jw = dlsym(RTLD_DEFAULT, "pthread_jit_write_protect_np");
-    say("  dlsym: mprotect=%p (real %p) memcpy=%p (real %p) jit_wp=%p\n", mp, mprotect, mc, memcpy, jw);
-    if (jw) say("  FAIL: pthread_jit_write_protect_np visible to dlsym\n");
-    uint32_t *src = malloc(BIG);
-    for (size_t i = 0; i < BIG / 4; i++) src[i] = 0xd503201f;
-    memcpy(src, code42, sizeof code42);
-    src[BIG / 4 - 2] = code42[0];
-    src[BIG / 4 - 1] = code42[1];
-    double t = now();
-    int r = mp(p, BIG, PROT_READ | PROT_WRITE | PROT_EXEC);
-    say("  mprotect rwx = %d (%s), took %.2fs\n", r, r ? strerror(errno) : "ok", now() - t);
-    if (r) return;
-    say("  traced=%d after the shim's prepare\n", traced());
-    region_info("first page", p);
-    mc(p, src, BIG);
-    r = mp(p, BIG, PROT_READ | PROT_EXEC);
-    say("  mprotect r-x = %d\n", r);
-    ic(p, BIG);
-    say("  contents %s\n", fnv(p, BIG) == fnv(src, BIG) ? "match" : "DIFFER");
-    free(src);
-    region_info("first page", p);
-    run(p, BIG);
-    run((char *)p + BIG - 8, 8);
+    say("  retired: libspSystem no longer prepares __TEXT (spguest does); see v1.4.0 for this experiment\n");
 }
 
 // ---- H1: start the bundled helper extension and ping it (helper_host.swift). Passes when the

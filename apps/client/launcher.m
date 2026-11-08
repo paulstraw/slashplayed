@@ -26,20 +26,24 @@
 // build stamp is logged against the game data's (image_build), and the patch service is asked whether a
 // newer build is out (sppatch.m: a screen says so, and whether this Slashplayed can run it, from the new
 // client's imports; then Play Anyway, or Update, which puts the new build's slice in place). A kept newer
-// build's slice that the client has since caught up with is deleted (retire_caught_up). Then the preflight
-// (sp_guest_preflight: the private hooks spguest needs, and the file), so a launch that can't load says why
-// before the sign-in. Before the helper attaches, splogin.m decides how the game signs in (the saved
+// build's slice that the client has since caught up with is deleted (retire_caught_up). The private hooks
+// spguest needs are checked before the start screen (sp_guest_hooks_problem), so nothing is downloaded for a
+// load that can't work, and the file before the sign-in (sp_guest_preflight), so a launch that can't load
+// says why first. Before the helper attaches, splogin.m decides how the game signs in (the saved
 // Battle.net sign-in, asked for once, or a token the companion relayed), and writes login.txt just before the
 // client loads. From then until the client's first frame, the scene shows a loading screen (the AppKit
 // shim's sp_uikit_loading).
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #import <Security/Security.h>
 #import "spcdn.h"  // sp_table_row, sp_build_info_for_image, sp_flavor_info, sp_slice_retire
 
@@ -50,6 +54,7 @@ static void say(NSString *s) {
 void sp_launch_say(NSString *s) { say(s); }  // spjit.m, sppair.m, and spvpn.m log through it
 NSString *sp_jit_attach(void (^pump)(double));  // spjit.m
 NSString *sp_device_noun(void);  // spjit.m
+NSString *sp_guest_hooks_problem(void);  // spguestlaunch.m
 NSString *sp_guest_preflight(NSString *path);  // spguestlaunch.m
 int sp_guest_main(NSString *path, int argc, char **argv, NSString **problem);
 void sp_login_clear(NSArray<NSString *> *flavors);  // splogin.m
@@ -501,13 +506,33 @@ static void retire_caught_up(NSString *flavor, NSDictionary<NSString *, NSString
 // every start where there is any: updates and installs on the device sign nothing now. Not Library/spidentity,
 // the small identity file login needs from the Mac. Names only in the log, never what they held. Kept for two
 // releases after 1.5, then removed with the files' names.
+// A credential's file overwritten with zeros, then deleted (CLAUDE.md: "zeroed and deleted"), as spsign.m did for
+// the pushed .p12 and its password. Whether there was one.
+static BOOL wipe(NSString *path) {
+    int fd = open(path.fileSystemRepresentation, O_WRONLY);
+    if (fd < 0) return NO;
+    struct stat st;
+    if (!fstat(fd, &st)) {
+        static const char zero[4096];
+        for (off_t o = 0; o < st.st_size; o += sizeof zero) pwrite(fd, zero, (size_t)MIN((off_t)sizeof zero, st.st_size - o), o);
+        fsync(fd);
+    }
+    close(fd);
+    unlink(path.fileSystemRepresentation);
+    return YES;
+}
+
 static void forget_identity(void) {
     NSMutableArray<NSString *> *gone = [NSMutableArray array];
     OSStatus st = SecItemDelete((__bridge CFDictionaryRef) @{(__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
                                                              (__bridge id)kSecAttrService: @"Slashplayed signing identity"});
     if (st == errSecSuccess) [gone addObject:@"its keychain items"];
     else if (st != errSecItemNotFound) say([NSString stringWithFormat:@"identity: the old signing identity's keychain items weren't deleted (OSStatus %d)", (int)st]);
-    for (NSString *name in @[@"spidentity.p12", @"spidentity.pass", @"spidentity.txt", @"spidentity.forget", @"spprofile.mobileprovision"])
+    // The .p12 and its password are zeroed first; the rest (the identity's description, the forget request, its
+    // profile) are no secret.
+    for (NSString *name in @[@"spidentity.p12", @"spidentity.pass"])
+        if (wipe(home_path([@"Library" stringByAppendingPathComponent:name]))) [gone addObject:[@"Library/" stringByAppendingString:name]];
+    for (NSString *name in @[@"spidentity.txt", @"spidentity.forget", @"spprofile.mobileprovision"])
         if ([NSFileManager.defaultManager removeItemAtPath:home_path([@"Library" stringByAppendingPathComponent:name]) error:nil])
             [gone addObject:[@"Library/" stringByAppendingString:name]];
     [NSUserDefaults.standardUserDefaults removeObjectForKey:@"sp_identity_forgotten"];
@@ -636,6 +661,10 @@ int main(int argc, char **argv) {
     void (^ui)(double) = sp_launch_uikit();
     if (ui) pump = ui;
 #endif
+    // The private hooks spguest needs (sp_guest_hooks_problem) before anything below can download a game for a
+    // load that would fail anyway: a new OS that took one away says so now.
+    NSString *hooks = sp_guest_hooks_problem();
+    if (hooks) fail_launch(hooks);
     NSString *saved = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/splaunch-flavor"];
     NSString *flavor, *library;
     NSDictionary<NSString *, NSString *> *stamp;
@@ -693,6 +722,9 @@ int main(int argc, char **argv) {
     // helper attaches. It never stops the launch. Not after an install just now: that's the build it wanted.
     if (!installed) {
         NSDictionary<NSString *, NSString *> *now = sp_patch_check(flavor, library, stamp, choice, &pump);
+        if (now != stamp && !now)
+            fail_launch([NSString stringWithFormat:@"%@ couldn't be updated on this %@, and the version it had went with it.\n\n"
+                                                   @"Open Slashplayed again to get it again.", sp_flavor_name(flavor), sp_device_noun()]);
         if (now != stamp) stamp = image_build(library, flavor);
     }
     // A Battle.net launcher token the companion relayed (Play with My Mac's Battle.net) and the client
@@ -706,9 +738,8 @@ int main(int argc, char **argv) {
 
     setenv("SP_SYSTEM_FLAVOR", [NSString stringWithFormat:@"_%@_", flavor].UTF8String, 1);
     NSString *appkit = [dir stringByAppendingPathComponent:@"Frameworks/libspAppKit.dylib"];
-    // What spguest needs of the system and of the file (sp_guest_preflight) first: a new OS without its
-    // private hooks, or a client the device can't load, says so here, before anyone signs in, rather than
-    // after the helper's attach. Then game data a copy left incomplete, for the same reason. Then the
+    // What spguest needs of the file (sp_guest_preflight; the hooks were checked at the start) first: a client
+    // the device can't load says so here, before anyone signs in, rather than after the helper's attach. Then game data a copy left incomplete, for the same reason. Then the
     // sign-in, so the person isn't asked while the helper holds the debugger. Then the on-device JIT helper
     // attaches before the client loads (spjit.m). If any can't, the scene says why (starting UIKit for it on
     // visionOS) and the client isn't loaded: its prepare would fail.

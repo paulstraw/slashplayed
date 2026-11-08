@@ -12,6 +12,7 @@
 // decoded MD5 is the content key the build config gives it. Unlike the companion's, nothing is cached but
 // the slice itself (the caller's `output`): the device fetches one build's once.
 #import "spcdn.h"
+#include "spguest.h"  // spguest_check_file
 #include <CommonCrypto/CommonDigest.h>
 #include <mach-o/loader.h>
 #include <stdatomic.h>
@@ -916,37 +917,8 @@ NSString *sp_config_with_region(NSString *config, NSDictionary<NSString *, NSStr
 // ---- the game's client in Library/spgames (launcher.m, sppatch.m)
 
 NSString *sp_slice_problem(NSString *path) {
-    NSFileHandle *f = [NSFileHandle fileHandleForReadingAtPath:path];
-    if (!f) return @"it can't be opened";
-    unsigned long long size = [f seekToEndOfFile];
-    [f seekToFileOffset:0];
-    // The header and its load commands: a client's are well under 64 KB (spguest reads them the same way).
-    NSData *head = [f readDataOfLength:65536];
-    [f closeFile];
-    const struct mach_header_64 *mh = head.bytes;
-    if (head.length < sizeof *mh) return [NSString stringWithFormat:@"it's %llu bytes, too short to be a client", size];
-    if (mh->magic != MH_MAGIC_64 || mh->cputype != CPU_TYPE_ARM64 || mh->filetype != MH_EXECUTE)
-        return mh->magic == MH_MAGIC_64 && mh->filetype == MH_BUNDLE ? @"it's an image an older Slashplayed made, not the game's client"
-                                                                    : @"it isn't an arm64 MH_EXECUTE";
-    if ((mh->cpusubtype & ~CPU_SUBTYPE_MASK) != CPU_SUBTYPE_ARM64_ALL) return @"it's arm64e, not arm64";
-    if (sizeof *mh + mh->sizeofcmds > head.length) return @"its load commands are cut short";
-    BOOL main = NO;
-    unsigned long long end = 0;
-    const uint8_t *p = (const uint8_t *)(mh + 1), *cmds_end = p + mh->sizeofcmds;
-    for (uint32_t i = 0; i < mh->ncmds; i++) {
-        const struct load_command *lc = (const void *)p;
-        if (p + sizeof *lc > cmds_end || lc->cmdsize < sizeof *lc || p + lc->cmdsize > cmds_end) return @"its load commands are malformed";
-        if (lc->cmd == LC_MAIN) main = YES;
-        if (lc->cmd == LC_SEGMENT_64 && lc->cmdsize >= sizeof(struct segment_command_64)) {
-            const struct segment_command_64 *seg = (const void *)lc;
-            end = MAX(end, seg->fileoff + seg->filesize);
-        }
-        p += lc->cmdsize;
-    }
-    if (!main) return @"it has no entry point";
-    // A copy that stopped part way (devicectl's, or a download's): the segments run past the file's end.
-    if (end > size) return [NSString stringWithFormat:@"it's cut short (%.1f of %.1f MB)", size / 1e6, end / 1e6];
-    return nil;
+    char why[256];
+    return spguest_check_file(path.fileSystemRepresentation, why, sizeof why) ? nil : @(why);
 }
 
 NSString *sp_slice_retire(NSString *games, NSString *flavor, NSString *product) {

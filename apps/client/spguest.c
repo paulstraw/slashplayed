@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -95,54 +96,58 @@ static void spguest_free(SPGuest *g) {
     free(g);
 }
 
-SPGuest *spguest_load(const char *path, const SPGuestOptions *options, char *error, size_t error_size) {
-    if (the_guest) return fail(error, error_size, "one guest per process"), NULL;
-    SPGuest *g = calloc(1, sizeof *g);
-    g->fd = -1;
-    if (options) g->opt = *options;
-    g->path = strdup(path);
-    double t0 = now();
-#define BAD(...) do { fail(error, error_size, __VA_ARGS__); spguest_free(g); return NULL; } while (0)
-    g->fd = open(path, O_RDONLY);
-    if (g->fd < 0) BAD("cannot open %s: %s", path, strerror(errno));
+// The file's header and load commands into `g`: everything spguest_load reads before it maps anything, and
+// everything it refuses about a file. spguest_check_file runs the same, so no check passes a file the load
+// refuses (the launcher's preflight, an Update's, and the start's retire: sp_slice_problem in spcdn.m).
+static bool parse(SPGuest *g, char *error, size_t es) {
+    uint8_t *cmds = NULL;
+#define REFUSE(...) do { free(cmds); return fail(error, es, __VA_ARGS__); } while (0)
+    g->fd = open(g->path, O_RDONLY);
+    if (g->fd < 0) REFUSE("it can't be opened (%s)", strerror(errno));
+    struct stat st;
+    if (fstat(g->fd, &st)) REFUSE("it can't be read (%s)", strerror(errno));
     uint8_t head[8];
-    if (!rd(g->fd, 0, head, 8)) BAD("cannot read %s", path);
+    if (!rd(g->fd, 0, head, 8)) REFUSE("it's %lld bytes, too short to be a client", (long long)st.st_size);
     if (be32(head) == 0xcafebabe) {  // universal: find the plain arm64 slice
         uint32_t n = be32(head + 4);
         bool found = false;
         for (uint32_t i = 0; i < n && n < 16; i++) {
             uint8_t a[20];
-            if (!rd(g->fd, 8 + i * 20, a, 20)) BAD("truncated fat header");
+            if (!rd(g->fd, 8 + i * 20, a, 20)) REFUSE("its universal header is cut short");
             if (be32(a) == CPU_TYPE_ARM64 && (be32(a + 4) & 0xffffff) == CPU_SUBTYPE_ARM64_ALL) {
                 g->slice = be32(a + 8);
                 found = true;
             }
         }
-        if (!found) BAD("no plain arm64 slice");
+        if (!found) REFUSE("it has no plain arm64 slice");
     }
     struct mach_header_64 mh;
-    if (!rd(g->fd, g->slice, &mh, sizeof mh)) BAD("truncated Mach-O header");
-    if (mh.magic != MH_MAGIC_64 || mh.cputype != CPU_TYPE_ARM64 || mh.filetype != MH_EXECUTE)
-        BAD("not an arm64 MH_EXECUTE");
-    if ((mh.cpusubtype & 0xffffff) != CPU_SUBTYPE_ARM64_ALL) BAD("arm64e is not supported");
-    uint8_t *cmds = malloc(mh.sizeofcmds);
-    if (!cmds || !rd(g->fd, g->slice + sizeof mh, cmds, mh.sizeofcmds)) BAD("cannot read load commands");
+    if (!rd(g->fd, g->slice, &mh, sizeof mh)) REFUSE("its Mach-O header is cut short");
+    if (mh.magic != MH_MAGIC_64 || mh.cputype != CPU_TYPE_ARM64)
+        REFUSE("it isn't an arm64 Mach-O");
+    // An MH_BUNDLE in Library/spgames is the image Slashplayed 1.4 and earlier assembled and signed there.
+    if (mh.filetype == MH_BUNDLE) REFUSE("it's an image an older Slashplayed made, not the game's client (an MH_BUNDLE)");
+    if (mh.filetype != MH_EXECUTE) REFUSE("it isn't an MH_EXECUTE (filetype %u)", mh.filetype);
+    if ((mh.cpusubtype & 0xffffff) != CPU_SUBTYPE_ARM64_ALL) REFUSE("it's arm64e, which spguest doesn't load");
+    cmds = malloc(mh.sizeofcmds);
+    if (!cmds || !rd(g->fd, g->slice + sizeof mh, cmds, mh.sizeofcmds)) REFUSE("its load commands are cut short");
 
     bool have_main = false;
-    uint64_t text_vm = 0;
+    uint64_t text_vm = 0, file_end = 0;
     g->low = UINT64_MAX;
     uint64_t end = 0;
     for (uint32_t c = 0, off = 0; c < mh.ncmds; c++) {
         const struct load_command *lc = (const void *)(cmds + off);
-        if (off + sizeof *lc > mh.sizeofcmds || lc->cmdsize < 8 || off + lc->cmdsize > mh.sizeofcmds) {
-            free(cmds);
-            BAD("bad load command %u", c);
-        }
+        if (off + sizeof *lc > mh.sizeofcmds || lc->cmdsize < 8 || off + lc->cmdsize > mh.sizeofcmds)
+            REFUSE("its load command %u is malformed", c);
         switch (lc->cmd) {
         case LC_SEGMENT_64: {
             const struct segment_command_64 *s = (const void *)lc;
+            if (lc->cmdsize < sizeof *s + (uint64_t)s->nsects * sizeof(struct section_64))
+                REFUSE("its load command %u is malformed", c);
+            if (s->fileoff + s->filesize > file_end) file_end = s->fileoff + s->filesize;
             if (!strcmp(s->segname, "__PAGEZERO") || !strcmp(s->segname, "__LINKEDIT")) break;
-            if (g->nseg == MAX_SEG) { free(cmds); BAD("too many segments"); }
+            if (g->nseg == MAX_SEG) REFUSE("it has more than %d segments", MAX_SEG);
             Seg *d = &g->seg[g->nseg++];
             memcpy(d->name, s->segname, 16);
             d->vmaddr = s->vmaddr; d->vmsize = s->vmsize; d->fileoff = s->fileoff; d->filesize = s->filesize;
@@ -172,7 +177,8 @@ SPGuest *spguest_load(const char *path, const SPGuestOptions *options, char *err
         }
         case LC_LOAD_DYLIB: case LC_LOAD_WEAK_DYLIB: case LC_REEXPORT_DYLIB: case LC_LOAD_UPWARD_DYLIB: {
             const struct dylib_command *d = (const void *)lc;
-            if (g->nlibs == MAX_LIB) { free(cmds); BAD("too many libraries"); }
+            if (g->nlibs == MAX_LIB) REFUSE("it links more than %d libraries", MAX_LIB);
+            if (d->dylib.name.offset >= lc->cmdsize) REFUSE("its load command %u is malformed", c);
             g->weak_lib[g->nlibs] = lc->cmd == LC_LOAD_WEAK_DYLIB;
             g->libs[g->nlibs++] = strndup((const char *)lc + d->dylib.name.offset, lc->cmdsize - d->dylib.name.offset);
             break;
@@ -186,16 +192,45 @@ SPGuest *spguest_load(const char *path, const SPGuestOptions *options, char *err
             g->exp_off = l->dataoff; g->exp_size = l->datasize;
             break;
         }
-        case LC_DYLD_CHAINED_FIXUPS: free(cmds); BAD("chained fixups are not supported (the client uses dyld-info opcodes)");
+        case LC_DYLD_CHAINED_FIXUPS: REFUSE("it uses chained fixups, which spguest doesn't apply (the clients use dyld-info opcodes)");
         case LC_MAIN: g->entry = ((const struct entry_point_command *)lc)->entryoff; have_main = true; break;
-        case LC_ENCRYPTION_INFO_64: if (((const struct encryption_info_command_64 *)lc)->cryptid) { free(cmds); BAD("encrypted"); } break;
+        case LC_ENCRYPTION_INFO_64: if (((const struct encryption_info_command_64 *)lc)->cryptid) REFUSE("it's encrypted"); break;
         }
         off += lc->cmdsize;
     }
+    if (!have_main) REFUSE("it has no entry point (LC_MAIN)");
+    if (!g->nseg || g->low != text_vm) REFUSE("__TEXT isn't its first segment");
+    // A copy that stopped part way (devicectl's, or a download's): the segments run past the file's end.
+    if (g->slice + file_end > (uint64_t)st.st_size)
+        REFUSE("it's cut short (%.1f of %.1f MB)", st.st_size / 1e6, (g->slice + file_end) / 1e6);
     free(cmds);
-    if (!have_main || !g->nseg || g->low != text_vm) BAD("no LC_MAIN or __TEXT is not the first segment");
     g->span = (end - g->low + PAGE - 1) & ~(uint64_t)(PAGE - 1);
+    return true;
+#undef REFUSE
+}
 
+bool spguest_check_file(const char *path, char *error, size_t error_size) {
+    SPGuest *g = calloc(1, sizeof *g);
+    if (!g) return fail(error, error_size, "out of memory");
+    g->fd = -1;
+    g->path = strdup(path);
+    bool ok = parse(g, error, error_size);
+    spguest_free(g);
+    return ok;
+}
+
+SPGuest *spguest_load(const char *path, const SPGuestOptions *options, char *error, size_t error_size) {
+    if (the_guest) return fail(error, error_size, "one guest per process"), NULL;
+    SPGuest *g = calloc(1, sizeof *g);
+    g->fd = -1;
+    if (options) g->opt = *options;
+    g->path = strdup(path);
+    double t0 = now();
+#define BAD(...) do { fail(error, error_size, __VA_ARGS__); spguest_free(g); return NULL; } while (0)
+    if (!parse(g, error, error_size)) {
+        spguest_free(g);
+        return NULL;
+    }
     // Streams and the export trie come from the file; __LINKEDIT is never mapped.
     uint32_t lo = UINT32_MAX, hi = 0;
     uint32_t spans[][2] = {{g->dyld.rebase_off, g->dyld.rebase_size}, {g->dyld.bind_off, g->dyld.bind_size},

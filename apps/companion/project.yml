@@ -151,6 +151,10 @@ targets:
       # The launcher's CDN client and bind check (Foundation only), tested against BlizzardCDN and BindCheck.
       - ../client/spbind.m
       - ../client/spcdn.m
+      # spguest's own check of a client file, which spcdn.m's sp_slice_problem runs (the loader itself, and
+      # its thread-local trampoline it links, are guesttest's to run).
+      - ../client/spguest.c
+      - ../client/spguest_tlv.S
       - path: ../client/flavors.plist
         buildPhase: resources
     settings:

@@ -31,11 +31,11 @@ process outright), chosen by the first argument. Background and full results:
 | `e4d` | Own `__TEXT`: debugger prepare, alias write of 1 MB, detach, execute in place |
 | `e5` | `e4d` at the client's size (a 44 MB filler), for timing the prepare modes |
 | `e6`, `e6b` | Prepare, detach, and only then make (`e6`) or write (`e6b`) the alias |
-| `e7` | The real libSystem shim (`shims/system`) servicing the client's sequence through `dlsym` over 44 MB |
+| `e7` | Retired (v1.4.0 has it): the real libSystem shim (`shims/system`) servicing the client's sequence through `dlsym` over 44 MB. The shim's prepare went when the launcher began loading the client with spguest, which prepares `__TEXT` itself |
 | `h1` | Start the bundled helper extension and ping it: both pids, and whether the helper reaches 10.7.0.1:49152 and gs.apple.com |
 | `h2` | The helper opens the RemotePairing tunnel (idevice) and reports the endpoint, TXM, and the mounted developer disk image |
 | `h3` | `e4d` with the helper as the debugger: it mounts the disk image if needed, attaches to the app, prepares, and detaches |
-| `h4` | `e7` (the real shim, 44 MB) with the helper as the debugger |
+| `h4` | Retired with `e7`: `e7` (the real shim, 44 MB) with the helper as the debugger |
 | `h5` | misagent through the helper's tunnel: lists the device's provisioning profiles and installs `Documents/spjit-profile.mobileprovision` if it's there. Needs idevice built with the `misagent` feature (`SP_IDEVICE_DIR`) and `SP_MISAGENT=1` at build time; the shipping helper leaves it out |
 | `p1` | The app makes its own RemotePairing record: a fresh one through 10.7.0.1:49152, pair-setup with the PIN the device shows (from `Documents/spjit-pin`) |
 | `p2` | The same through visionOS's manual pairing service (Settings > General > Remote Devices open), then a tunnel with the new record; runs under UIKit |

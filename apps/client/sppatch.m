@@ -356,9 +356,9 @@ static verdict check_new_build(NSString *flavor, NSString *image, NSString *prod
 
 // Puts the newer build's kept slice (Library/spslice/<flavor>.arm64, new_slice) in place as the game's client:
 // the build's configs into Documents/Data/config/ (spcdn.m, the bytes the companion's BlizzardCDN.configData
-// gives), then in Library/spgames/ its .build.info row (spbuildinfo-<flavor>), the slice itself renamed to
-// wow-<flavor> (one volume, so nothing is copied), spsource-<flavor> (`source`: "updated", or "installed"
-// for an install), and its stamp last (spbuild-<flavor>, the slice's stamp's layout), so a stamp is only ever
+// gives), then in Library/spgames/ the slice itself renamed to wow-<flavor> (one volume, so nothing is
+// copied), its .build.info row (spbuildinfo-<flavor>), spsource-<flavor> (`source`: "updated", or
+// "installed" for an install), and its stamp last (spbuild-<flavor>, the slice's stamp's layout), so a stamp is only ever
 // beside a whole client of its build. Configs first: they're named by their content, so they're harmless to
 // the old build, and a failure leaves the old client. The game data's .build.info row for the new build isn't
 // written here: the launcher writes it into Documents/.build.info from the kept row just before the client
@@ -415,25 +415,28 @@ static NSString *update(NSString *flavor, NSString *product, NSString *region, N
     NSString *dest = [dir stringByAppendingPathComponent:name];
     NSString *stamp = [dir stringByAppendingPathComponent:[@"spbuild-" stringByAppendingString:flavor]];
     [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-    // Into place: the old client's stamp goes first, and this one's comes last, after the row and the word.
-    // The slice's own stamp in spslice goes before the slice moves, so it never names a file that's gone.
+    // Into place. The old client's stamp goes first, so a start cut short from here never takes the new file for
+    // the old build, and it comes back if the rename fails, which leaves the old client and its row as they
+    // were (Play Anyway plays it, and the slice stays kept for a later Update). The slice's own stamp in
+    // spslice goes once the slice has moved. Then the new build's row, the word, and the stamp last. If one of
+    // those can't be written, the new client stays with no stamp, which nothing loads, and the old one is gone:
+    // sp_patch_check sees the stamp missing and offers no Play Anyway, and the next start gets the game ready.
+    NSString *oldStamp = [NSString stringWithContentsOfFile:stamp encoding:NSUTF8StringEncoding error:nil];
     [NSFileManager.defaultManager removeItemAtPath:stamp error:nil];
-    NSString *keptRow = [dir stringByAppendingPathComponent:[@"spbuildinfo-" stringByAppendingString:flavor]];
-    if (![sp_build_info_with(nil, product, region, tags, row, cdnsRow) writeToFile:keptRow atomically:YES encoding:NSUTF8StringEncoding
-                                                                       error:nil]) {
-        *why = @"its .build.info row couldn't be kept";
+    if (rename(slice.fileSystemRepresentation, dest.fileSystemRepresentation)) {
+        int e = errno;
+        [oldStamp writeToFile:stamp atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        *why = [NSString stringWithFormat:@"its client couldn't be put in place (errno %d)", e];
         return nil;
     }
     [NSFileManager.defaultManager removeItemAtPath:sliceStamp error:nil];
-    if (rename(slice.fileSystemRepresentation, dest.fileSystemRepresentation)) {
-        *why = [NSString stringWithFormat:@"its client couldn't be put in place (errno %d)", errno];
-        return nil;
-    }
-    if (![[source stringByAppendingString:@"\n"] writeToFile:[dir stringByAppendingPathComponent:[@"spsource-" stringByAppendingString:flavor]]
+    NSString *keptRow = [dir stringByAppendingPathComponent:[@"spbuildinfo-" stringByAppendingString:flavor]];
+    if (![sp_build_info_with(nil, product, region, tags, row, cdnsRow) writeToFile:keptRow atomically:YES encoding:NSUTF8StringEncoding
+                                                                       error:nil] ||
+        ![[source stringByAppendingString:@"\n"] writeToFile:[dir stringByAppendingPathComponent:[@"spsource-" stringByAppendingString:flavor]]
                                                   atomically:YES encoding:NSUTF8StringEncoding error:nil] ||
         ![stamp_text(product, region, row) writeToFile:stamp atomically:YES encoding:NSUTF8StringEncoding error:nil]) {
-        [NSFileManager.defaultManager removeItemAtPath:dest error:nil];
-        *why = @"its stamp couldn't be written";
+        *why = @"its .build.info row, spsource, or stamp couldn't be written";
         return nil;
     }
     return dest;
@@ -497,7 +500,8 @@ static NSDictionary<NSString *, NSString *> *current_row(NSString *product, NSSt
 // With `data` (the game data's .build.info row: the Mac copied the game's data, or an upgrade retired the image
 // an older Slashplayed made), the client of that build, not the current one: "Getting Classic Era ready". Its
 // region stays the data's (the Mac's, or an earlier install's region file), and the patch check after it
-// offers any newer build as usual. A Mac's next Play copies the same client, if it gets there first.
+// offers any newer build as usual. If that build can't be downloaded, the current one is. A Mac's next Play
+// copies the same client, if it gets there first.
 //
 // Returns the new client (Library/spgames/wow-<flavor>), its .build.info row kept beside it for the launcher
 // to write just before it loads, as after Update. nil and *problem when it can't: with `back`, the screen has
@@ -561,6 +565,20 @@ NSString *sp_patch_install(NSString *flavor, NSDictionary<NSString *, NSString *
     if (!data) heading = [NSString stringWithFormat:@"Installing %@ %@ for %@…", game, version, where];
     NSArray<NSString *> *shipped = nil;
     verdict v = check_new_build(flavor, nil, product, region, row, screen, heading, nil, ui, &shipped, &why);
+    // The data's own build that couldn't be fetched (Blizzard's CDN no longer serves it, say, or it came out
+    // short): the current build in the data's region instead, as an install gets, so a device with no Mac still
+    // plays. The client streams that build's content over the data's, as after Update. Not after Not Now on a
+    // costly network: that was the person's answer.
+    if (data && v == unknown && [why hasPrefix:@"the download failed"]) {
+        say([NSString stringWithFormat:@"install: %@ %@ couldn't be fetched (%@): getting the current build instead", product, version, why]);
+        [screen setHeading:heading body:@"Asking Blizzard for the current version…" note:nil buttons:@[]];
+        NSDictionary<NSString *, NSString *> *current = current_row(product, region, ui, &why);
+        if (current) {
+            row = current;
+            version = row[@"VersionsName"].length ? row[@"VersionsName"] : @"(no version)";
+            v = check_new_build(flavor, nil, product, region, row, screen, heading, nil, ui, &shipped, &why);
+        }
+    }
     if (v == needs_update) {
         say([NSString stringWithFormat:@"install: message: needs a Slashplayed update: %@ %@ doesn't bind", product, version]);
         *problem = failed(cant, [NSString stringWithFormat:@"This version of Slashplayed can't run %@ %@ yet. Once there's a "
@@ -569,7 +587,10 @@ NSString *sp_patch_install(NSString *flavor, NSDictionary<NSString *, NSString *
     }
     if (v == unknown) {
         say([NSString stringWithFormat:@"install: message: couldn't check %@ %@: %@", product, version, why]);
-        *problem = failed(cant, @"Whether Slashplayed can run it couldn't be checked. Try again on Wi-Fi.", sentence(why));
+        // A download that failed isn't a check that couldn't run: say which.
+        BOOL fetch = [why hasPrefix:@"the download failed"] || [why hasPrefix:@"no CDN servers"];
+        *problem = failed(cant, fetch ? @"It couldn't be downloaded from Blizzard. Check the network, then try again."
+                                      : @"Whether Slashplayed can run it couldn't be checked. Try again on Wi-Fi.", sentence(why));
         return nil;
     }
     [screen setHeading:heading body:[NSString stringWithFormat:@"Setting it up on this %@.", noun] note:nil buttons:@[]];
@@ -604,8 +625,9 @@ NSString *sp_patch_install(NSString *flavor, NSDictionary<NSString *, NSString *
 // write just before it loads. Otherwise Play Anyway only, with why.
 //
 // One line of log for the outcome, one for the message shown, and one for the client chosen (update: image:),
-// versions only. Returns the stamp of the build that loads (`stamp` itself unless an Update replaced it). Sets
-// *pump to UIKit's when it shows its screen.
+// versions only. Returns the stamp of the build that loads (`stamp` itself unless an Update replaced it), or nil
+// when an Update failed after it had replaced the client, which leaves nothing to load. Sets *pump to UIKit's
+// when it shows its screen.
 NSDictionary<NSString *, NSString *> *sp_patch_check(NSString *flavor, NSString *image, NSDictionary<NSString *, NSString *> *stamp,
                                                     NSDictionary<NSString *, NSString *> *choice, void (^*pump)(double)) {
     BOOL device = [choice[@"Device"] isEqual:@"1"] && choice[@"Region"].length;
@@ -696,6 +718,13 @@ NSDictionary<NSString *, NSString *> *sp_patch_check(NSString *flavor, NSString 
                                                           encoding:NSUTF8StringEncoding error:nil], @"Product", product);
         }
         say_update([NSString stringWithFormat:@"failed after %.1f s: %@", now() - t, why]);
+        // Past the rename (update), the old client is gone too: nothing to play anyway. The launcher says so,
+        // and the next start gets the game ready.
+        if (![NSFileManager.defaultManager fileExistsAtPath:[image.stringByDeletingLastPathComponent stringByAppendingPathComponent:
+                                                             [@"spbuild-" stringByAppendingString:flavor]]]) {
+            dismiss(screen, *pump);
+            return nil;
+        }
         [screen setHeading:[NSString stringWithFormat:@"%@ couldn't be updated on this %@.", game, noun]
                       body:@"Try again later."
                       // The reason, for a report, under the plain words, then the build it has.

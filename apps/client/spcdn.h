@@ -157,10 +157,11 @@ NSString *sp_config_with_region(NSString *_Nullable config, NSDictionary<NSStrin
 
 // ---- The game's client in Library/spgames (launcher.m, sppatch.m)
 
-// Why the file at `path` isn't a client spguest can load (spguest.c), or nil when it is: the game's unchanged
-// arm64 slice, a thin MH_EXECUTE with an entry point, whose segments all lie within the file. An image an
-// older Slashplayed made on the device (an MH_BUNDLE, assembled and signed there), a universal or arm64e
-// file, or one a copy left short each has a reason, in a few words for the log and the screen.
+// Why the file at `path` isn't a client spguest can load, or nil when it is: spguest's own parse of the
+// header and load commands (spguest_check_file), so nothing passes here that the load refuses, a build with
+// chained fixups included. An image an older Slashplayed made on the device (an MH_BUNDLE, assembled and
+// signed there), an arm64e file, or one a copy left short each has a reason, in a few words for the log
+// and the screen.
 NSString *_Nullable sp_slice_problem(NSString *path);
 
 // The game's client in `games` (Library/spgames: wow-<flavor>) retired when it isn't a slice spguest can

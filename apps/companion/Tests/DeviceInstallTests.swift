@@ -27,8 +27,10 @@ final class DeviceInstallTests: XCTestCase {
 
     /// A Library/spgames client spguest can't load is retired with its stamp, row, and spsource, before the
     /// launcher would load it: the image an older Slashplayed assembled there (an MH_BUNDLE, as a 1.4 device
-    /// holds), and a copy cut short. The game data beside it stays. The game's own executable stays, files and
-    /// all, and so does nothing at all.
+    /// holds), a copy cut short, and an executable spguest's load refuses though its header looks right (one
+    /// with chained fixups, as a client built for a newer macOS would have: the check is spguest's own parse,
+    /// so it can't pass what the load refuses). The game data beside it stays. The game's own executable
+    /// (linked as the clients are, with dyld-info opcodes) stays, files and all, and so does nothing at all.
     func testAClientThatIsntAnExecutableIsRetiredNotLoaded() throws {
         let scratch = FileManager.default.temporaryDirectory.appending(path: "sp-slice-retire-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: scratch) }
@@ -38,9 +40,11 @@ final class DeviceInstallTests: XCTestCase {
         try "game data".write(to: data, atomically: true, encoding: .utf8)
         try "int main(void) { return 0; }\nint sp_retire_answer(void) { return 42; }\n"
             .write(to: scratch.appending(path: "fixture.c"), atomically: true, encoding: .utf8)
-        let exe = scratch.appending(path: "exe"), bundle = scratch.appending(path: "bundle")
-        try ClientAssemblyTests.run(["clang", "-arch", "arm64", scratch.appending(path: "fixture.c").path, "-o", exe.path])
-        try ClientAssemblyTests.run(["clang", "-arch", "arm64", "-bundle", scratch.appending(path: "fixture.c").path, "-o", bundle.path])
+        let exe = scratch.appending(path: "exe"), bundle = scratch.appending(path: "bundle"), chained = scratch.appending(path: "chained")
+        let source = scratch.appending(path: "fixture.c").path, opcodes = ["-mmacosx-version-min=11.0", "-Wl,-no_fixup_chains"]
+        try ClientAssemblyTests.run(["clang", "-arch", "arm64"] + opcodes + [source, "-o", exe.path])
+        try ClientAssemblyTests.run(["clang", "-arch", "arm64"] + opcodes + ["-bundle", source, "-o", bundle.path])
+        try ClientAssemblyTests.run(["clang", "-arch", "arm64", "-mmacosx-version-min=13.0", "-Wl,-fixup_chains", source, "-o", chained.path])
         let stamp = "Product!STRING:0|Branch!STRING:0|Build Key!HEX:16|Version!STRING:0\nwow_classic_era|us|00112233445566778899aabbccddeeff|1.2.3.45678\n"
         func place(_ client: Data) throws {
             try client.write(to: games.appending(path: "wow-classic_era"))
@@ -68,6 +72,13 @@ final class DeviceInstallTests: XCTestCase {
         let whole = try Data(contentsOf: exe)
         try place(whole.prefix(whole.count / 2))
         XCTAssertTrue(sp_slice_problem(games.appending(path: "wow-classic_era").path)?.contains("cut short") == true)
+        XCTAssertNotNil(sp_slice_retire(games.path, "classic_era", "wow_classic_era"))
+        XCTAssertEqual(try left(), [])
+
+        // Chained fixups, which spguest doesn't apply: its header is an arm64 MH_EXECUTE with an entry point,
+        // whole, which is all the launcher's own check once looked at.
+        try place(try Data(contentsOf: chained))
+        XCTAssertTrue(sp_slice_problem(games.appending(path: "wow-classic_era").path)?.contains("chained fixups") == true)
         XCTAssertNotNil(sp_slice_retire(games.path, "classic_era", "wow_classic_era"))
         XCTAssertEqual(try left(), [])
 

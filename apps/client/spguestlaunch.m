@@ -3,9 +3,10 @@
 // launcher's own loader (spguest.c), since dyld won't dlopen an MH_EXECUTE and the system wouldn't run an
 // unsigned image. Everything before it is the launcher's (the flavor, the region, the game data's checks,
 // the sign-in, the helper's attach, the loading screen):
-// - sp_guest_preflight, before the sign-in: the private hooks spguest registers the client with, and the
-//   file itself, so a new OS that took a hook away, or a client the device can't load, says why before
-//   anyone types a password, not after the attach;
+// - sp_guest_hooks_problem, before the start screen and anything it downloads: the private hooks spguest
+//   registers the client with, so a new OS that took one away says so before a game is fetched or anyone
+//   types a password; then sp_guest_preflight, before the sign-in: the file itself (spguest's own parse,
+//   sp_slice_problem), so a client the device can't load says why then, not after the attach;
 // - the helper prepares the region spguest reserved for the client's __TEXT in one brk #0xf00d stop and
 //   detaches ("guest: detached", the line the companion's ClientLauncher and run.sh follow), and the file's
 //   __TEXT is copied in through a read-write alias (the toy's pattern, guesttest/device.c);
@@ -88,13 +89,15 @@ static const char *rewrite(const char *install, void *context) {
     return to ? to.fileSystemRepresentation : install;
 }
 
-NSString *sp_guest_preflight(NSString *path) {
+NSString *sp_guest_hooks_problem(void) {
     char err[256];
-    if (!spguest_check_hooks(err, sizeof err)) {
-        say([NSString stringWithFormat:@"FAIL preflight: %s", err]);
-        return [NSString stringWithFormat:@"This version of %@ doesn't have what Slashplayed needs to load the game (%s). Check for "
-                                          @"a Slashplayed update.", UIDevice.currentDevice.systemName, err];
-    }
+    if (spguest_check_hooks(err, sizeof err)) return nil;
+    say([NSString stringWithFormat:@"FAIL preflight: %s", err]);
+    return [NSString stringWithFormat:@"This version of %@ doesn't have what Slashplayed needs to load the game (%s). Check for "
+                                      @"a Slashplayed update.", UIDevice.currentDevice.systemName, err];
+}
+
+NSString *sp_guest_preflight(NSString *path) {
     NSString *problem = sp_slice_problem(path);
     if (!problem) return nil;
     NSString *flavor = [path.lastPathComponent substringFromIndex:4];

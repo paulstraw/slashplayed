@@ -31,7 +31,10 @@ awk -F'|' -v p="$P" '
     NR == 1 { for (i = 1; i <= NF; i++) { split($i, n, "!"); c[n[1]] = i }; next }
     $c["Product"] == p { row = p "|" $c["Branch"] "|" $c["Build Key"] "|" $c["Version"]; ok = $c["Build Key"] != "" && $c["Version"] != "" }
     END {
-      if (!ok) { print "the game install has no " p " build in .build.info" > "/dev/stderr"; exit 1 }
+      # Battle.net can leave an installed game out of .build.info (GameStore.installTable fills in its build
+      # from Data/config, but not the CDN Key and Tags the kept row needs): Play in the companion copies
+      # the slice and row from the CDN for it instead.
+      if (!ok) { print "seed-client.sh: .build.info lists no " p " build (Battle.net can leave a game out); press Play in the companion, which copies it from the CDN" > "/dev/stderr"; exit 1 }
       print "Product!STRING:0|Branch!STRING:0|Build Key!HEX:16|Version!STRING:0"
       print row
     }' "$INFO" > "$OUT/spbuild-$F"

@@ -31,6 +31,11 @@ typedef struct {
 // say before anything else that a new OS took one away. Returns false with the missing ones in `error`.
 bool spguest_check_hooks(char *error, size_t error_size);
 
+// Whether spguest_load would take the file at `path`: the same parse of its header and load commands, with
+// nothing mapped, so a check passes exactly the files the load does. Returns false with why in `error`
+// ("it's cut short (…)", "it uses chained fixups, …"), worded to follow "the client can't be loaded: ".
+bool spguest_check_file(const char *path, char *error, size_t error_size);
+
 // Loads `path`. On failure returns NULL and writes a reason into `error`.
 SPGuest *spguest_load(const char *path, const SPGuestOptions *options, char *error, size_t error_size);
 
