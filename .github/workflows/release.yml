@@ -127,18 +127,6 @@ jobs:
       - name: Fetch the start screen's font
         run: scripts/fetch-font.sh
 
-      # The launcher's on-device signer (apps/client/spsign.m) links zsign and OpenSSL, and the companion's
-      # tests run it on the Mac: built from source by scripts/build-zsign.sh, each at a pinned commit that
-      # the script checks after cloning (a moved tag fails the build), a step per platform.
-      - name: Build zsign (macOS)
-        run: scripts/build-zsign.sh macos
-
-      - name: Build zsign (visionOS)
-        run: scripts/build-zsign.sh xros
-
-      - name: Build zsign (iPadOS and iOS)
-        run: scripts/build-zsign.sh ios
-
       # A throwaway keychain holding only the Developer ID identity, on the search list so codesign finds
       # it (release.sh picks the one "Developer ID Application" identity there). Its password is random
       # per run and never leaves this step: the keychain stays unlocked for the job, and deleting it

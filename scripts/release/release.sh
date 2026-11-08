@@ -283,13 +283,15 @@ else
 fi
 
 # --- No Blizzard bytes ---------------------------------------------------------------------------------
-# Nothing from the game may ship. Every Mach-O in what's about to be packaged is compared, by LC_UUID and by
-# size, against every client this Mac has: the thinned ones in work/, every Mach-O the companion keeps
-# under Application Support (the assembled images in client-*, and cdn/'s slices, named by hash rather than
-# wow-*), and the installed clients themselves (thinning and the load-command rewrite keep the UUID). Our own
-# Mach-Os there are left out, since they're what ships: the launcher, the shims, the JIT helper, and the
-# signing stubs' build products. So is certificate/, whose keychain isn't opened even for its magic number.
-# Anything else there counts, so a new cache can't slip past. On a machine
+# Nothing from the game may ship. The app holds no game client now (the device loads the unchanged slice
+# from its own container), and this check stays to keep it so. Every Mach-O in what's about to be packaged
+# is compared, by LC_UUID and by size, against every client this Mac has: the thinned ones in work/, every
+# Mach-O the companion keeps under Application Support (cdn/'s slices, named by hash rather than wow-*, which
+# Play copies to devices), and the installed clients themselves (thinning keeps the UUID). Our own Mach-Os
+# there are left out, since they're what ships: the device app in client-* (the launcher, the shims, the JIT
+# helper) and the signing stubs' build products. So is an older companion's certificate/, whose keychain
+# isn't opened even for its magic number. Anything else there counts, an image an older companion assembled
+# into client-* included, so a new cache can't slip past. On a machine
 # with none (CI), that half finds nothing to compare and says so; the size and name rules still hold:
 # besides the companion's own executable, no file over 20 MB, and nothing named like a client image,
 # game storage or a metallib.

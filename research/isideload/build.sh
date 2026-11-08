@@ -2,13 +2,15 @@
 # Builds the isideload spike (README.md) into work/isideload/:
 #   spisideload   the CLI (Cargo.toml, src/), with the repo's pinned Rust and the committed Cargo.lock
 #   zsign         zsign's command-line signer, from the source scripts/build-zsign.sh pinned and patched,
-#                 linked to the OpenSSL it built for macos: what sign-install.sh signs the app with, the
-#                 signer a Windows/Linux host tool would use
+#                 linked to the OpenSSL v1.4.0's scripts/build-zsign.sh built for macos: what
+#                 sign-install.sh signs the app with (slashplayed-companion compiles the same zsign in)
 #
 #   research/isideload/build.sh
 #
-# Needs scripts/build-zsign.sh macos first (zsign's source and OpenSSL), and rustup (the toolchain is
-# installed if missing, as scripts/build-idevice.sh does). Installs nothing on a device.
+# Needs work/zsign/src/zsign and work/zsign/macos/openssl first: `scripts/build-zsign.sh macos` from a
+# v1.4.0 checkout (the mode went when the launcher stopped signing on the device; `git worktree add
+# <dir> v1.4.0`, run it there, and copy its work/zsign/macos here), and rustup (the toolchain is installed
+# if missing, as scripts/build-idevice.sh does). Installs nothing on a device.
 #
 # The CLI's Keychain item trusts the binary that wrote it (src/store.rs): rebuilding after a login makes
 # macOS ask once before the new binary may read it. Build, then log in.
@@ -25,7 +27,7 @@ command -v rustup >/dev/null || die "rustup isn't installed (https://rustup.rs),
 rustup toolchain list | grep -q "^$TOOLCHAIN-" || rustup toolchain install "$TOOLCHAIN" --profile minimal ||
   die "rustup couldn't install Rust $TOOLCHAIN"
 [ -f "$ZSRC/src/zsign.cpp" ] && [ -f "$OPENSSL/lib/libcrypto.a" ] ||
-  die "no zsign source or macOS OpenSSL in work/zsign (run scripts/build-zsign.sh macos)"
+  die "no zsign source or macOS OpenSSL in work/zsign (scripts/build-zsign.sh macos from a v1.4.0 checkout; see the header)"
 mkdir -p "$OUT/zsign-obj"
 
 # zsign's CLI: its macOS Makefile's sources (all of src/, zlib, minizip), compiled straight from the pinned

@@ -34,13 +34,6 @@ env:
     work/idevice/ios
     work/idevice/xros
     work/idevice/macos
-  ZSIGN_CACHE_PATHS: |
-    work/zsign/BUILD.txt
-    work/zsign/licenses
-    work/zsign/src/zsign/src
-    work/zsign/ios
-    work/zsign/xros
-    work/zsign/macos
 
 jobs:
   kit:

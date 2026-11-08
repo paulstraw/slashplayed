@@ -1,13 +1,12 @@
 # Everything the companion's build and its tests both stand on, for ci.yml's companion-build and
-# companion-test jobs: the pinned Xcode, XcodeGen, and idevice and zsign from source (restored from the
-# cache when nothing that builds them changed). One action rather than the steps written out in each job,
-# because the two jobs share the caches only while their paths and keys are identical (actions/cache
-# derives a cache's version from its paths too), and copies drift. The pins come from the calling
+# companion-test jobs: the pinned Xcode, XcodeGen, and idevice from source (restored from the cache when
+# nothing that builds it changed). One action rather than the steps written out in each job, because the
+# two jobs share the cache only while its paths and key are identical (actions/cache derives a cache's
+# version from its paths too), and copies drift. The pins come from the calling
 # workflow's env: XCODE_APP, XCODEGEN_VERSION, XCODEGEN_SHA256, RUSTUP_VERSION, and RUSTUP_SHA256, and
-# what the caches hold from IDEVICE_CACHE_PATHS and ZSIGN_CACHE_PATHS, each listed once there for its
-# restore and its save.
+# what the cache holds from IDEVICE_CACHE_PATHS, listed once there for its restore and its save.
 name: Companion dependencies
-description: Selects the pinned Xcode and installs XcodeGen, then restores or builds idevice and zsign.
+description: Selects the pinned Xcode and installs XcodeGen, then restores or builds idevice.
 runs:
   using: composite
   steps:
@@ -27,25 +26,24 @@ runs:
         unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
         echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
 
-    # idevice and zsign from source are about five minutes of a job, and their outputs change only when
-    # what builds them does, so each is cached on exactly that: the runner, the Xcode (clang, lipo, strip,
-    # the SDKs), and every file its script reads. The pins (upstream commits, Rust 1.99.0, OpenSSL) live in
-    # the scripts, so re-pinning changes the key. Two caches, so a change to one doesn't rebuild the other.
-    # Only what the builds and the companion read is cached (the archives, headers, native-libs.txt, and
-    # license texts; zsign's patched headers, which spzsign.cpp includes), not the clones or cargo's
-    # target/, which are most of the size and nothing downstream opens.
-    # Restored here and saved right after the builds (Save idevice, Save zsign) rather than by
-    # actions/cache's end-of-job step, which a later failure or a cancel skips: the builds' minutes are
-    # kept whatever happens to the companion or the tests.
-    # Every platform is restored and, on a miss, built, though the tests need only zsign for macOS: both
-    # jobs save under the same key, and whichever saves first is what every later run restores, so a job
-    # that built less would leave the other a cache without its platforms. On a miss (a re-pin, a new
-    # Xcode) both jobs build everything at once and the slower save is refused with a warning; having one
-    # job wait for the other's cache (needs:) would put the build and the tests back in series on exactly
-    # those runs to save runner minutes that cost a public repo nothing.
+    # idevice from source is about five minutes of a job, and its output changes only when what builds it
+    # does, so it's cached on exactly that: the runner, the Xcode (clang, lipo, strip, the SDKs), and every
+    # file its script reads. The pins (the upstream commit, Rust 1.99.0) live in the script, so re-pinning
+    # changes the key. Only what the builds and the companion read is cached (the archives, headers,
+    # native-libs.txt, and license texts), not the clone or cargo's target/, which are most of the size and
+    # nothing downstream opens.
+    # Restored here and saved right after the builds (Save idevice) rather than by actions/cache's
+    # end-of-job step, which a later failure or a cancel skips: the builds' minutes are kept whatever
+    # happens to the companion or the tests.
+    # Every platform is restored and, on a miss, built, in both jobs: both save under the same key, and
+    # whichever saves first is what every later run restores, so a job that built less would leave the
+    # other a cache without its platforms. On a miss (a re-pin, a new Xcode) both jobs build everything at
+    # once and the slower save is refused with a warning; having one job wait for the other's cache (needs:)
+    # would put the build and the tests back in series on exactly those runs to save runner minutes that
+    # cost a public repo nothing.
     # Safe with untrusted PRs: GitHub scopes a cache to the ref that saved it, so a PR's run can read
     # main's caches but main never reads a PR's, and a poisoned archive can't reach main or a release.
-    # release.yml uses no cache and always builds both from source: what ships never comes from here.
+    # release.yml uses no cache and always builds idevice from source: what ships never comes from here.
     - name: Restore idevice
       id: idevice-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -91,36 +89,3 @@ runs:
       with:
         path: ${{ env.IDEVICE_CACHE_PATHS }}
         key: ${{ steps.idevice-cache.outputs.cache-primary-key }}
-
-    # The launcher's on-device signer (apps/client/spsign.m) links zsign and OpenSSL, which the companion
-    # bundles the device platforms' licenses of, and the companion's tests run it on the Mac: built from
-    # source by scripts/build-zsign.sh, each at a pinned commit that the script checks after cloning (a
-    # moved tag fails the build), a step per platform. Cached like idevice (see Restore idevice).
-    - name: Restore zsign
-      id: zsign-cache
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ${{ env.ZSIGN_CACHE_PATHS }}
-        key: zsign-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODE_APP }}-${{ hashFiles('scripts/build-zsign.sh', 'scripts/zsign.patch') }}
-
-    - name: Build zsign (macOS)
-      if: steps.zsign-cache.outputs.cache-hit != 'true'
-      shell: bash
-      run: scripts/build-zsign.sh macos
-
-    - name: Build zsign (visionOS)
-      if: steps.zsign-cache.outputs.cache-hit != 'true'
-      shell: bash
-      run: scripts/build-zsign.sh xros
-
-    - name: Build zsign (iPadOS and iOS)
-      if: steps.zsign-cache.outputs.cache-hit != 'true'
-      shell: bash
-      run: scripts/build-zsign.sh ios
-
-    - name: Save zsign
-      if: steps.zsign-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ${{ env.ZSIGN_CACHE_PATHS }}
-        key: ${{ steps.zsign-cache.outputs.cache-primary-key }}

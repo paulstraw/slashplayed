@@ -18,8 +18,8 @@ permissions:
   contents: read
 
 # A newer push to a PR supersedes its older run, so that one is cancelled. A push to main never is: main's
-# runs are the only ones that save the idevice and zsign caches every PR reads (caches are ref-scoped), and
-# a cancelled run saves nothing, so a few merges in a row would leave every PR rebuilding both from source.
+# runs are the only ones that save the idevice cache every PR reads (caches are ref-scoped), and a
+# cancelled run saves nothing, so a few merges in a row would leave every PR rebuilding it from source.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -37,21 +37,14 @@ env:
   # static.rust-lang.org publishes next to the binary (rustup-init.sha256).
   RUSTUP_VERSION: 1.29.2
   RUSTUP_SHA256: f7c7e11eb2e07f006e532a8aaac77b32f4527d305ac386c0c633ca6133d35ca9
-  # What the idevice and zsign caches hold (.github/actions/companion-deps, Restore idevice), shared by
-  # each one's restore and save in both companion jobs.
+  # What the idevice cache holds (.github/actions/companion-deps, Restore idevice), shared by its restore
+  # and save in both companion jobs.
   IDEVICE_CACHE_PATHS: |
     work/idevice/BUILD.txt
     work/idevice/include
     work/idevice/ios
     work/idevice/xros
     work/idevice/macos
-  ZSIGN_CACHE_PATHS: |
-    work/zsign/BUILD.txt
-    work/zsign/licenses
-    work/zsign/src/zsign/src
-    work/zsign/ios
-    work/zsign/xros
-    work/zsign/macos
 
 jobs:
   # Greps only, so a scrub or hardcoding slip fails in seconds rather than after the builds.
@@ -136,7 +129,7 @@ jobs:
   # The companion's build and its tests, as two jobs on two runners so the run takes about as long as
   # the slower of them rather than both in a row: test.sh builds into its own DerivedData (Debug, beside
   # build.sh's Release) and reads none of build.sh's output. Both stand on the
-  # same pinned Xcode, XcodeGen, idevice, and zsign, from one local action so their caches stay shared.
+  # same pinned Xcode, XcodeGen, and idevice, from one local action so their cache stays shared.
   companion-build:
     needs: changes
     # !cancelled() rather than the implicit success(): if changes fails, its output is empty, and a job
@@ -163,8 +156,8 @@ jobs:
       # and the icon, into staging (build/companion/resources) in the background while xcodebuild
       # compiles the app, names the platform whose build failed, and --install then copies them into the
       # app. (Steps of their own here built the same shims a second time.)
-      # The notices the built app ships (Sparkle's, idevice's, zsign's, OpenSSL's, and the font's) are
-      # checked inside this step too: bundle-resources.sh compares its own output, file for file, against
+      # The notices the built app ships (Sparkle's, idevice's, and the font's) are checked inside this
+      # step too: bundle-resources.sh compares its own output, file for file, against
       # apps/companion/bundled-notices.txt and work/. (A test here once did that, compiling a Debug app
       # and test bundle on this runner for it; companion-test holds ClientAssembly's lists to that file.)
       - name: Build the companion (unsigned)
@@ -182,9 +175,9 @@ jobs:
           persist-credentials: false
 
       # idevice for every platform (test.sh's idevice-config.sh links the macOS one; AcknowledgementsTests
-      # checks all three archives' notices) and zsign for macOS (DeviceSigningTests runs spsign.m on the
-      # Mac). No font and no shims: the fixtures are built from research/loadertest and the committed
-      # shims/generated/rewrite-map.txt, and the tests that read build/<platform>/exports.json are opt-in.
+      # checks all three archives' notices). No font and no shims: the fixtures are built from
+      # research/loadertest and the committed shims/generated/rewrite-map.txt, and the tests that read
+      # build/<platform>/exports.json are opt-in.
       - uses: ./.github/actions/companion-deps
 
       # spguest, the launcher's loader (apps/client/spguest.c), loading the guest toy on this runner's
@@ -301,7 +294,7 @@ jobs:
       # Saved only from main's pushes, as the companion's caches effectively are: a cache is scoped to the
       # ref that saved it, so main never reads a PR's (untrusted code can't reach main's builds), and a
       # PR's would serve only that PR's own reruns while spending the repository's cache space (these are
-      # hundreds of MB each, and an evicted idevice or zsign cache costs every PR its five minutes). PRs
+      # hundreds of MB each, and an evicted idevice cache costs every PR its five minutes). PRs
       # restore main's. companion-rs-build.yml, which builds what releases ship, uses no cache: those
       # builds stay cold, from source.
       - name: Restore cargo's output

@@ -416,8 +416,9 @@ pub async fn provision(
     // The certificate alone (public) for sign-quick and the report's readers.
     fs::write(opts.out.join("cert.der"), &cert_der)?;
 
-    // 8. The identity, if asked for: spidentity.p12 and .pass (push-identity.sh's pair) and key.pem and
-    // cert.pem (zsign's -k/-c, so no password goes on its command line). The caller zeroes and deletes them.
+    // 8. The identity, if asked for: spidentity.p12 and .pass (the pair the launcher once imported to sign game
+    // updates, before it loaded the client with spguest) and key.pem and cert.pem (zsign's -k/-c, so no
+    // password goes on its command line). The caller zeroes and deletes them.
     if let (Some(dir), Some((key, cert, _, machine_id))) = (&opts.identity, ours) {
         let mut pw_bytes = [0u8; 24];
         rand::thread_rng().fill_bytes(&mut pw_bytes);

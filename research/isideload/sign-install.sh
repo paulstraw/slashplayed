@@ -3,14 +3,14 @@
 # makes nothing: run `spisideload provision --create-app-ids --create-cert` once first, by hand), builds
 # the device app with no game images under the spike's bundle ID, signs it with zsign (or isideload's
 # apple-codesign-quick) using those profiles and that identity, installs it with devicectl, and launches it
-# to its start screen. Optionally pushes the identity the way the companion does, and copies an installed
-# Slashplayed's RemotePairing record across so the JIT helper can be tried (apps/client/run.sh).
+# to its start screen. Optionally copies an installed Slashplayed's RemotePairing record across so the JIT
+# helper can be tried (apps/client/run.sh). (It once also pushed the identity for the launcher to sign game
+# updates with; the launcher loads the unchanged client with spguest now and signs nothing.)
 #
 #   SP_DEVICE=<udid> SPIKE_APPLE_ID=<id> SPIKE_TEAM=<team> SPIKE_KIND=free|paid SPIKE_OUT=<dir> \
 #     research/isideload/sign-install.sh
 #
 #   SPIKE_SIGNER=zsign (default) or quick (apple-codesign-quick, through spisideload sign-quick)
-#   SPIKE_PUSH_IDENTITY=1      also copy spidentity.p12/.pass into the app's Library/ (push-identity.sh)
 #   SPIKE_PAIRING_FROM=<bundle id>  copy that installed app's Library/sppairing.plist to the spike's
 #
 # The app is <team>.slashplayed.spike (helper .helper): never the owner's real bundle ID, so the real
@@ -52,7 +52,7 @@ echo "== provision ($SPIKE_KIND team)" >&2
 
 echo "== build (no images, ios)" >&2
 # Signed ad hoc here (SP_SIGN_ID=-): the real signature is the signer's below, over everything.
-SP_PLATFORM=ios SP_NO_IMAGES=1 SP_NO_INSTALL=1 SP_TEAM=$SPIKE_TEAM SP_BUNDLE_ID=$BUNDLE SP_SIGN_ID=- \
+SP_PLATFORM=ios SP_NO_INSTALL=1 SP_TEAM=$SPIKE_TEAM SP_BUNDLE_ID=$BUNDLE SP_SIGN_ID=- \
   SP_PROFILE=$OUT/profiles/app.mobileprovision SP_HELPER_PROFILE=$OUT/profiles/helper.mobileprovision \
   SP_OUT=$WORK/build "$ROOT/apps/client/build.sh" >"$OUT/build.txt" 2>&1 || die "build failed: $OUT/build.txt"
 APP=$WORK/build/Slashplayed.app
@@ -83,10 +83,6 @@ else
   die "install failed: $OUT/install.txt"
 fi
 
-if [ "${SPIKE_PUSH_IDENTITY:-}" = 1 ]; then
-  echo "== push identity" >&2
-  SP_PLATFORM=ios SP_BUNDLE_ID=$BUNDLE "$ROOT/apps/client/push-identity.sh" "$WORK/identity/spidentity.p12" >>"$OUT/result.txt"
-fi
 if [ -n "${SPIKE_PAIRING_FROM:-}" ]; then
   echo "== copy the RemotePairing record from $SPIKE_PAIRING_FROM" >&2
   # A credential: through a 0600 file in the private folder, deleted (rm -P) on exit; never read here.

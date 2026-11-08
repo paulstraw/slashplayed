@@ -41,16 +41,17 @@ Run on 2026-11-01 on an iPhone 16 Pro (iOS 27), from macOS with Rust 1.99.0.
   - `check-session`: the token-lifetime probe (see [Token lifetime](#token-lifetime)).
   - `forget`: deletes the stored login.
 - `build.sh`: builds the CLI with the pinned Rust and the committed `Cargo.lock`. It also builds zsign's
-  command-line signer from the source `scripts/build-zsign.sh` pinned and patched, linked to that script's
-  macOS OpenSSL. It needs `scripts/build-zsign.sh macos` first. With `SP_SIGN_ID` set, it signs the CLI
-  with a fixed identifier, which keeps the Keychain item readable across rebuilds.
+  command-line signer from the source `scripts/build-zsign.sh` pinned and patched, linked to a macOS
+  OpenSSL. That OpenSSL came from `scripts/build-zsign.sh macos`, a mode that went when the launcher
+  stopped signing on the device: run it from a v1.4.0 checkout and copy its `work/zsign/macos` here.
+  With `SP_SIGN_ID` set, it signs the CLI with a fixed identifier, which keeps the Keychain item readable
+  across rebuilds.
 - `sign-install.sh`: one end-to-end run on a device:
   1. `provision` (which only reuses what exists).
-  2. `SP_NO_IMAGES=1 apps/client/build.sh` under the spike bundle ID, signed ad hoc.
+  2. `apps/client/build.sh` under the spike bundle ID (the app with no game in it), signed ad hoc.
   3. zsign (or `SPIKE_SIGNER=quick`) with the downloaded profiles and the fresh identity.
   4. `devicectl` install, then launch to the start screen.
-  5. Optionally, push the identity (`SPIKE_PUSH_IDENTITY=1`, through `apps/client/push-identity.sh`).
-  6. Optionally, copy an installed Slashplayed's `Library/sppairing.plist` (`SPIKE_PAIRING_FROM`) for the
+  5. Optionally, copy an installed Slashplayed's `Library/sppairing.plist` (`SPIKE_PAIRING_FROM`) for the
      helper test.
 
   The identity and the record pass through a private `mktemp` folder and are deleted with `rm -P`.
@@ -64,13 +65,13 @@ install.
 ## Running it
 
 ```sh
-scripts/build-zsign.sh macos
+scripts/build-zsign.sh source        # and work/zsign/macos from a v1.4.0 checkout (see build.sh)
 research/isideload/build.sh
 work/isideload/spisideload login --apple-id <id> --report $SCRATCH/login.json      # the owner, in Terminal
 work/isideload/spisideload provision --apple-id <id> --team <team> --udid <udid> --free \
   --create-app-ids --create-cert --out $SCRATCH/profiles --report $SCRATCH/provision.json   # once
 SP_DEVICE=<udid> SPIKE_APPLE_ID=<id> SPIKE_TEAM=<team> SPIKE_KIND=free SPIKE_OUT=$SCRATCH/run \
-  SPIKE_PUSH_IDENTITY=1 SPIKE_PAIRING_FROM=<installed Slashplayed bundle ID> research/isideload/sign-install.sh
+  SPIKE_PAIRING_FROM=<installed Slashplayed bundle ID> research/isideload/sign-install.sh
 ```
 
 Then launch a game for the helper, as `apps/client/run.sh` does, with `SP_BUNDLE_ID` set to the spike's.
