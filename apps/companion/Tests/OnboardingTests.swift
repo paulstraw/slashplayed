@@ -214,13 +214,17 @@ final class OnboardingTests: XCTestCase {
     /// Retail on an iPad or iPhone: space is only warned about when the device is short of it, by the free
     /// space the companion shows (a 1 TB iPhone with 810 GB free was told it was more than most have).
     func testRetailNoteGoesByFreeSpace() {
-        XCTAssertEqual(Flavor.retailNote(noun: "iPhone", free: FreeSpace(bytes: 810_790_000_000)), "Retail has been played on an iPhone 16 Pro.")
+        XCTAssertNil(Flavor.retailNote(noun: "iPhone", free: FreeSpace(bytes: 810_790_000_000)))
+        XCTAssertNil(Flavor.retailNote(noun: "iPad", free: FreeSpace(bytes: 810_790_000_000)))
         let free = ByteCountFormatter.string(fromByteCount: 120_000_000_000, countStyle: .file)
+        XCTAssertEqual(Flavor.retailNote(noun: "iPhone", free: FreeSpace(bytes: 120_000_000_000)),
+                       "Retail can take about 150 GB, and the iPhone has \(free) free.")
         XCTAssertEqual(Flavor.retailNote(noun: "iPad", free: FreeSpace(bytes: 120_000_000_000)),
-                       "Retail can take about 150 GB, and the iPad has \(free) free. Retail runs hot on an iPad, near its memory limit.")
+                       "Retail can take about 150 GB, and the iPad has \(free) free.")
         XCTAssertEqual(Flavor.retailNote(noun: "iPad", free: FreeSpace(bytes: 120_000_000_000, atLeast: true)),
-                       "Retail can take about 150 GB, and the iPad has at least \(free) free. Retail runs hot on an iPad, near its memory limit.")
-        XCTAssertTrue(Flavor.retailNote(noun: "iPad", free: nil).contains("free space isn't known yet"))
+                       "Retail can take about 150 GB, and the iPad has at least \(free) free.")
+        XCTAssertEqual(Flavor.retailNote(noun: "iPad", free: nil),
+                       "Retail can take about 150 GB; the iPad's free space isn't known yet.")
     }
 
     /// The launcher's spfree.txt: rc10's two lines (Settings' figure, then free outright), an older

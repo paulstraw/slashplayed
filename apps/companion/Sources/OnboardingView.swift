@@ -135,7 +135,7 @@ private struct StepPage: View {
         case .xcode:
             "Slashplayed uses Xcode's tools to sign, install, and start the app on your devices. You won't need Xcode itself after setup."
         case .account:
-            "Any Apple Account works. A free one's Personal Team signs for 7 days at a time, and Play signs again after that. A paid Apple Developer Program team signs for a year."
+            "Slashplayed signs the app with your Apple Account's team, so your devices will run it. Any Apple Account works. A free one's Personal Team signs for 7 days at a time, and Play signs again after that. A paid Apple Developer Program team signs for a year."
         case .device:
             "Slashplayed runs on an iPad with an M1 chip or later or the A17 Pro iPad mini (both untested), an iPhone 15 Pro or later, and Apple Vision Pro."
         case .helper:

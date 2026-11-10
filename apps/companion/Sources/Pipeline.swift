@@ -790,7 +790,7 @@ final class Pipeline {
             return
         }
         set(.build, .active, title: "Building the app…",
-            detail: "Under a minute, on this Mac. The \(device.noun) isn't needed yet.")
+            detail: "Under a minute, on this Mac. The \(device.noun) is needed only at the end, to sign the app.")
         let start = Date()
         do {
             try await ClientBuild.build(device, beforeSigning: {

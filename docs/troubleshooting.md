@@ -123,9 +123,7 @@ Classic's ~23 GB of blocks are spread over every archive of it, so its copy take
 store and covers the others as well, and Retail uses nearly every archive. A game that fetches its own
 data takes only what it has needed so far (Classic Era: about 5 GB after 15 minutes across three zones).
 
-Retail on the iPad or iPhone needs a 512 GB or larger device. It has been played on an M2 iPad, where
-it runs hot and gets a memory warning (see [Heat](#heat)), and on an iPhone 16 Pro. MoP
-Classic has been played on the Vision Pro and an iPhone 16 Pro, and is **untested on the iPad**.
+Retail on the iPad or iPhone needs a 512 GB or larger device.
 
 Ticking a game copies its game program to the device at the next Play (about 50 MB); neither ticking nor
 unticking rebuilds the app. See

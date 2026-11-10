@@ -277,8 +277,9 @@ private struct DeviceGamesSection: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(freeSpaceNote).font(.caption).foregroundStyle(.secondary)
                 // Under the games, the width of the pane.
-                if device.kind != .headset, chosen.contains(.retail) {
-                    Text(Flavor.retailNote(noun: device.noun, free: pipeline.freeSpaces[device.udid]))
+                if device.kind != .headset, chosen.contains(.retail),
+                   let note = Flavor.retailNote(noun: device.noun, free: pipeline.freeSpaces[device.udid]) {
+                    Text(note)
                         .font(.caption).foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 }

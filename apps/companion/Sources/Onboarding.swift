@@ -480,8 +480,8 @@ final class Onboarding {
     /// What to warn about a device's games: Retail on an iPad or iPhone, and more than the free space once known.
     func warnings(for d: DeviceInfo) -> [String] {
         var warnings: [String] = []
-        if d.device.kind != .headset, games(d).contains(.retail) {
-            warnings.append(Flavor.retailNote(noun: d.device.noun, free: freeSpace[d.id]))
+        if d.device.kind != .headset, games(d).contains(.retail), let note = Flavor.retailNote(noun: d.device.noun, free: freeSpace[d.id]) {
+            warnings.append(note)
         }
         // Only a device that copies the Mac's game files needs room for them up front.
         if d.device.copiesGameFiles, let free = freeSpace[d.id], let need = size(d.device.installedFlavors), need > free.bytes {

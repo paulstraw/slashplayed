@@ -161,7 +161,8 @@ enum ClientBuild {
         /// This Mac never installed a build there: the app (if any) is another Mac's, or an older companion's.
         case notFromThisMac
         /// This Mac installed an earlier build (a renewed profile, a new companion, a new team), or the shared
-        /// build the iPad and the iPhone both get was rebuilt since, for the other one.
+        /// build the iPad and the iPhone both get was rebuilt since, for the other one. Or it holds the last
+        /// build, but that build isn't complete (isComplete), so the next build replaces it.
         case olderBuild
         /// The app is in another folder than the install this Mac made: installed again since (another Mac,
         /// Xcode, or deleted and installed again).
@@ -171,11 +172,15 @@ enum ClientBuild {
     /// The decision, from the build's ID, this Mac's record for the device, the app's bundle ID now
     /// (Signing.bundleID), and the app on it. A device that couldn't be asked counts as holding what the
     /// record says. A record of another bundle ID (before a team change) is no record. The games don't come
-    /// into it: a game ticked or unticked is a client copied or left alone, never a new app.
-    static func installNeed(build: String?, record: Installed?, bundleID: String = "", app: Device.AppState) -> InstallNeed {
+    /// into it: a game ticked or unticked is a client copied or left alone, never a new app. A build that
+    /// isn't `complete` (isComplete) is one Play and Setup Assistant's Update rebuild before they install
+    /// (Pipeline.updateBuild), so a device holding it isn't up to date either: Setup Assistant's install step
+    /// said "up to date" for an iPhone that the next Play rebuilt for a new companion's resources.
+    static func installNeed(build: String?, record: Installed?, bundleID: String = "", app: Device.AppState,
+                            complete: Bool = true) -> InstallNeed {
         if app == .missing { return .notOnDevice }
         guard let record, record.bundleID.isEmpty || bundleID.isEmpty || record.bundleID == bundleID else { return .notFromThisMac }
-        guard let build, record.build == build else { return .olderBuild }
+        guard let build, record.build == build, complete else { return .olderBuild }
         if case .present(let url) = app, !record.url.isEmpty, url != record.url { return .replaced }
         return .upToDate
     }
@@ -187,7 +192,7 @@ enum ClientBuild {
     static func installNeed(_ device: Device, askDevice: Bool = true) async -> InstallNeed {
         let build = buildID(device), record = installed(device), bundleID = Signing.bundleID
         let app = askDevice ? await device.app(bundleID) : .unknown
-        return installNeed(build: build, record: record, bundleID: bundleID, app: app)
+        return installNeed(build: build, record: record, bundleID: bundleID, app: app, complete: isComplete(device))
     }
 
     /// Whether the build is the one this Mac last installed on the device (the record alone, no device call).

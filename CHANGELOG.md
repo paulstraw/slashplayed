@@ -19,6 +19,8 @@ All notable changes to Slashplayed are documented here. The format is based on
 - The first time each game starts after this update, the device downloads that game's client once (50 to
   58 MB) as "Getting <game> ready…", since Slashplayed no longer carries the games inside the app. It
   needs the network that one time. Pressing Play in the companion first copies it from your Mac instead.
+- Setup Assistant's Apple Account step says what the account is for: Slashplayed signs the app with its
+  team, so your devices will run it.
 
 ### Removed
 
@@ -43,6 +45,8 @@ All notable changes to Slashplayed are documented here. The format is based on
   installs another game into the same folder. Before, the companion said those games weren't the build
   Blizzard has out now and left the device's game data as it was, and it couldn't show how much space
   they'd take.
+- Setup Assistant's Install Slashplayed step no longer says a device is up to date when the next Play
+  would build and install the app again, as it does after a companion update. It offers Update instead.
 
 ## [1.4.0] - 2026-11-06
 

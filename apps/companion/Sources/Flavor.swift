@@ -114,14 +114,12 @@ extension Flavor {
     static let retailSpace: Int64 = 150_000_000_000
 
     /// What to say about Retail on an iPad or iPhone (onboarding's games, Settings' Games), by the free space
-    /// the companion shows for it (Device.freeSpaceNow): only a device short of room is warned about space,
-    /// so a 1 TB iPhone with 810 GB free isn't told it's more than most have (the rc6 run). Retail has
-    /// played on an M2 iPad (hot, with a memory warning; README) and an iPhone 16 Pro (2026-10-29).
-    static func retailNote(noun: String, free: FreeSpace?) -> String {
-        let note = noun == "iPad" ? "Retail runs hot on an iPad, near its memory limit." : "Retail has been played on an iPhone 16 Pro."
-        guard let free else { return "Retail can take about 150 GB; the \(noun)'s free space isn't known yet. \(note)" }
-        guard free.bytes < retailSpace else { return note }
-        return "Retail can take about 150 GB, and the \(noun) has \(free.text). \(note)"
+    /// the companion shows for it (Device.freeSpaceNow): only a device short of room, or one whose free space
+    /// isn't known yet, is warned, so a 1 TB iPhone with 810 GB free isn't told it's more than most have (the
+    /// rc6 run). nil for a device with room: nothing to say.
+    static func retailNote(noun: String, free: FreeSpace?) -> String? {
+        guard let free else { return "Retail can take about 150 GB; the \(noun)'s free space isn't known yet." }
+        return free.bytes < retailSpace ? "Retail can take about 150 GB, and the \(noun) has \(free.text)." : nil
     }
 }
 

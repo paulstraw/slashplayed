@@ -66,6 +66,23 @@ final class ClientInstallTests: XCTestCase {
         XCTAssertEqual(need(build: nil, record: record(), app: .present(url: here)), .olderBuild)
     }
 
+    /// The install this Mac made, of a build that isn't complete (isComplete: a new companion's launcher and
+    /// shims, another team, a profile about to run out): Play builds again before it installs (updateBuild),
+    /// so Setup Assistant's install step offers Update too, not "Installed" (it said "up to date" for an
+    /// iPhone the next Play rebuilt for a new companion's resources). A missing app still says so.
+    func testAnIncompleteBuildIsNotUpToDate() {
+        func need(_ record: ClientBuild.Installed?, _ app: Device.AppState, complete: Bool) -> ClientBuild.InstallNeed {
+            ClientBuild.installNeed(build: "b1", record: record, app: app, complete: complete)
+        }
+        for app in [Device.AppState.present(url: here), .unknown] {
+            XCTAssertEqual(need(record(), app, complete: false), .olderBuild)
+            XCTAssertEqual(SetupStatus.installState(need(record(), app, complete: false), wake: nil).button, "Update")
+            XCTAssertEqual(need(record(), app, complete: true), .upToDate)
+        }
+        XCTAssertEqual(need(record(), .missing, complete: false), .notOnDevice)
+        XCTAssertEqual(need(nil, .present(url: here), complete: false), .notFromThisMac)
+    }
+
     /// devicectl's listing of every app: a listing without the device's built-in apps is cut short and says
     /// nothing (rc7: the headset's Slashplayed and LocalDevVPN "missing" for one session, listed the next),
     /// so setup doesn't say "Not installed" and Play doesn't install again for it.
