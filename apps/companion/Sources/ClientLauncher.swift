@@ -191,6 +191,9 @@ final class ClientLauncher {
                 }
                 try? await Task.sleep(for: .milliseconds(200))
             }
+            // spguest's detach comes ~0.1 s after the helper's attach, often within one poll, which then ends
+            // the loop before it saw the attach: "Client started" would never show (2 of 3 Plays did that).
+            if detached.value && !preparing { onPhase(.preparing) }
             pid = try? await device.clientPID()
             if detached.value {
                 log("prepared\(pid.map { ", pid \($0)" } ?? "")")
