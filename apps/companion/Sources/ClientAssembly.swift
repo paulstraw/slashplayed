@@ -77,6 +77,11 @@ enum ClientAssembly {
             Stamp(product: product, branch: version.region, buildKey: version.buildConfig, version: version.versionsName)
         }
 
+        /// Whether the client is `version`'s build, by its Build Key alone: the launcher's region_sync writes
+        /// the region chosen in the device's Settings into the stamp's Branch, so an up-to-date client's
+        /// stamp can differ from `from(product:version:)`'s in its Branch.
+        func isBuild(_ version: BlizzardCDN.Version) -> Bool { buildKey == version.buildConfig }
+
         var text: String {
             "Product!STRING:0|Branch!STRING:0|Build Key!HEX:16|Version!STRING:0\n\(product)|\(branch)|\(buildKey)|\(version)\n"
         }

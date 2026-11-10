@@ -914,8 +914,9 @@ final class Pipeline {
     /// check and checks `flavor`'s games even when they're up to date, so it fires without a patch. A client
     /// running on the device maps the file it loaded, so it's stopped just before the first write to the
     /// device, once a slice is downloaded and binds: a download that fails, or a patch this version can't
-    /// run, leaves a game being played alone. Borrows the install step's row as setUpHelper does. A copy that
-    /// fails otherwise is logged, and the next action copies it again.
+    /// run, leaves a game being played alone; so does a process listing that fails, which fails that copy.
+    /// Borrows the install step's row as setUpHelper does. A copy that fails otherwise is logged, and the next
+    /// action copies it again.
     private func copyGameClients(for flavor: Flavor?) async throws {
         guard let clients = try await checkDeviceUpdates() else { return }
         let device = device, installed = steps.first { $0.id == .install }
@@ -956,8 +957,18 @@ final class Pipeline {
                     self?.appendLog("[companion] \($0)")
                 }, beforeWrite: {
                     guard !stopped else { return }
+                    // A listing that failed can't say no client is running, so this game's copy waits for the
+                    // next action rather than write over a file a running client maps; the next game asks again.
+                    let pid: Int?
+                    do {
+                        pid = try await device.clientPID()
+                    } catch let e as CancellationError {
+                        throw e
+                    } catch {
+                        throw Failure("the \(device.noun)'s running processes couldn't be listed to stop a client that may be running (\(error.localizedDescription))")
+                    }
                     stopped = true
-                    guard let pid = try? await device.clientPID() else { return }
+                    guard let pid else { return }
                     self.set(.install, .active, title: "Stopping the client running on the \(device.noun)…")
                     self.appendLog("[companion] stopping the client running on the \(device.noun) (pid \(pid)) before copying over its file")
                     await device.kill(pid: pid)
@@ -1052,7 +1063,7 @@ final class Pipeline {
             for f in device.flavors {
                 guard let client = onDevice[f] else { continue }
                 clients[f.product] = client.buildKey
-                if let version = latest[f], client == .from(product: f.product, version: version), !aheadProducts.contains(f.product) {
+                if let version = latest[f], client.isBuild(version), !aheadProducts.contains(f.product) {
                     builds.append(try await GameFiles.build(f, version: version))
                 }
             }

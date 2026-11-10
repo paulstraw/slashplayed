@@ -136,9 +136,11 @@ enum ClientBuild {
             }
             gone.append("certificate/" + name)
         }
-        if fm.fileExists(atPath: certificate.path) { try? fm.removeItem(at: certificate) }
-        // The keychain's password, one item per keychain file the certificate had (SecItemDelete takes them all).
-        if SecItemDelete([kSecClass: kSecClassGenericPassword, kSecAttrService: "Slashplayed certificate keychain"] as CFDictionary)
+        let had = fm.fileExists(atPath: certificate.path)
+        if had { try? fm.removeItem(at: certificate) }
+        // The keychain's password, one item per keychain file the certificate had (SecItemDelete takes them all),
+        // only on a Mac that had the certificate: otherwise every start would ask the login keychain, which can prompt.
+        if had, SecItemDelete([kSecClass: kSecClassGenericPassword, kSecAttrService: "Slashplayed certificate keychain"] as CFDictionary)
             == errSecSuccess {
             gone.append("the certificate keychain's password")
         }

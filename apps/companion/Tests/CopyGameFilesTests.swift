@@ -235,6 +235,20 @@ final class CopyGameFilesTests: XCTestCase {
         XCTAssertFalse(sp_update_caught_up(["Version": "1.15.9.70003"], ["Build Key": "bbbb", "Version": "1.15.9.70003"]))
     }
 
+    /// A client whose stamp the launcher moved to the region chosen in the device's Settings (region_sync
+    /// rewrites its Branch) is still the CDN's build, so the files step sends its rows and configs; another
+    /// build of the same version isn't.
+    func testAClientStampedInAnotherRegionIsStillItsBuild() throws {
+        let version = BlizzardCDN.Version(region: "us", buildConfig: "bbbb", cdnConfig: "cccc", keyRing: "", buildID: "70003",
+                                          versionsName: "1.15.9.70003", productConfig: "")
+        let text = "Product!STRING:0|Branch!STRING:0|Build Key!HEX:16|Version!STRING:0\nwow_classic_era|eu|bbbb|1.15.9.70003\n"
+        let device = try ClientAssembly.Stamp.from(product: "wow_classic_era",
+                                                   row: GameStore.BuildInfo(text)?.byProduct["wow_classic_era"])
+        XCTAssertNotEqual(device, .from(product: "wow_classic_era", version: version))  // its Branch is eu
+        XCTAssertTrue(device.isBuild(version))
+        XCTAssertFalse(stamp("aaaa", "1.15.9.70003").isBuild(version))
+    }
+
     /// A game whose client on the device is newer keeps the device's store whole, ahead of the other reasons.
     func testAnUpdateAheadKeepsTheStore() {
         XCTAssertEqual(GameFiles.storeKept(copy: true, newer: ["wow_classic_era"], differs: ["wow"], outranking: 3),
