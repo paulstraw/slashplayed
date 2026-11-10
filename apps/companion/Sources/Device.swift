@@ -581,15 +581,25 @@ struct Device: Identifiable, Hashable {
         return files
     }
 
-    /// The running client's pid (the launcher, Slashplayed.app/slashplayed), if any.
+    /// The running client's pid (the launcher, this team's Slashplayed.app/slashplayed), if any.
     func clientPID() async throws -> Int? {
         let result = try await Self.json(["device", "info", "processes", "--device", udid])
-        for p in result["runningProcesses"] as? [[String: Any]] ?? [] {
-            if (p["executable"] as? String ?? "").hasSuffix("/Slashplayed.app/slashplayed") {
-                return p["processIdentifier"] as? Int
-            }
-        }
-        return nil
+        return Self.clientPID(in: result["runningProcesses"] as? [[String: Any]] ?? [], app: await app(Self.bundleID))
+    }
+
+    /// The client's pid in devicectl's process listing: the one running from this team's app (`app`, its
+    /// bundle folder), since a device can hold two teams' Slashplayed.app, and Play stopped the paid team's
+    /// running game before copying into the free team's (2026-11-09). A listing of apps cut short says
+    /// nothing, so then any Slashplayed's is taken, as before, rather than copy under a running client.
+    static func clientPID(in processes: [[String: Any]], app: AppState) -> Int? {
+        if app == .missing { return nil }
+        let executable = if case .present(let url) = app, let folder = URL(string: url) {
+            folder.appending(path: "slashplayed").absoluteString
+        } else { String?.none }
+        return processes.first {
+            let path = $0["executable"] as? String ?? ""
+            return executable.map { path == $0 } ?? path.hasSuffix("/Slashplayed.app/slashplayed")
+        }?["processIdentifier"] as? Int
     }
 
     /// Whether a provisioning profile is installed on the device (device-wide, not only this app's).

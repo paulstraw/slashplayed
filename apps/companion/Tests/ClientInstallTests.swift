@@ -86,6 +86,19 @@ final class ClientInstallTests: XCTestCase {
         XCTAssertEqual(need(record: record(), app: Device.appState("TEAM.slashplayed", in: [])), .upToDate)
     }
 
+    /// The client the companion stops before a copy is this team's: with two teams' apps on one iPhone, Play
+    /// stopped the other's running game (2026-11-09). Executables as devicectl lists them.
+    func testClientPIDIsThisTeamsApp() {
+        let other: [String: Any] = ["executable": there + "slashplayed", "processIdentifier": 29429]
+        let ours: [String: Any] = ["executable": here + "slashplayed", "processIdentifier": 29783]
+        let launchd: [String: Any] = ["executable": "file:///sbin/launchd", "processIdentifier": 1]
+        XCTAssertEqual(Device.clientPID(in: [launchd, other, ours], app: .present(url: here)), 29783)
+        XCTAssertNil(Device.clientPID(in: [launchd, other], app: .present(url: here)))
+        XCTAssertNil(Device.clientPID(in: [launchd, other], app: .missing))
+        // An app listing cut short says nothing about which: any Slashplayed's, as before.
+        XCTAssertEqual(Device.clientPID(in: [launchd, other], app: .unknown), 29429)
+    }
+
     /// devicectl lockState's JSON, as captured: an unlocked iPhone answers passcodeRequired; an unworn
     /// headset fails with "the device was still locked" (rc8's run), which counts as locked so Play waits
     /// before provisioning and launching; a Wi-Fi tunnel drop under the call (rc16's run) is a drop, which
