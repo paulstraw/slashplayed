@@ -417,9 +417,10 @@ struct SettingsView: View {
         } header: {
             Text(g.name)
         } footer: {
+            // About the region only: the build row above says where the client came from.
             Text(g.regionHere
                  ? "Region is where your realms are. The game’s language follows this \(sp_device_noun())’s. A change applies the next time the game starts."
-                 : "\(g.name) came from your Mac. To change its region, change it in Battle.net on your Mac, then press Play in Slashplayed Companion.")
+                 : "\(g.name)’s region is set in Battle.net on your Mac. To change it, change it there, then press Play in Slashplayed Companion.")
         }
     }
 
