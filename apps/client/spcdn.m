@@ -924,9 +924,21 @@ NSString *sp_slice_problem(NSString *path) {
 NSString *sp_slice_retire(NSString *games, NSString *flavor, NSString *product) {
     NSFileManager *fm = NSFileManager.defaultManager;
     NSString *file = [games stringByAppendingPathComponent:[@"wow-" stringByAppendingString:flavor]];
-    if (![fm fileExistsAtPath:file]) return nil;
+    // What 1.4 and earlier left when a crash or a full disk stopped its signing part way (spsign.m's sp_sign
+    // wrote <dest>.signing, then <dest>.signed, beside the image; an Update signed into wow-<flavor>.signing
+    // first, so its own were .signing.signing and .signing.signed): nothing reads them, and each is a client's size.
+    NSMutableArray<NSString *> *leftovers = [NSMutableArray array];
+    for (NSString *suffix in @[@".signing", @".signed", @".signing.signing", @".signing.signed"]) {
+        NSString *path = [file stringByAppendingString:suffix];
+        unsigned long long size = [fm attributesOfItemAtPath:path error:nil].fileSize;
+        if ([fm removeItemAtPath:path error:nil])
+            [leftovers addObject:[NSString stringWithFormat:@"%@ (%.1f MB)", path.lastPathComponent, size / 1e6]];
+    }
+    NSString *left = leftovers.count ? [NSString stringWithFormat:@"deleted what an older Slashplayed's signing left in Library/spgames: %@",
+                                                                  [leftovers componentsJoinedByString:@", "]] : nil;
+    if (![fm fileExistsAtPath:file]) return left;
     NSString *why = sp_slice_problem(file);
-    if (!why) return nil;
+    if (!why) return left;
     NSString *stamp = [games stringByAppendingPathComponent:[@"spbuild-" stringByAppendingString:flavor]];
     NSString *version = sp_table_row([NSString stringWithContentsOfFile:stamp encoding:NSUTF8StringEncoding error:nil], @"Product",
                                      product)[@"Version"];
@@ -935,8 +947,8 @@ NSString *sp_slice_retire(NSString *games, NSString *flavor, NSString *product) 
     [fm removeItemAtPath:file error:nil];
     for (NSString *name in @[@"spbuildinfo-", @"spsource-"])
         [fm removeItemAtPath:[games stringByAppendingPathComponent:[name stringByAppendingString:flavor]] error:nil];
-    return [NSString stringWithFormat:@"retired Library/spgames/wow-%@ (%@ %@, %.1f MB): %@; the game data stays", flavor, product,
-                                      version ?: @"with no stamp", size / 1e6, why];
+    return [NSString stringWithFormat:@"retired Library/spgames/wow-%@ (%@ %@, %.1f MB): %@; the game data stays%@", flavor, product,
+                                      version ?: @"with no stamp", size / 1e6, why, left ? [@"; " stringByAppendingString:left] : @""];
 }
 
 NSArray<NSString *> *sp_games(NSArray<NSString *> *order, NSArray<NSString *> *made, NSSet<NSString *> **installable) {

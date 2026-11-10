@@ -168,7 +168,9 @@ NSString *_Nullable sp_slice_problem(NSString *path);
 // The game's client in `games` (Library/spgames: wow-<flavor>) retired when it isn't a slice spguest can
 // load (sp_slice_problem): its stamp first (spbuild-<flavor>, so a file left behind is never taken for its
 // build), then the file, its kept .build.info row (spbuildinfo-<flavor>), and spsource-<flavor>. The game
-// data stays. A line for the log (versions, sizes, and the reason), or nil when there was nothing to retire.
+// data stays. Whatever the client, the copies 1.4 and earlier left beside it when their signing stopped part
+// way (wow-<flavor>.signing, .signed) go too. A line for the log (versions, sizes, and the reason), or nil when
+// there was nothing to retire.
 NSString *_Nullable sp_slice_retire(NSString *games, NSString *flavor, NSString *product);
 
 // The games the start screen offers: every game flavors.plist lists (`order`, its ids; any other last, by

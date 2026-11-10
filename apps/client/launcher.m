@@ -17,7 +17,8 @@
 // ticked game uses. Then it writes the space left on the device to Library/spfree.txt, for the companion's
 // free space and its check that a copy fits (write_free_space). It retires a Library/spgames file that isn't
 // a client spguest can load (an image an older Slashplayed assembled and signed there, an MH_BUNDLE, or a cut
-// short copy: sp_slice_retire), and deletes the signing identity an older one kept (forget_identity). Before the
+// short copy: sp_slice_retire, which also deletes what an older one's signing left beside it), and deletes the
+// signing identity an older one kept (forget_identity). Before the
 // start screen, a leftover login.txt in any game's folder is deleted (splogin.m). Once the flavor is picked: a
 // game with game data but no client (an upgrade, whose images were retired) gets its data's own build of the
 // client from Blizzard's CDN ("Getting <game> ready", sppatch.m), and one with neither is installed. On an

@@ -72,6 +72,13 @@ static void *prepare_text(void *text, size_t size, void *context) {
     t_detach = now() - t;
     // The companion (ClientLauncher.Marker.detached) and run.sh follow the launch to this line.
     say([NSString stringWithFormat:@"detached (traced=%d) in %.3f s", sp_traced(), t_detach]);
+    // The bundled helper answers with the address it was given. Another answer is a debugger that prepared
+    // something else, or nothing, so __TEXT may not run: the load is refused (once the debugger is gone, so a
+    // failed launch isn't left stopped), as libspSystem's prepare refused it with EACCES.
+    if (r != (uintptr_t)text) {
+        say([NSString stringWithFormat:@"FAIL prepare: the debugger answered %#lx, not %p", r, text]);
+        return NULL;
+    }
     vm_address_t w = 0;
     vm_prot_t cur, max;
     kern_return_t kr = vm_remap(mach_task_self(), &w, size, 0, VM_FLAGS_ANYWHERE, mach_task_self(), (vm_address_t)text,

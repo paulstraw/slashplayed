@@ -60,6 +60,11 @@ final class DeviceInstallTests: XCTestCase {
         XCTAssertNil(sp_slice_problem(games.appending(path: "wow-classic_era").path))
         XCTAssertNil(sp_slice_retire(games.path, "classic_era", "wow_classic_era"))
         XCTAssertEqual(try left(), all)
+        // What a 1.4 device's signing left when it stopped part way goes, beside a client that stays.
+        for name in ["wow-classic_era.signing", "wow-classic_era.signed"] { try Data("x".utf8).write(to: games.appending(path: name)) }
+        let leftovers = try XCTUnwrap(sp_slice_retire(games.path, "classic_era", "wow_classic_era"))
+        XCTAssertTrue(leftovers.contains("wow-classic_era.signing (0.0 MB), wow-classic_era.signed"), leftovers)
+        XCTAssertEqual(try left(), all)
 
         // An older Slashplayed's image: retired, with all three beside it.
         try place(try Data(contentsOf: bundle))

@@ -1,8 +1,9 @@
 #!/bin/bash
 # guesttest, spguest's test (../spguest.c, the launcher's loader; research/guestloadtest/README.md has the
 # research and the device runs).
-#   ./build.sh mac      builds the toy guest and the Mac host, and runs the toy on the Mac: exits non-zero on
-#                       any failed check. CI runs it with SP_GUEST_REFS=none (.github/workflows/ci.yml).
+#   ./build.sh mac      builds the toy guest and the Mac host, and runs the toy on the Mac, then tries broken
+#                       copies of it (malformed.c): exits non-zero on any failed check, or a broken copy taken or
+#                       crashed on. CI runs it with SP_GUEST_REFS=none (.github/workflows/ci.yml).
 #   ./build.sh device   builds the toy and SPGuestLoadTest.app (the device host, with the on-device JIT helper,
 #                       PlugIns/SPJitHelper.appex), signs it, and installs it. The toy itself is never signed:
 #                       run.sh copies it into the app's Documents/.
@@ -53,6 +54,10 @@ if [ "$MODE" = mac ]; then
   codesign -f -s - $OUT/host
   rm -f $OUT/toy.log
   SP_GUEST_LOG=$OUT/toy.log $OUT/host $OUT/toy-guest
+  # Broken copies of the toy, each of which spguest must refuse with its reason, not crash on (malformed.c).
+  clang -arch arm64 -mmacosx-version-min=11.0 -O1 -Wall -I .. malformed.c ../spguest.c ../spguest_tlv.S -o $OUT/malformed
+  codesign -f -s - $OUT/malformed
+  $OUT/malformed $OUT/toy-guest $OUT
   exit
 fi
 

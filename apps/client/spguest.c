@@ -88,6 +88,20 @@ static uint32_t be32(const uint8_t *p) { return p[0] << 24 | p[1] << 16 | p[2] <
 
 static bool rd(int fd, uint64_t off, void *out, size_t n) { return pread(fd, out, n, off) == (ssize_t)n; }
 
+// The bytes a command's struct takes, which its cmdsize must cover before any field past the first two is
+// read: a cmdsize of 8 on the last command would otherwise read past the end of the commands.
+static uint32_t command_struct_size(uint32_t cmd) {
+    switch (cmd) {
+    case LC_SEGMENT_64: return sizeof(struct segment_command_64);
+    case LC_LOAD_DYLIB: case LC_LOAD_WEAK_DYLIB: case LC_REEXPORT_DYLIB: case LC_LOAD_UPWARD_DYLIB: return sizeof(struct dylib_command);
+    case LC_DYLD_INFO: case LC_DYLD_INFO_ONLY: return sizeof(struct dyld_info_command);
+    case LC_DYLD_EXPORTS_TRIE: return sizeof(struct linkedit_data_command);
+    case LC_MAIN: return sizeof(struct entry_point_command);
+    case LC_ENCRYPTION_INFO_64: return sizeof(struct encryption_info_command_64);
+    default: return sizeof(struct load_command);
+    }
+}
+
 static void spguest_free(SPGuest *g) {
     for (int i = 0; i < g->nlibs; i++) free(g->libs[i]);
     free(g->linkedit_copy);
@@ -101,7 +115,7 @@ static void spguest_free(SPGuest *g) {
 // refuses (the launcher's preflight, an Update's, and the start's retire: sp_slice_problem in spcdn.m).
 static bool parse(SPGuest *g, char *error, size_t es) {
     uint8_t *cmds = NULL;
-#define REFUSE(...) do { free(cmds); return fail(error, es, __VA_ARGS__); } while (0)
+#define REFUSE(...) do { fail(error, es, __VA_ARGS__); free(cmds); return false; } while (0)  // names in cmds first
     g->fd = open(g->path, O_RDONLY);
     if (g->fd < 0) REFUSE("it can't be opened (%s)", strerror(errno));
     struct stat st;
@@ -132,31 +146,47 @@ static bool parse(SPGuest *g, char *error, size_t es) {
     cmds = malloc(mh.sizeofcmds);
     if (!cmds || !rd(g->fd, g->slice + sizeof mh, cmds, mh.sizeofcmds)) REFUSE("its load commands are cut short");
 
-    bool have_main = false;
-    uint64_t text_vm = 0, file_end = 0;
+    // Every size below is checked before what it covers is read, in 64 bits so no sum wraps: this runs at
+    // every start, before the start screen, so a corrupt or hostile file must be refused, never crash it.
+    bool have_main = false, have_linkedit = false;
+    uint64_t text_vm = UINT64_MAX, text_size = 0, file_end = 0;
     g->low = UINT64_MAX;
     uint64_t end = 0;
+    int nsegments = 0;
     for (uint32_t c = 0, off = 0; c < mh.ncmds; c++) {
         const struct load_command *lc = (const void *)(cmds + off);
-        if (off + sizeof *lc > mh.sizeofcmds || lc->cmdsize < 8 || off + lc->cmdsize > mh.sizeofcmds)
+        if (sizeof *lc > (uint64_t)mh.sizeofcmds - off || lc->cmdsize < command_struct_size(lc->cmd) ||
+            lc->cmdsize > (uint64_t)mh.sizeofcmds - off)
             REFUSE("its load command %u is malformed", c);
         switch (lc->cmd) {
         case LC_SEGMENT_64: {
             const struct segment_command_64 *s = (const void *)lc;
             if (lc->cmdsize < sizeof *s + (uint64_t)s->nsects * sizeof(struct section_64))
                 REFUSE("its load command %u is malformed", c);
+            // The opcodes' segment indexes count __PAGEZERO as 0 and __LINKEDIT last; g->seg skips both.
+            bool pagezero = !strcmp(s->segname, "__PAGEZERO"), linkedit = !strcmp(s->segname, "__LINKEDIT");
+            if ((nsegments++ == 0) != pagezero) REFUSE("__PAGEZERO isn't its first segment");
+            if (have_linkedit) REFUSE("__LINKEDIT isn't its last segment");
+            if (s->filesize > s->vmsize) REFUSE("its segment %.16s is larger in the file than in memory", s->segname);
+            if (s->fileoff > UINT64_MAX - s->filesize || s->vmaddr > UINT64_MAX - s->vmsize)
+                REFUSE("its load command %u is malformed", c);
             if (s->fileoff + s->filesize > file_end) file_end = s->fileoff + s->filesize;
-            if (!strcmp(s->segname, "__PAGEZERO") || !strcmp(s->segname, "__LINKEDIT")) break;
+            have_linkedit = linkedit;
+            if (pagezero || linkedit) break;
             if (g->nseg == MAX_SEG) REFUSE("it has more than %d segments", MAX_SEG);
+            if (s->vmaddr < end) REFUSE("its segment %.16s overlaps the one before it", s->segname);
             Seg *d = &g->seg[g->nseg++];
             memcpy(d->name, s->segname, 16);
             d->vmaddr = s->vmaddr; d->vmsize = s->vmsize; d->fileoff = s->fileoff; d->filesize = s->filesize;
             d->prot = s->initprot;
             if (s->vmaddr < g->low) g->low = s->vmaddr;
             if (s->vmaddr + s->vmsize > end) end = s->vmaddr + s->vmsize;
-            if (!strcmp(s->segname, "__TEXT")) text_vm = s->vmaddr;
+            if (!strcmp(s->segname, "__TEXT")) { text_vm = s->vmaddr; text_size = s->vmsize; }
             const struct section_64 *sec = (const void *)(s + 1);
             for (uint32_t i = 0; i < s->nsects; i++) {
+                // The sections kept below are read and run in place, so each must lie in its segment.
+                if (sec[i].addr < s->vmaddr || sec[i].size > s->vmsize || sec[i].addr - s->vmaddr > s->vmsize - sec[i].size)
+                    REFUSE("its section %.16s is outside its segment", sec[i].sectname);
                 unsigned type = sec[i].flags & SECTION_TYPE;
                 if (type == S_MOD_INIT_FUNC_POINTERS || type == S_INIT_FUNC_OFFSETS) {
                     g->init_addr = sec[i].addr; g->init_size = sec[i].size; g->init_offsets = type == S_INIT_FUNC_OFFSETS;
@@ -200,9 +230,12 @@ static bool parse(SPGuest *g, char *error, size_t es) {
     }
     if (!have_main) REFUSE("it has no entry point (LC_MAIN)");
     if (!g->nseg || g->low != text_vm) REFUSE("__TEXT isn't its first segment");
-    // A copy that stopped part way (devicectl's, or a download's): the segments run past the file's end.
-    if (g->slice + file_end > (uint64_t)st.st_size)
-        REFUSE("it's cut short (%.1f of %.1f MB)", st.st_size / 1e6, (g->slice + file_end) / 1e6);
+    if (g->entry >= text_size) REFUSE("its entry point is outside __TEXT");
+    if (end - g->low > UINT64_MAX - PAGE) REFUSE("its segments span more memory than there is");
+    // A copy that stopped part way (devicectl's, or a download's): the segments run past the file's end. The
+    // slice's header was read, so it starts inside the file.
+    if (file_end > (uint64_t)st.st_size - g->slice)
+        REFUSE("it's cut short (%.1f of %.1f MB)", st.st_size / 1e6, ((double)g->slice + file_end) / 1e6);
     free(cmds);
     g->span = (end - g->low + PAGE - 1) & ~(uint64_t)(PAGE - 1);
     return true;
@@ -231,15 +264,16 @@ SPGuest *spguest_load(const char *path, const SPGuestOptions *options, char *err
         spguest_free(g);
         return NULL;
     }
-    // Streams and the export trie come from the file; __LINKEDIT is never mapped.
-    uint32_t lo = UINT32_MAX, hi = 0;
+    // Streams and the export trie come from the file; __LINKEDIT is never mapped. 64-bit ends, so a stream
+    // whose end wraps can't make the copy shorter than the stream (the read refuses one past the file's end).
+    uint64_t lo = UINT64_MAX, hi = 0;
     uint32_t spans[][2] = {{g->dyld.rebase_off, g->dyld.rebase_size}, {g->dyld.bind_off, g->dyld.bind_size},
                            {g->dyld.weak_bind_off, g->dyld.weak_bind_size}, {g->dyld.lazy_bind_off, g->dyld.lazy_bind_size},
                            {g->exp_off, g->exp_size}};
     for (int i = 0; i < 5; i++) {
         if (!spans[i][1]) continue;
         if (spans[i][0] < lo) lo = spans[i][0];
-        if (spans[i][0] + spans[i][1] > hi) hi = spans[i][0] + spans[i][1];
+        if ((uint64_t)spans[i][0] + spans[i][1] > hi) hi = (uint64_t)spans[i][0] + spans[i][1];
     }
     if (hi > lo) {
         g->linkedit_copy = malloc(hi - lo);
@@ -327,6 +361,7 @@ static uintptr_t own_export(const SPGuest *g, const char *name, bool *weak) {
             c += len + 1;
             uint64_t off;
             if (!uleb(&c, end, &off)) return 0;
+            if (off >= (uint64_t)(end - t)) return 0;
             if (!next && !strncmp((const char *)edge, name, len)) { next = t + off; used = len; }
         }
         if (!next) return 0;
@@ -469,11 +504,16 @@ typedef struct {
 
 static uint8_t *at(SPGuest *g, uint64_t vmaddr) { return g->base + (vmaddr - g->low); }
 
-// Writes go to the right view: __TEXT through its alias, everything else in place.
-static void *wr(SPGuest *g, uint64_t vmaddr) {
+// Where a fixup's pointer at `vmaddr` in g->seg[seg] (the opcodes' segment, less __PAGEZERO) is written:
+// __TEXT through its alias, everything else in place. NULL unless it's wholly inside that segment, as dyld
+// requires, so a stream that walks off its segment is refused instead of writing past the mapping.
+static uintptr_t *wr(SPGuest *g, int seg, uint64_t vmaddr) {
+    if (seg < 0 || seg >= g->nseg) return NULL;
+    const Seg *s = &g->seg[seg];
+    if (vmaddr < s->vmaddr || s->vmsize < 8 || vmaddr - s->vmaddr > s->vmsize - 8) return NULL;
     uint64_t off = vmaddr - g->low;
-    if (off >= g->text_off && off < g->text_off + g->text_size) return g->text_w + (off - g->text_off);
-    return g->base + off;
+    if (off >= g->text_off && off < g->text_off + g->text_size) return (uintptr_t *)(g->text_w + (off - g->text_off));
+    return (uintptr_t *)(g->base + off);
 }
 
 static bool resolve(SPGuest *g, BindState *b, uintptr_t *out) {
@@ -500,6 +540,8 @@ static bool resolve(SPGuest *g, BindState *b, uintptr_t *out) {
 }
 
 static bool bind_one(SPGuest *g, BindState *b, char *error, size_t es) {
+    uintptr_t *loc = wr(g, b->seg, b->addr);
+    if (!loc) return fail(error, es, "bind: %s's pointer is outside its segment", b->symbol);
     uintptr_t v = 0;
     bool ok = resolve(g, b, &v);
     if (!ok) {
@@ -512,16 +554,20 @@ static bool bind_one(SPGuest *g, BindState *b, char *error, size_t es) {
         v = 0;
         if (b->weak_stream) return true;  // no other definition: the guest's own pointer stays
     }
-    *(uintptr_t *)wr(g, b->addr) = v + b->addend;
+    *loc = v + b->addend;
     b->bound++;
     return true;
 }
 
+// The opcode streams are read only up to their end: a stream cut short (a ULEB, a symbol's name, or an
+// addend running past it) is refused, as is a repeat count larger than the pointers its segment holds.
 static bool run_bind(SPGuest *g, const uint8_t *s, size_t size, bool lazy, bool weak_stream, size_t *unresolved,
                      char *error, size_t es) {
-    BindState b = {.lazy = lazy, .weak_stream = weak_stream};
+    BindState b = {.lazy = lazy, .weak_stream = weak_stream, .seg = -1};
     const uint8_t *p = s, *end = s + size;
     uint64_t v;
+#define ULEB(x) do { if (!uleb(&p, end, &(x))) return fail(error, es, "bind: its opcodes are cut short"); } while (0)
+#define BIND() do { if (!bind_one(g, &b, error, es)) return false; } while (0)
     while (p < end) {
         uint8_t op = *p & BIND_OPCODE_MASK, imm = *p & BIND_IMMEDIATE_MASK;
         p++;
@@ -530,38 +576,43 @@ static bool run_bind(SPGuest *g, const uint8_t *s, size_t size, bool lazy, bool 
             if (lazy) { b.flags = 0; b.addend = 0; break; }  // each lazy entry ends with one
             goto done;
         case BIND_OPCODE_SET_DYLIB_ORDINAL_IMM: b.ordinal = imm; break;
-        case BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB: uleb(&p, end, &v); b.ordinal = (int)v; break;
+        case BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB: ULEB(v); b.ordinal = (int)v; break;
         case BIND_OPCODE_SET_DYLIB_SPECIAL_IMM: b.ordinal = imm ? (int8_t)(BIND_OPCODE_MASK | imm) : 0; break;
-        case BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM:
+        case BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM: {
+            size_t n = strnlen((const char *)p, end - p);
+            if (n == (size_t)(end - p)) return fail(error, es, "bind: its opcodes are cut short");
             b.flags = imm;
             strlcpy(b.symbol, (const char *)p, sizeof b.symbol);
-            p += strlen((const char *)p) + 1;
+            p += n + 1;
             break;
+        }
         case BIND_OPCODE_SET_TYPE_IMM: b.type = imm; break;
         case BIND_OPCODE_SET_ADDEND_SLEB: {
-            int64_t r = 0; unsigned sh = 0; uint8_t c;
-            do { c = *p++; r |= (int64_t)(c & 0x7f) << sh; sh += 7; } while (c & 0x80);
-            if (sh < 64 && (c & 0x40)) r |= -((int64_t)1 << sh);
-            b.addend = r;
+            uint64_t r = 0; unsigned sh = 0; uint8_t c;
+            do {
+                if (p == end || sh >= 64) return fail(error, es, "bind: its opcodes are cut short");
+                c = *p++; r |= (uint64_t)(c & 0x7f) << sh; sh += 7;
+            } while (c & 0x80);
+            if (sh < 64 && (c & 0x40)) r |= ~(uint64_t)0 << sh;
+            b.addend = (int64_t)r;
             break;
         }
-        case BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB: {
-            uleb(&p, end, &v);
-            if (imm >= g->nseg + 1) return fail(error, es, "bind: bad segment %u", imm);
-            // Segment indexes count __PAGEZERO as 0 and __LINKEDIT last; g->seg skips both.
+        case BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB:
+            ULEB(v);
+            // Segment indexes count __PAGEZERO as 0 and __LINKEDIT last (parse requires both); g->seg skips both.
+            if (imm < 1 || imm > g->nseg) return fail(error, es, "bind: segment index %u", imm);
             b.seg = imm - 1;
-            if (b.seg < 0 || b.seg >= g->nseg) return fail(error, es, "bind: segment index %u", imm);
             b.addr = g->seg[b.seg].vmaddr + v;
             break;
-        }
-        case BIND_OPCODE_ADD_ADDR_ULEB: uleb(&p, end, &v); b.addr += v; break;
-        case BIND_OPCODE_DO_BIND: bind_one(g, &b, error, es); b.addr += 8; break;
-        case BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB: bind_one(g, &b, error, es); uleb(&p, end, &v); b.addr += 8 + v; break;
-        case BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED: bind_one(g, &b, error, es); b.addr += 8 + imm * 8; break;
+        case BIND_OPCODE_ADD_ADDR_ULEB: ULEB(v); b.addr += v; break;
+        case BIND_OPCODE_DO_BIND: BIND(); b.addr += 8; break;
+        case BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB: BIND(); ULEB(v); b.addr += 8 + v; break;
+        case BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED: BIND(); b.addr += 8 + imm * 8; break;
         case BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB: {
             uint64_t count, skip;
-            uleb(&p, end, &count); uleb(&p, end, &skip);
-            for (uint64_t i = 0; i < count; i++) { bind_one(g, &b, error, es); b.addr += 8 + skip; }
+            ULEB(count); ULEB(skip);
+            if (b.seg < 0 || count > g->seg[b.seg].vmsize / 8) return fail(error, es, "bind: a repeat past its segment");
+            for (uint64_t i = 0; i < count; i++) { BIND(); b.addr += 8 + skip; }
             break;
         }
         default: return fail(error, es, "bind: unsupported opcode %#x", op);
@@ -571,14 +622,22 @@ done:
     *unresolved += b.unresolved;
     glog(g, "%s: %zu bound, %zu unresolved", lazy ? "lazy" : weak_stream ? "weak" : "bind", b.bound, b.unresolved);
     return true;
+#undef BIND
+#undef ULEB
 }
 
 static bool run_rebase(SPGuest *g, const uint8_t *s, size_t size, char *error, size_t es) {
     const uint8_t *p = s, *end = s + size;
     uint64_t addr = 0, v;
+    int seg = -1;
     uint8_t type = REBASE_TYPE_POINTER;
     size_t n = 0;
-#define REBASE() do { uintptr_t *loc = wr(g, addr); *loc += g->slide; n++; } while (0)
+#define ULEB(x) do { if (!uleb(&p, end, &(x))) return fail(error, es, "rebase: its opcodes are cut short"); } while (0)
+#define REBASE() do { \
+        uintptr_t *loc = wr(g, seg, addr); \
+        if (!loc) return fail(error, es, "rebase: a pointer outside its segment"); \
+        *loc += g->slide; n++; \
+    } while (0)
     while (p < end) {
         uint8_t op = *p & REBASE_OPCODE_MASK, imm = *p & REBASE_IMMEDIATE_MASK;
         p++;
@@ -586,18 +645,20 @@ static bool run_rebase(SPGuest *g, const uint8_t *s, size_t size, char *error, s
         case REBASE_OPCODE_DONE: goto done;
         case REBASE_OPCODE_SET_TYPE_IMM: type = imm; break;
         case REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB:
-            uleb(&p, end, &v);
+            ULEB(v);
             if (imm < 1 || imm > g->nseg) return fail(error, es, "rebase: segment index %u", imm);
-            addr = g->seg[imm - 1].vmaddr + v;
+            seg = imm - 1;
+            addr = g->seg[seg].vmaddr + v;
             break;
-        case REBASE_OPCODE_ADD_ADDR_ULEB: uleb(&p, end, &v); addr += v; break;
+        case REBASE_OPCODE_ADD_ADDR_ULEB: ULEB(v); addr += v; break;
         case REBASE_OPCODE_ADD_ADDR_IMM_SCALED: addr += imm * 8; break;
         case REBASE_OPCODE_DO_REBASE_IMM_TIMES: for (int i = 0; i < imm; i++) { REBASE(); addr += 8; } break;
-        case REBASE_OPCODE_DO_REBASE_ULEB_TIMES: uleb(&p, end, &v); for (uint64_t i = 0; i < v; i++) { REBASE(); addr += 8; } break;
-        case REBASE_OPCODE_DO_REBASE_ADD_ADDR_ULEB: REBASE(); uleb(&p, end, &v); addr += 8 + v; break;
+        case REBASE_OPCODE_DO_REBASE_ULEB_TIMES: ULEB(v); for (uint64_t i = 0; i < v; i++) { REBASE(); addr += 8; } break;
+        case REBASE_OPCODE_DO_REBASE_ADD_ADDR_ULEB: REBASE(); ULEB(v); addr += 8 + v; break;
         case REBASE_OPCODE_DO_REBASE_ULEB_TIMES_SKIPPING_ULEB: {
             uint64_t count, skip;
-            uleb(&p, end, &count); uleb(&p, end, &skip);
+            ULEB(count); ULEB(skip);
+            if (seg < 0 || count > g->seg[seg].vmsize / 8) return fail(error, es, "rebase: a repeat past its segment");
             for (uint64_t i = 0; i < count; i++) { REBASE(); addr += 8 + skip; }
             break;
         }
@@ -609,6 +670,7 @@ done:
     glog(g, "rebased %zu pointers", n);
     return true;
 #undef REBASE
+#undef ULEB
 }
 
 bool spguest_check_hooks(char *error, size_t es) {
