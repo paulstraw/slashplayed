@@ -26,7 +26,10 @@ Open Slashplayed on the device and tap a game. The Mac can be asleep or away.
 
 Or press **Play** in the companion, with the game picked in the menu next to it. Battle.net doesn't
 need to be running. After a game patch, Play copies just the new game program to the device (about
-50 MB). It updates the app itself only after a companion update, and every 7 days on a free Apple ID.
+50 MB). It rebuilds the app itself only after a companion update, when you switch Apple ID or team,
+and when the app's provisioning profile is two days from running out (every 5 days or so on a free
+Apple ID, about once a year on a paid one). It installs the app again when the device's copy is
+missing or came from another Mac.
 Keep the device awake while it works: unlock the iPad or iPhone and connect its cable, or wear the
 headset.
 

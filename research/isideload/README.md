@@ -109,8 +109,8 @@ Details worth keeping:
   first and decide from it, as `Signing.verifyTeam` does.
 - **The certificates are "iOS Development: …"**, not "Apple Development". QH65B2's
   `submitDevelopmentCSR` makes the old kind. Their subject is
-  `CN=iPhone Developer: <name> (<id>), OU=<team>`, valid one year. The launcher's `spsign.m` and the
-  profiles accept them like Xcode's.
+  `CN=iPhone Developer: <name> (<id>), OU=<team>`, valid one year. The launcher's `spsign.m` (Slashplayed
+  1.4 and earlier) and the profiles accepted them like Xcode's.
 - **The profiles carry more entitlements than Slashplayed's templates:** `keychain-access-groups` `<team>.*`,
   plus `com.apple.token` on the paid team. zsign and apple-codesign-quick both sign each bundle with its own
   profile's entitlements, so these end up in the signature. That's harmless, but the host could sign with
@@ -377,10 +377,10 @@ and both take a key in memory or as a file.
 | Time for this app | under 1 s | 0.04 s |
 | Per-bundle profiles and entitlements | Yes (`-m` per profile, matched on application-identifier). `-e` is all-or-nothing | Yes (`entitlements_by_bundle_id`) |
 | Rewrites Info.plist | No | Yes, as a binary plist |
-| Already on the device | Yes: the launcher signs game images with it (`spsign.m`) | No |
+| Already on the device | Yes: the launcher signed game images with it (`spsign.m`, through 1.4) | No |
 | License | MIT, plus OpenSSL (Apache-2.0) | **LGPL-2.1-or-later** |
 
-zsign is the better choice for the host. It's the code the device already runs, it builds for Windows and
+zsign is the better choice for the host. It's the code the device ran through 1.4, it builds for Windows and
 Linux, and it carries no LGPL. isideload depends on apple-codesign-quick unconditionally, though, so a
 binary linking isideload links LGPL code even if it never calls the signer. A shipped host must then let
 users relink it, for example by distributing objects or using dynamic linking. Alternatively, it can patch
