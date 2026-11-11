@@ -58,7 +58,7 @@ use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use zeroize::{Zeroize, Zeroizing};
 
-/// What the device keeps of a sign-in (spappletoken.m stores it whole, as this JSON): the xcode.auth app
+/// What the device keeps of a sign-in (spapple.m stores it whole, as this JSON): the xcode.auth app
 /// token, the account's adsid it goes with, and the anisette server and machine identity it was made on.
 /// Every later request has to claim the same machine (research/isideload/README.md, "Anisette").
 #[derive(Deserialize)]

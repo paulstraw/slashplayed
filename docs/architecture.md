@@ -69,13 +69,17 @@ signed in to Apple in the launcher, renews its own profiles instead ([Renewing t
 profiles](#the-on-device-jit-helper)), so it doesn't need the computer again for them.
 
 Every third-party component that ships carries its license text, generated at build time from the
-pinned sources. The device app's `licenses/` has idevice's with every Rust crate the JIT helper links and the Rust standard library's notices
-(`scripts/build-idevice.sh` runs `scripts/crate-notices.py` over `cargo tree` for the same features and
-targets as the build, and fails on a crate whose source has no license text; the two crates that declare
-MIT but ship no file get the text from `scripts/crate-licenses/`). The companion's
-`Contents/Resources/Acknowledgements/`, linked from its About panel and Help menu, has Sparkle's (a
-build phase copies it from the SPM checkout), idevice's as the companion links it, and the device app's.
-`AcknowledgementsTests` checks the notices against the crates the archives' own symbols name.
+pinned sources. The device app's `licenses/` has idevice's with every Rust crate the JIT helper links,
+spapple's with isideload and every Rust crate the launcher links, the Rust standard library's notices, and
+Goodmountain's license (`goodmountain.txt`, from `scripts/fetch-font.sh`). `scripts/build-idevice.sh` and
+`scripts/build-spapple.sh` each run `scripts/crate-notices.py` over `cargo tree` for the same features and
+targets as their build, and fail on a crate whose source has no license text (spapple's also on a
+GPL-family one); crates that declare MIT but ship no file get the text from
+`scripts/crate-licenses/`. The companion's `Contents/Resources/Acknowledgements/`, linked from its About
+panel and Help menu, has Sparkle's (a build phase copies it from the SPM checkout), idevice's as the
+companion links it, and the device app's: idevice's and spapple's for each device platform, and
+Goodmountain's. `AcknowledgementsTests` checks idevice's and spapple's notices against the crates the
+archives' own symbols name.
 
 ## Executable memory under TXM
 

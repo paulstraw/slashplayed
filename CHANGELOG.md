@@ -10,8 +10,8 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 - An iPad or iPhone set up with slashplayed-companion keeps itself signed. On a free Apple ID, Slashplayed
   renews its own signing over the internet when a game starts in the last 3 days before it runs out, so
-  you don't run the tool again every week. If it can't, the start screen says so and on which day the app
-  stops opening.
+  you don't run the tool again every week. If a game starts then and it can't, the start screen says so
+  and on which day the app stops opening.
 - Settings on the device shows until when Slashplayed is signed and, on a device set up with
   slashplayed-companion, has Forget Apple Token, which stops it renewing its own signing.
 - Sign In to Apple on the iPad, iPhone, or Vision Pro, so Slashplayed renews its own signing without a

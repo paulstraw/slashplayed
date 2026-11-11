@@ -68,7 +68,8 @@ free teams the `extended-virtual-addressing` entitlement, so the companion leave
 
 - **The signature lasts 7 days.** After that the device won't open Slashplayed. Within two days of
   that, the main window warns and offers **Rebuild Now**, and **Play** signs the app again on its
-  own. In its last 3 days the device's start screen says so too, with the day it stops opening. Rebuilding is about a minute on the Mac plus an install; the game files on the device stay.
+  own. Once a game has started on the device in its last 3 days, the device's start screen says so
+  too, with the day it stops opening (nothing checks before a game starts). Rebuilding is about a minute on the Mac plus an install; the game files on the device stay.
   To skip the weekly rebuild, sign in to Apple on the device (Slashplayed's **Settings > Signing > Sign
   In to Apple…**, optional): Slashplayed then renews its own signing when a game starts in its last 3
   days. It's a second sign-in to your Apple ID through a third-party anisette server, so a secondary

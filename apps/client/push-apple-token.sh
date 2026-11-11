@@ -2,7 +2,7 @@
 # Copies an Apple token into the installed Slashplayed's Library/spappletoken.json, as slashplayed-companion's
 # setup does: the launcher imports it into its keychain at its next start (apps/client/spapple.m: this device
 # only, never synced) and zeroes and deletes the file whatever happens. A dev script, for testing the app's
-# profile renewal (run.sh's SP_PROFILES_DRILL=apple) with a login the isideload spike stored:
+# profile renewal (run.sh's SP_RENEW=now) with a login the isideload spike stored:
 #
 #   apps/client/push-apple-token.sh <apple-id>
 #

@@ -55,7 +55,8 @@ You install the games on the device itself: open Slashplayed and tap one.
 
 Slashplayed keeps its own signing up to date: when a game starts in the last 3 days before it runs out,
 the app gets new signing profiles from Apple, over the internet, with the token the tool gave it. If it
-can't, the start screen says so and on which day the app stops opening. Then run the tool again, the
+can't, the start screen says so from then on, and on which day the app stops opening (only once a game
+has started in those 3 days: nothing checks before then). Then run the tool again, the
 same way, before that day, or tap **Sign In to Apple…** under that note and sign in on the device itself
 (optional: a second sign-in to your Apple ID through the same kind of anisette server as the tool's).
 Your games and settings stay.
