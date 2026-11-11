@@ -22,7 +22,7 @@ crate-type = ["staticlib"]
 # whatever is enabled (VENDORED.md). tokio-mt: anisette's provisioning websocket. No keyring: the token
 # lives in the launcher's keychain item (spappletoken.m), never in isideload's storage.
 isideload = { path = "../../companion-rs/vendor/isideload", default-features = false, features = ["install", "tokio-mt"] }
-tokio = { version = "1.49", features = ["rt-multi-thread", "time"] }
+tokio = { version = "1.49", features = ["rt-multi-thread", "time", "sync"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 plist = "1.8"
 serde = { version = "1", features = ["derive"] }
