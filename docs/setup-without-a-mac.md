@@ -56,7 +56,9 @@ You install the games on the device itself: open Slashplayed and tap one.
 Slashplayed keeps its own signing up to date: when a game starts in the last 3 days before it runs out,
 the app gets new signing profiles from Apple, over the internet, with the token the tool gave it. If it
 can't, the start screen says so and on which day the app stops opening. Then run the tool again, the
-same way, before that day. Your games and settings stay.
+same way, before that day, or tap **Sign In to Apple…** under that note and sign in on the device itself
+(optional: a second sign-in to your Apple ID through the same kind of anisette server as the tool's).
+Your games and settings stay.
 
 ### Options
 
@@ -87,7 +89,8 @@ same way, before that day. Your games and settings stay.
 - **On the device:** the app, its pairing record, and the developer disk image, in Slashplayed's own
   data. No signing key goes to the device: it installs and updates games without one. The Apple token
   goes into the app's keychain, on that device only. It's a token Apple gives for the developer services,
-  not your password, which the device never sees.
+  not your password, which the device never sees (unless you sign in to Apple on the device itself, which
+  uses the password once and doesn't keep it either).
 
 ## Testing it
 
@@ -117,7 +120,7 @@ Test builds are posted as **prereleases** on the
   needs 2 the first time. Wait a few days.
 - **The start screen says Slashplayed can't renew its signing on its own:** Apple no longer takes the
   token the tool gave the device, or the tool ran with `--server-client-info`, which gives none. Run the
-  tool again before the day it names.
+  tool again before the day it names, or tap **Sign In to Apple…** under the note.
 - **The app won't open:** its signing ran out. On a free Apple ID that's 7 days after the last renewal or
   run, when no game was started in the last 3 of them. Run the tool again.
 

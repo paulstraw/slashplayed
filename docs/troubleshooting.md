@@ -69,6 +69,11 @@ free teams the `extended-virtual-addressing` entitlement, so the companion leave
 - **The signature lasts 7 days.** After that the device won't open Slashplayed. Within two days of
   that, the main window warns and offers **Rebuild Now**, and **Play** signs the app again on its
   own. In its last 3 days the device's start screen says so too, with the day it stops opening. Rebuilding is about a minute on the Mac plus an install; the game files on the device stay.
+  To skip the weekly rebuild, sign in to Apple on the device (Slashplayed's **Settings > Signing > Sign
+  In to Apple…**, optional): Slashplayed then renews its own signing when a game starts in its last 3
+  days. It's a second sign-in to your Apple ID through a third-party anisette server, so a secondary
+  Apple ID on the team is safest. The password is used once and isn't kept; only an Apple token is, in
+  the device's keychain, until **Forget Apple Token**.
 - **Trust the developer once.** The first launch on each device fails with "Untrusted Developer".
   On the device open **Settings > General > VPN & Device Management**, tap your Apple ID under
   Developer App, tap **Trust**, then press **Retry Launch** in the companion.
@@ -397,7 +402,8 @@ installs it again, and on an iPad or iPhone pairs it over USB as it does.
   Settings > General > VPN & Device Management, then press **Retry Launch**. See
   [Free Apple IDs](#free-apple-ids-personal-teams).
 - **The profile ran out** (free teams, after 7 days): press **Rebuild Now** in the main window, or
-  **Play**, which signs the app again.
+  **Play**, which signs the app again. To keep it from running out, see the device's Sign In to Apple in
+  [Free Apple IDs](#free-apple-ids-personal-teams).
 
 ### "Preparing code pages failed"
 

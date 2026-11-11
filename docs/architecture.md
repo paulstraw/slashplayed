@@ -64,9 +64,9 @@ The entitlements are `get-task-allow` (a debugger may attach; development signin
 more than the default ~5 GB limit; with them it's ~8 GB). A free Personal Team can't have
 `extended-virtual-addressing` (Apple refuses the profile), so the companion leaves it out for one;
 `increased-memory-limit` alone runs every flavor, Retail included. A free team's profile lasts 7 days,
-and the companion re-signs within two days of that. A device set up by `slashplayed-companion` renews its
-own profiles instead ([Renewing the app's profiles](#the-on-device-jit-helper)), so it doesn't need the
-computer again for them.
+and the companion re-signs within two days of that. A device set up by `slashplayed-companion`, or one
+signed in to Apple in the launcher, renews its own profiles instead ([Renewing the app's
+profiles](#the-on-device-jit-helper)), so it doesn't need the computer again for them.
 
 Every third-party component that ships carries its license text, generated at build time from the
 pinned sources. The device app's `licenses/` has idevice's with every Rust crate the JIT helper links and the Rust standard library's notices
@@ -148,17 +148,36 @@ profiles; the profiles drill (`SP_PROFILES_DRILL`, `run.sh`) tries it from files
 **Renewing the app's profiles** (`spapple.m`'s `sp_profiles_renew`) uses that request at every launch of a
 game, after the sign-in and before the attach. When the app's or its helper's profiles have less than 3
 days left (the earlier of the two: the embedded ones and the copies of earlier renewals in
-`Library/spprofiles/`), the launcher asks Apple for new ones with the Apple token the device keeps (below:
-`slashplayed-companion` pushes it), through `spapple`, a Rust static library on the vendored isideload
+`Library/spprofiles/`), the launcher asks Apple for new ones with the Apple token the device keeps
+(`slashplayed-companion` pushes it, below, or the launcher's own sign-in makes it, next), through `spapple`,
+a Rust static library on the vendored isideload
 (`scripts/build-spapple.sh`). A free team's App IDs lapse 7 days after they're made, so one that's gone is
 made again first, under the same identifier, with increased-memory-limit for the app's; the profiles
 already on the device stay valid until their own day either way. The helper installs the new pair and
 the launcher keeps copies. Nothing stops the launch: on a failure the profiles still have days left.
-`Library/sprenew.txt` (`ok`, `failed`, or `signin`, with the time the app stops opening) is what the start
-screen reads: it says under the logo when the next launch may retry alone (`failed`) or when the token is
-missing or refused and the tool has to run again (`signin`), with the day. Settings shows Signed Until and,
-with a token, Forget Apple Token. `SP_RENEW=now|off` (`run.sh`) forces or skips it. Without a token (a Mac
-companion's install), nothing is renewed and the companion re-signs as before.
+`Library/sprenew.txt` (`ok`, `failed`, `signin`, or `signedin`, with the time the app stops opening) is what
+the start screen reads: it says under the logo when the next launch may retry alone (`failed`), or when the
+token is missing or refused (`signin`), with the day and Sign In to Apple… under it; after a sign-in there
+(`signedin`) it says the next launch renews. Settings shows Signed Until, Sign In to Apple… without a token
+(or with a refused one), and Forget Apple Token with one. `SP_RENEW=now|off` (`run.sh`) forces or skips it.
+Without a token and with no sign-in on the device (a Mac companion's install), nothing is renewed and the
+companion re-signs as before.
+
+**The launcher's Apple sign-in** is the token's other source, opt-in: the Mac companion signs through Xcode,
+whose Apple session is in Xcode's own keychain group and bound to the Mac's anisette identity, so it has no
+token to give a device (every Vision Pro is set up that way), and a pushed token Apple stops taking would
+otherwise need a computer again. It's `slashplayed-companion`'s sign-in, run on the device: `spapple`'s
+`login` op (isideload's GSA sign-in over SRP, its 2FA, and anisette from a remote-v3 server, by default the
+same `mac-ani.jkcoxson.com`, with the same fixed client identity, which every later request then claims).
+The login runs as a task in `spapple`; its 2FA callback parks until the next call (`login_answer`) brings the
+code, a text to one of Apple's trusted numbers, or the Apple devices, so the screen (`spapplescreen.swift`)
+can ask between calls. At the end `spapple` mints the `xcode.auth` token, checks with `listTeams` that the
+Apple ID is on the team that signed the app (a token for another team renews nothing), and hands the token
+to `spapple.m`, which keeps it as a pushed one. The password is typed on the device and used once: it's
+zeroed in `spapple` once Apple has it, and never kept or logged (CLAUDE.md, "The Apple ID is a
+credential"). The screen says plainly that this is a second sign-in through a third-party anisette server,
+which sees the device's anisette identity but never the Apple ID, the password, or the token; the server
+can be changed there, and the last one used is offered next time (`sp_anisette_url` in the app's defaults).
 
 A launch with the image mounted takes about 1.5 s from start to attached. On iOS the launcher shows
 the scene first (see [iPad](#ipad)), and if the helper can't do its part, the launcher puts the reason

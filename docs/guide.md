@@ -94,7 +94,10 @@ across three zones.
 A free Apple ID (a Personal Team) plays every game, with limits:
 
 - The app's signature lasts **7 days**. The companion warns two days ahead and signs it again at the
-  next Play.
+  next Play. Or, optionally, sign in to Apple on the device (Slashplayed's **Settings > Signing > Sign In
+  to Apple…**), and Slashplayed renews its own signing when a game starts in the last 3 days. That's a
+  second sign-in to your Apple ID, through a third-party server, as sideloading tools do, so use a
+  secondary Apple ID on the team if you can. Your password isn't kept.
 - The first launch asks you to trust your Apple ID on the device.
 - A free team can have only a few apps on a device.
 
