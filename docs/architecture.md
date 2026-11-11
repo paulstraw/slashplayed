@@ -775,7 +775,7 @@ The hand-written families:
 |---|---|---|
 | `shims/system/` | libSystem | The JIT prepare and alias (above). Sandbox fixes: path redirection, shared memory, `SIGPIPE`. Tracing (`SP_SYSTEM_TRACE=1`). The device console log. |
 | `shims/appkit/` | AppKit | `spuikit.m` (the event loop coroutine), `spwindow.m` (screen, window, view geometry), `spevent.m` (input), `spimage.m` (bitmaps, images, cursors), `sphover.m` (look highlights), `spstats.m` (play-session stats), `sploading.m` (the loading screen
-until the client's first frame). `spnotice.m`, built into the CoreFoundation shim: the client's data setup dialog (below). |
+until the client's first frame), `spclipboard.m` (the clipboard). `spnotice.m`, built into the CoreFoundation shim: the client's data setup dialog (below). |
 | `shims/coregraphics/` | CoreGraphics | `spdisplay.m`: one display matching NSScreen; cursor association and warping for mouselook. |
 | `shims/audio/` | CoreAudio, AudioToolbox | A fake HAL device, the macOS HAL output unit mapped to RemoteIO, and no microphone. |
 | `shims/security/` | Security | The client's legacy CSSM crypto calls over CommonCrypto; Secure Transport logging; the bundled root certificates for the client's certificate query. |
@@ -948,6 +948,13 @@ and scroll events and `NSTextInputClient`), with no event taps. `spevent.m`:
   from addons that call `C_GamePad.SetVibration`, such as Deadly Boss Mods, GTFO, and SilverDragon (Classic
   Era also needs the gamepad on, `GamePadEnable`).
   Checked on an iPhone with a DualShock 4 in Forever and Classic Era (#19); not yet on a Vision Pro.
+- **Clipboard.** `NSPasteboard` is the general pasteboard over `UIPasteboard`, text only
+  (`spclipboard.m`); `NSPasteboardTypeString` and `NSPasteboardTypeFileURL` have macOS's values, so a
+  file check answers no. Pasting another app's text shows iOS's Allow Paste prompt, once per copy,
+  unless Settings > Slashplayed > Paste from Other Apps allows it; the read waits on the main thread, so
+  the game stops drawing until it's answered. Making the view's `paste:` take Cmd+V (a paste through the
+  system doesn't ask) didn't work on an iPhone: neither the system's shortcut nor a `UIKeyCommand` of the
+  view's own reached it. Nothing logs the text or its length.
 - **Look highlights (visionOS).** visionOS never tells an app where the user is looking, so the game
   gets no hover from gaze. The `SPHover` addon draws the rects of the visible clickable UI as a
   3-pixel strip of colored blocks along the bottom of the screen; `sphover.m` blits those rows out of

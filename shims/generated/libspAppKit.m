@@ -79,10 +79,10 @@ extern NSString *const sp_NSEventTrackingRunLoopMode __asm__("_NSEventTrackingRu
 NSString *const sp_NSEventTrackingRunLoopMode = @"NSEventTrackingRunLoopMode";
 extern NSString *const sp_NSFilenamesPboardType __asm__("_NSFilenamesPboardType");
 NSString *const sp_NSFilenamesPboardType = @"NSFilenamesPboardType";
-extern const void *sp_NSPasteboardTypeFileURL[8] __asm__("_NSPasteboardTypeFileURL");
-const void *sp_NSPasteboardTypeFileURL[8] = {0};  // unknown type: zeroed
-extern const void *sp_NSPasteboardTypeString[8] __asm__("_NSPasteboardTypeString");
-const void *sp_NSPasteboardTypeString[8] = {0};  // unknown type: zeroed
+extern NSString *const sp_NSPasteboardTypeFileURL __asm__("_NSPasteboardTypeFileURL");
+NSString *const sp_NSPasteboardTypeFileURL = @"public.file-url";
+extern NSString *const sp_NSPasteboardTypeString __asm__("_NSPasteboardTypeString");
+NSString *const sp_NSPasteboardTypeString = @"public.utf8-plain-text";
 extern NSString *const sp_NSPasteboardURLReadingFileURLsOnlyKey __asm__("_NSPasteboardURLReadingFileURLsOnlyKey");
 NSString *const sp_NSPasteboardURLReadingFileURLsOnlyKey = @"NSPasteboardURLReadingFileURLsOnlyKey";
 extern NSString *const sp_NSViewFrameDidChangeNotification __asm__("_NSViewFrameDidChangeNotification");
@@ -275,3 +275,5 @@ SP_STUB_CLASS_BODY
 #include "../appkit/sploading.m"
 
 #include "../appkit/sphover.m"
+
+#include "../appkit/spclipboard.m"
