@@ -3,11 +3,12 @@
 // owns every type isideload has.
 //
 // Requests ("op"):
-//   "profiles": with the Apple token the device keeps ("token": what spappletoken.m stores), downloads the
+//   "profiles": with the Apple token the device keeps ("token": what spapple.m stores), downloads the
 //     team provisioning profiles of the App IDs "app" and "helper" on team "team". The reply's "app" and
-//     "helper" are the profile files (base64), and "anisette_state" is set when the anisette server
-//     re-provisioned this device's machine identity, for the caller to store with the token. "remade" lists the
-//     App IDs that had lapsed and were made again first (a free team's last 7 days).
+//     "helper" are the profile files (base64), and "remade" lists the App IDs that had lapsed and were made
+//     again first (a free team's last 7 days). Its "anisette_state" is set when the anisette server
+//     re-provisioned this device's machine identity, for the caller to store with the token, in a failed
+//     reply too: the server moved on from the old identity before the step that failed.
 //   "login": the launcher's own Apple sign-in (spapplescreen.swift, through spapple.m), which makes the token.
 //     With "email", "password", "anisette_url", and the app's "team", it signs in and runs until Apple asks for
 //     a 2FA code: the reply's "step" is "code", with "sms" (the code goes by text, else to the person's Apple
@@ -185,9 +186,21 @@ async fn session(token: &Token, storage: &MemoryStorage) -> Result<DeveloperSess
     ))
 }
 
-async fn profiles(req: ProfilesRequest) -> Result<Value, Report> {
+/// The "profiles" reply, with the re-provisioned anisette state whether or not the rest worked (the header).
+async fn profiles(req: ProfilesRequest) -> Value {
     let storage = MemoryStorage::default();
-    let mut session = session(&req.token, &storage).await?;
+    let mut reply = fetch(&req, &storage).await.unwrap_or_else(|e| error_reply(&e));
+    if let Ok(Some(state)) = storage.retrieve(ANISETTE_STATE_KEY) {
+        let state = Zeroizing::new(state);
+        if !state.is_empty() && *state != req.token.anisette_state {
+            reply["anisette_state"] = Value::String(state.to_string());
+        }
+    }
+    reply
+}
+
+async fn fetch(req: &ProfilesRequest, storage: &MemoryStorage) -> Result<Value, Report> {
+    let mut session = session(&req.token, storage).await?;
     let team = session
         .list_teams()
         .await?
@@ -234,17 +247,12 @@ async fn profiles(req: ProfilesRequest) -> Result<Value, Report> {
     let b64 = base64::engine::general_purpose::STANDARD;
     let app = session.download_team_provisioning_profile(&team, &app_id, None).await?;
     let helper = session.download_team_provisioning_profile(&team, &helper_id, None).await?;
-    let mut reply = json!({
+    Ok(json!({
         "ok": true,
         "app": b64.encode(app.encoded_profile.as_ref()),
         "helper": b64.encode(helper.encoded_profile.as_ref()),
         "remade": missing,
-    });
-    let state = Zeroizing::new(storage.retrieve(ANISETTE_STATE_KEY)?.unwrap_or_default());
-    if !state.is_empty() && *state != req.token.anisette_state {
-        reply["anisette_state"] = Value::String(state.to_string());
-    }
-    Ok(reply)
+    }))
 }
 
 // ---- The launcher's Apple sign-in ("login", "login_answer", "login_cancel")
@@ -451,7 +459,7 @@ fn call(request: &[u8]) -> Value {
     let result = match op.as_deref() {
         Some("profiles") => match serde_json::from_slice::<ProfilesRequest>(request) {
             Err(_) => Err(report!("a profiles request without its fields")),
-            Ok(req) => runtime().block_on(profiles(req)),
+            Ok(req) => Ok(runtime().block_on(profiles(req))),
         },
         Some("login") => match serde_json::from_slice::<LoginRequest>(request) {
             Err(_) => Err(report!("a login request without its fields")),

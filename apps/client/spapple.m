@@ -40,10 +40,16 @@ static NSMutableData *keychain_get(void) {
     return st == errSecSuccess ? [(__bridge_transfer NSData *)out mutableCopy] : nil;
 }
 
-// After first unlock, not only while unlocked: a refresh may one day run in the background.
+// Updated in place, and added only when there's none: deleting first would lose the token whenever the add
+// then failed. After first unlock, not only while unlocked: a refresh may one day run in the background.
 static OSStatus keychain_put(NSData *value) {
-    SecItemDelete((__bridge CFDictionaryRef) @{(__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
-                                                (__bridge id)kSecAttrService: service, (__bridge id)kSecAttrAccount: account});
+    OSStatus st = SecItemUpdate((__bridge CFDictionaryRef) @{(__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+                                                             (__bridge id)kSecAttrService: service, (__bridge id)kSecAttrAccount: account},
+                                (__bridge CFDictionaryRef) @{
+                                    (__bridge id)kSecValueData: value,
+                                    (__bridge id)kSecAttrAccessible: (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+                                });
+    if (st != errSecItemNotFound) return st;
     return SecItemAdd((__bridge CFDictionaryRef) @{
         (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword, (__bridge id)kSecAttrService: service,
         (__bridge id)kSecAttrAccount: account, (__bridge id)kSecValueData: value,
@@ -144,10 +150,11 @@ NSString *sp_apple_token_forget(void) {
 
 // The app's and its helper's renewed profiles from Apple, with the keychain's token, for team `team` and
 // the App IDs `app` and `app`.helper: @{@"app": NSData, @"helper": NSData, @"remade": the App IDs made again
-// because they'd lapsed}. Blocks on the network (up to a
-// minute or so): never on the main thread. Nil when it can't: *problem says why (no secret in it), *code is
-// Apple's error number when Apple sent one, and *http the HTTP status when Apple's own servers refused the
-// request. A re-provisioned anisette identity goes back into the keychain with the token.
+// because they'd lapsed, and @"unsaved" when the keychain refused a re-provisioned anisette identity, saying
+// so}. Blocks on the network (up to a minute or so): never on the main thread. Nil when it can't: *problem
+// says why (no secret in it), *code is Apple's error number when Apple sent one, and *http the HTTP status
+// when Apple's own servers refused the request. A re-provisioned anisette identity goes back into the
+// keychain with the token, even when a later step failed.
 NSDictionary *sp_apple_profiles(NSString *team, NSString *app, NSString **problem, NSNumber **code, NSNumber **http) {
     NSMutableData *blob = keychain_get();
     NSMutableDictionary *token = [parse(blob) mutableCopy];
@@ -169,22 +176,24 @@ NSDictionary *sp_apple_profiles(NSString *team, NSString *app, NSString **proble
         *problem = @"spapple's reply didn't parse";
         return nil;
     }
-    if (![reply[@"ok"] boolValue]) {
-        *problem = [reply[@"error"] isKindOfClass:NSString.class] ? reply[@"error"] : @"no reason given";
-        if ([reply[@"code"] isKindOfClass:NSNumber.class]) *code = reply[@"code"];
-        if ([reply[@"http_status"] isKindOfClass:NSNumber.class]) *http = reply[@"http_status"];
-        return nil;
-    }
+    // A re-provisioned identity is kept whether or not the rest of the request worked: the server provisioned
+    // it before a later step failed. A refused save is only noted: the profiles are as good either way.
+    NSString *unsaved = nil;
     NSString *state = reply[@"anisette_state"];
     if ([state isKindOfClass:NSString.class] && state.length) {
         token[@"anisette_state"] = state;
         NSMutableData *updated = [[NSJSONSerialization dataWithJSONObject:token options:0 error:nil] mutableCopy];
         OSStatus st = keychain_put(updated);
         zero(updated);
-        if (st != errSecSuccess) {
-            *problem = [NSString stringWithFormat:@"the keychain refused the token's new anisette identity (%d)", (int)st];
-            return nil;
-        }
+        if (st != errSecSuccess)
+            unsaved = [NSString stringWithFormat:@"the keychain refused the token's new anisette identity (%d), so it keeps the old one", (int)st];
+    }
+    if (![reply[@"ok"] boolValue]) {
+        NSString *error = [reply[@"error"] isKindOfClass:NSString.class] ? reply[@"error"] : @"no reason given";
+        *problem = unsaved ? [NSString stringWithFormat:@"%@; and %@", error, unsaved] : error;
+        if ([reply[@"code"] isKindOfClass:NSNumber.class]) *code = reply[@"code"];
+        if ([reply[@"http_status"] isKindOfClass:NSNumber.class]) *http = reply[@"http_status"];
+        return nil;
     }
     NSData *a = [[NSData alloc] initWithBase64EncodedString:reply[@"app"] ?: @"" options:0];
     NSData *h = [[NSData alloc] initWithBase64EncodedString:reply[@"helper"] ?: @"" options:0];
@@ -193,7 +202,9 @@ NSDictionary *sp_apple_profiles(NSString *team, NSString *app, NSString **proble
         return nil;
     }
     NSArray *remade = [reply[@"remade"] isKindOfClass:NSArray.class] ? reply[@"remade"] : @[];
-    return @{@"app": a, @"helper": h, @"remade": remade};
+    NSMutableDictionary *got = [@{@"app": a, @"helper": h, @"remade": remade} mutableCopy];
+    if (unsaved) got[@"unsaved"] = unsaved;
+    return got;
 }
 
 // ---- Renewing the app's profiles at launch
@@ -395,6 +406,7 @@ void sp_profiles_renew(void (^pump)(double)) {
     }
     say([NSString stringWithFormat:@"Apple's profiles in %.2f s%@", CFAbsoluteTimeGetCurrent() - t,
          [got[@"remade"] count] ? [NSString stringWithFormat:@", after making %lu lapsed App ID(s) again", (unsigned long)[got[@"remade"] count]] : @""]);
+    if (got[@"unsaved"]) say([got[@"unsaved"] stringByAppendingString:@"; installing the profiles anyway"]);
     NSString *problem = nil;
     NSArray *mine = sp_jit_profiles(@[got[@"app"], got[@"helper"]], pump, &problem);
     if (!mine) {
