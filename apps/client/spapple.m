@@ -77,15 +77,26 @@ static BOOL wipe(NSString *path) {
     return YES;
 }
 
-// The fields spapple's Token needs, all there and of the right kinds; nil when not. Only shapes are checked:
-// whether Apple still takes the token, only Apple says.
+// A number spapple's u64 takes: digits only as written back out (not a boolean, a fraction, an exponent, or
+// negative), and few enough of them to fit.
+static BOOL whole(id n) {
+    if (![n isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)n) == CFBooleanGetTypeID()) return NO;
+    NSString *s = [n stringValue];
+    NSCharacterSet *digits = [NSCharacterSet characterSetWithCharactersInString:@"0123456789"];
+    return s.length && s.length <= 19 && [s rangeOfCharacterFromSet:digits.invertedSet].location == NSNotFound;
+}
+
+// The fields spapple's Token needs, all there and of the right kinds (anisette_state may be missing, but is a
+// string when it's there); nil when not. Only shapes are checked: whether Apple still takes the token, only
+// Apple says.
 static NSDictionary *parse(NSData *blob) {
     NSDictionary *t = blob.length ? [NSJSONSerialization JSONObjectWithData:blob options:0 error:nil] : nil;
     if (![t isKindOfClass:NSDictionary.class]) return nil;
     for (NSString *k in @[@"token", @"adsid", @"anisette_url"])
         if (![t[k] isKindOfClass:NSString.class] || ![t[k] length]) return nil;
     for (NSString *k in @[@"expiry", @"duration"])
-        if (![t[k] isKindOfClass:NSNumber.class]) return nil;
+        if (!whole(t[k])) return nil;
+    if (t[@"anisette_state"] && ![t[@"anisette_state"] isKindOfClass:NSString.class]) return nil;
     return t;
 }
 
