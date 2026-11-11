@@ -40,7 +40,8 @@ the owner asks for it.
   tested in the companion's tests; an Update or an install puts that slice in place, signing nothing), `spapple.m` (the
   Apple token: the one file that holds it, and the app's renewed profiles from Apple through `spapple/`, a Rust
   static library on the vendored isideload, `scripts/build-spapple.sh`; the helper installs them through misagent,
-  `spjit.m`'s `sp_jit_profiles`), `flavors.plist` (each game's
+  `spjit.m`'s `sp_jit_profiles`; and the optional Apple sign-in that makes a token on the device, its screen
+  `spapplescreen.swift`), `flavors.plist` (each game's
   name, `.build.info` product, client path, Battle.net arguments, and addon number: the one list, read by the
   launcher, the companion's `Flavor.swift`, and `scripts/flavor.sh`), `spguest.c`/`.h` and `spguest_tlv.S`
   (spguest, a loader of our own: the unchanged, unsigned client mapped, bound, and run without dyld;
@@ -158,13 +159,21 @@ again (over an hour for Retail on the headset). Don't change it casually.
   renew its own profiles (the next rule). The person types it; test runs use the owner's own Terminal. The
   tool's signing key goes only to the OS credential store, never to the device. It never revokes a
   certificate a Slashplayed tool didn't make.
+  The launcher's own Apple sign-in (opt-in, from the start screen's note and Settings: `spapple.m`, its
+  screen `spapplescreen.swift`, and `spapple`'s `login` op) is held to the same: the person types the
+  password on the device, it goes to `spapple` in one request written into a buffer zeroed after, `spapple`
+  zeroes it as soon as Apple has it, and nothing stores it. Nothing logs the Apple ID, the password, its
+  size, a 2FA code, or the masked numbers Apple sends; the screen keeps none of them, and its fields are
+  emptied once they're sent. Only the token the sign-in makes is kept, as the next rule says. Its screen
+  says plainly that it's a second sign-in to the Apple ID through a third-party anisette server.
 - **The Apple token is a credential.** The device keeps one Apple token (the `xcode.auth` app token, its
   adsid, and the anisette server and machine identity it was made on), and only `spapple.m` handles it: in
   the keychain (this device only, never synced), imported from `Library/spappletoken.json`, which is zeroed
-  and deleted at once, and handed to `spapple` in memory, zeroed after. Its screen keeps nothing. Never the
-  password or the GrandSlam token. Logs give the stated expiry's date only, never the token, its fields, or
-  its size; `spapple`'s errors never carry it. `push-apple-token.sh` (dev) and `slashplayed-companion` are
-  the only things that push one.
+  and deleted at once, or kept from the launcher's own sign-in's reply, which `spapple` zeroes once it's
+  read; and handed to `spapple` in memory, zeroed after. Its screens keep nothing. Never the password or the
+  GrandSlam token. Logs give the stated expiry's date only, never the token, its fields, or its size;
+  `spapple`'s errors never carry it. `push-apple-token.sh` (dev) and `slashplayed-companion` are the only
+  things that push one, and the launcher's sign-in the only thing on the device that makes one.
 - **Never read, print or log values from `net.battle` prefs** or the exported credentials file. Sizes
   and timestamps only, as `TokenRelay.swift` does.
 - **The Battle.net sign-in is a credential too.** Only the launcher's sign-in (`splogin.m`, and its

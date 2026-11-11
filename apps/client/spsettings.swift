@@ -6,7 +6,8 @@
 // whether the email shows and where it's navigated to.
 //
 // Battle.net: whether a sign-in is saved, Show Email, Forget My Sign-In, or Sign In…. Signing: until when the
-// app opens (sp_profile_expiry), and Forget Apple Token, when the app has the token it renews that with. The email is the one
+// app opens (sp_profile_expiry), Forget Apple Token, when the app has the token it renews that with, and Sign
+// In to Apple…, the launcher's own sign-in for one (spapple.m), when it has none or Apple stopped taking it. The email is the one
 // value shown, only on a tap (no Face ID, Optic ID, or passcode: it's the person's own device), and only
 // until the app goes to the background, the sheet closes, or a game starts (sp_settings_hide_email). The
 // forget acts at the tap, after an alert whose default is Cancel. Display: the backing scale (sp_scale). Then a
@@ -86,6 +87,7 @@ struct Snapshot {
     }
     var saved = false
     var appleToken = false  // spapple.m's: the token the app renews its own profiles with
+    var needsSignIn = false  // spapple.m's: the last renewal had no token it could use
     var signedUntil: Date?  // when the app stops opening, unless it's renewed (sp_profile_expiry)
     var scale = 0
     var chordRightFinger = false
@@ -123,6 +125,7 @@ final class Settings: ObservableObject {
         s.saved = sp_login_saved()
         if !s.saved { email = nil }
         s.appleToken = sp_apple_token_present()
+        s.needsSignIn = sp_profiles_need_signin()
         s.signedUntil = sp_profile_expiry()
         let scale = UserDefaults.standard.integer(forKey: scaleKey)
         s.scale = scale == 1 || scale == 2 ? scale : 0
@@ -154,6 +157,11 @@ final class Settings: ObservableObject {
 
     func signIn() {
         host?.present(sp_login_screen { [weak self] _ in self?.reload() }, animated: true)
+    }
+
+    // Sign In to Apple…: spapple.m's sign-in, full screen over the sheet.
+    func appleSignIn() {
+        host?.present(sp_apple_signin { [weak self] _ in self?.reload() }, animated: true)
     }
 
     func confirm(_ c: Confirmation) {
@@ -193,13 +201,16 @@ final class Settings: ObservableObject {
         withTransaction(t) { path = pages }
     }
 
-    // The drill's states: `settings` (the sheet as it opens), `display`, `games`, and `about`
+    // The drill's states: `settings` (the sheet as it opens), `signing`, `display`, `games`, and `about`
     // (scrolled to that section, or the first game's), `sign-in` (Sign In…'s screen), `sign-in-launch`
     // (the sign-in screen as a launch with no saved sign-in shows it, full screen; it saves nothing),
     // `vpn`, `pair`, and `pair-code` (the LocalDevVPN wait's and the pairing screen's, the last asking for the
     // code; they do nothing), `acknowledgements` (its
     // page), `license-<file>` (one license's text, e.g. license-rust-std), and `alert-forget-signin`,
-    // `alert-forget-apple-token`, and `alert-reset` (the confirmations, the last for the first game, shown
+    // `apple-sign-in` (Sign In to Apple…'s screen: a real sign-in, as a tap's is), `apple-sign-in-code`,
+    // `apple-sign-in-texts`, and `apple-sign-in-done` (its 2FA step, by device and by text with made-up
+    // numbers, and its end; they sign nothing in), `alert-forget-apple-token`, and `alert-reset` (the
+    // confirmations, the last for the first game, shown
     // whatever's saved, so they can be screenshotted without a credential; Cancel is what a drill expects to
     // be tapped, if anything). `reset-<flavor>` is Reset's Reset tapped: it resets that game's settings with
     // no alert, so a test can check what it deletes and the next start's seeding. `scale-<0|1|2>` picks that
@@ -211,11 +222,20 @@ final class Settings: ObservableObject {
         host?.present(screen, animated: false)
     }
 
+    // The Apple sign-in's screen in one of its steps, with blocks that do nothing.
+    private func appleDrill(_ step: [String: Any]) {
+        let screen = appleScreen(sp_device_noun() as NSString, "https://mac-ani.jkcoxson.com", { _, _, _ in "A drill: nothing was sent." },
+                                 { _, _, _ in }, {}, {})
+        appleScreenShow(screen, step as NSDictionary)
+        presentDrill(screen)
+    }
+
     func runDrill() {
         guard let state = drill else { return }
         drill = nil
         let states: [String: () -> Void] = [
             "settings": {},
+            "signing": { self.scrollTo?("signing") },
             "display": { self.scrollTo?("display") },
             "games": { if let f = self.flavors.first { self.scrollTo?("game-" + f) } },
             "about": { self.scrollTo?("about") },
@@ -229,6 +249,13 @@ final class Settings: ObservableObject {
                 pairAsk(screen, true)
                 self.presentDrill(screen)
             },
+            "apple-sign-in": { self.appleSignIn() },
+            "apple-sign-in-code": { self.appleDrill(["step": "code", "numbers": [["id": 1, "number": "(•••) •••-••12"]]]) },
+            "apple-sign-in-texts": {
+                self.appleDrill(["step": "code", "sms": true, "selected": 1, "retry": true,
+                                 "numbers": [["id": 1, "number": "(•••) •••-••12"], ["id": 2, "number": "+44 ••••• ••••34"]]])
+            },
+            "apple-sign-in-done": { self.appleDrill(["step": "done"]) },
             "acknowledgements": { self.push([.acknowledgements]) },
             "alert-forget-signin": { self.confirmation = .forgetSignIn },
             "alert-forget-apple-token": { self.confirmation = .forgetAppleToken },
@@ -328,7 +355,7 @@ struct SettingsView: View {
     private func message(_ c: Confirmation) -> String {
         switch c {
         case .forgetSignIn: "You’re asked to sign in the next time a game starts."
-        case .forgetAppleToken: "Slashplayed stops renewing its own signing. To renew it again, run Slashplayed Companion on a computer."
+        case .forgetAppleToken: "Slashplayed stops renewing its own signing. To renew it again, sign in to Apple here, or run Slashplayed Companion on a computer."
         case .reset: "Graphics, sound, and other game settings go back to their defaults. Keybindings, macros, and addon settings are kept."
         }
     }
@@ -357,12 +384,18 @@ struct SettingsView: View {
         }
     }
 
-    // Signing: until when the app opens, and the Apple token it renews that with (spapple.m), which only
-    // slashplayed-companion pushes. The token's forget acts at the tap, after an alert whose default is Cancel.
+    // Signing: until when the app opens, and the Apple token it renews that with (spapple.m), which
+    // slashplayed-companion pushes or the launcher's own sign-in makes: Sign In to Apple… when there's none
+    // (or Apple stopped taking it), opt-in, its screen saying what it is. The token's forget acts at the tap,
+    // after an alert whose default is Cancel.
     private var signing: some View {
         Section {
             if let until = settings.now.signedUntil {
                 LabeledContent("Signed Until", value: until.formatted(date: .abbreviated, time: .omitted))
+                    .id("signing")
+            }
+            if !settings.now.appleToken || settings.now.needsSignIn {
+                Button("Sign In to Apple…") { settings.appleSignIn() }
             }
             if settings.now.appleToken {
                 Button("Forget Apple Token", role: .destructive) { settings.confirmation = .forgetAppleToken }
@@ -370,9 +403,11 @@ struct SettingsView: View {
         } header: {
             Text("Signing")
         } footer: {
-            Text(settings.now.appleToken
+            Text(settings.now.appleToken && !settings.now.needsSignIn
                  ? "Slashplayed renews its signing itself in the last 3 days, when a game starts, with an Apple token kept on this device. It isn’t your Apple ID password."
-                 : "Run Slashplayed Companion again before then to keep Slashplayed opening.")
+                 : settings.now.appleToken
+                 ? "Apple no longer takes this device’s Apple token. Sign in to Apple again, or run Slashplayed Companion before then, to keep Slashplayed opening."
+                 : "Run Slashplayed Companion again before then to keep Slashplayed opening. Or sign in to Apple here, optionally, so Slashplayed renews its signing itself: a second sign-in to your Apple ID, through a third-party server.")
         }
     }
 
@@ -520,6 +555,7 @@ struct LicenseView: UIViewRepresentable {
 // a swipe) or the start screen goes (a game starts).
 final class SettingsHost: UIHostingController<SettingsView> {
     let settings: Settings
+    var closed: (() -> Void)?
 
     init(settings: Settings) {
         self.settings = settings
@@ -538,14 +574,16 @@ final class SettingsHost: UIHostingController<SettingsView> {
         super.viewDidDisappear(animated)
         if isBeingDismissed || presentingViewController?.isBeingDismissed == true || presentingViewController == nil {
             settings.hideEmail()
+            closed?()
         }
     }
 }
 
 @_cdecl("sp_settings_sheet")
-public func settingsSheet(_ flavors: NSArray, _ drill: NSString?) -> UIViewController {
+public func settingsSheet(_ flavors: NSArray, _ drill: NSString?, _ closed: @escaping @convention(block) () -> Void) -> UIViewController {
     let settings = Settings(flavors: flavors.compactMap { $0 as? String }, drill: drill as String?)
     let host = SettingsHost(settings: settings)
+    host.closed = closed
     settings.host = host
     Settings.shown = settings
     // Pinned Dark, as every launcher screen, so its stock controls suit the start screen.

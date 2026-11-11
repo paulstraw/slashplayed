@@ -35,6 +35,10 @@ NSString *_Nullable sp_profiles_note(void);
 NSDate *_Nullable sp_profile_expiry(void);
 BOOL sp_apple_token_present(void);
 NSString *sp_apple_token_forget(void);
+// spapple.m. Whether the start screen's note offers the Apple sign-in (the last renewal had no token it could
+// use), and the sign-in's screen, to present full screen: `done` gets whether a token was kept, once it's gone.
+BOOL sp_profiles_need_signin(void);
+UIViewController *sp_apple_signin(void (^done)(BOOL signedIn));
 
 // spjit.m: "iPad", "iPhone", or "Vision Pro".
 NSString *sp_device_noun(void);
@@ -54,11 +58,19 @@ UIBezierPath *sp_logo_s(void);
 NSString *sp_html_text(NSString *html);
 
 // spsettings.swift. The Settings sheet over the start screen, opening in `drill`'s state ($SP_START_DRILL)
-// when one is given; and hiding the email it shows, when a game starts.
+// when one is given, calling `closed` once it's gone; and hiding the email it shows, when a game starts.
 // spsignin.swift. The sign-in screen; splogin.m's `entered` checks and keeps what's typed (nil when it took
 // them, else what to say), and `cancel` gives it Cancel (Settings' Sign In…).
 UIViewController *sp_signin_screen(NSString *noun, NSString *_Nullable (^entered)(NSString *email, NSString *password),
                                    void (^_Nullable cancel)(void));
+// spapplescreen.swift. The Apple sign-in's screen; spapple.m's blocks run it: `begin` with what's typed (nil
+// when it took them, else what to say), `answer` with a 2FA answer ("code", "sms" with a number's id,
+// "devices", "resend"), `cancel` and `finish` to close it. sp_apple_screen_show gives it the next step.
+UIViewController *sp_apple_screen(NSString *noun, NSString *server,
+                                  NSString *_Nullable (^begin)(NSString *email, NSString *password, NSString *server),
+                                  void (^answer)(NSString *kind, NSInteger number, NSString *code), void (^cancel)(void),
+                                  void (^finish)(void));
+void sp_apple_screen_show(UIViewController *screen, NSDictionary *step);
 // sppairscreen.swift, spvpnscreen.swift, spstyle.swift: the waiting screens (sppair.m's, spvpn.m's) and
 // their status line.
 UIViewController *sp_pair_screen(NSString *_Nullable (^send)(NSString *code), void (^renew)(void));
@@ -77,7 +89,7 @@ void sp_patch_show(UIViewController *screen, NSString *heading, NSString *messag
 UIViewController *sp_start_screen(NSArray<NSString *> *flavors, NSArray<NSString *> *installable, void (^pick)(NSString *flavor));
 void sp_start_settings(UIViewController *screen, NSString *drill);
 
-UIViewController *sp_settings_sheet(NSArray<NSString *> *flavors, NSString *_Nullable drill);
+UIViewController *sp_settings_sheet(NSArray<NSString *> *flavors, NSString *_Nullable drill, void (^closed)(void));
 void sp_settings_hide_email(void);
 
 NS_ASSUME_NONNULL_END

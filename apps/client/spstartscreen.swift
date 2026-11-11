@@ -108,10 +108,12 @@ private struct Emblem: View {
 // SLASHPLAYED line. The rings pass behind the line and past the window's edges, as in the design, and take
 // no room in the layout. Under the line, the profile renewal's note when there is one (StartModel.note), at
 // the inner ring's width (240 points at least) so it wraps there: with the logo it stays in view, where
-// under the games it would scroll out of it.
+// under the games it would scroll out of it. When the renewal needs an Apple token, the note offers the
+// launcher's Apple sign-in under it (`signIn`).
 private struct Header: View {
     let emblem: CGFloat
     let note: String?
+    let signIn: (() -> Void)?
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
@@ -145,6 +147,16 @@ private struct Header: View {
                     .multilineTextAlignment(.center)
                     .frame(width: max((emblem * 1.7).rounded(), 240))
                     .fixedSize(horizontal: false, vertical: true)
+                if let signIn {
+                    Button("Sign In to Apple…", action: signIn)
+                        .font(Font(small as CTFont))
+                        .foregroundStyle(gold)
+                        .underline()
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .hoverEffect()
+                }
             }
         }
         .fixedSize()
@@ -158,8 +170,10 @@ private final class StartModel: ObservableObject {
     let flavors: [String]
     let installable: Set<String>  // no image on the device yet: the launcher installs the one tapped
     let pick: (String) -> Void
-    // The profile renewal's word, when the app may stop opening (spapple.m's sp_profiles_note), under the logo.
-    let note = sp_profiles_note() as String?
+    // The profile renewal's word, when the app may stop opening (spapple.m's sp_profiles_note), under the logo,
+    // and whether it offers the Apple sign-in; read again when a sign-in or Settings closes.
+    @Published var note = sp_profiles_note() as String?
+    @Published var offersSignIn = sp_profiles_need_signin()
     weak var host: UIViewController?
 
     init(flavors: [String], installable: Set<String>, pick: @escaping (String) -> Void) {
@@ -173,10 +187,21 @@ private final class StartModel: ObservableObject {
         installable.contains(flavor) ? "Install " + sp_flavor_name(flavor) : sp_flavor_name(flavor)
     }
 
+    func reloadNote() {
+        note = sp_profiles_note() as String?
+        offersSignIn = sp_profiles_need_signin()
+    }
+
     // The Settings sheet (spsettings.swift), opening in `drill`'s state when one is given ($SP_START_DRILL).
     func openSettings(_ drill: String?) {
         guard let host, host.presentedViewController == nil else { return }
-        host.present(sp_settings_sheet(flavors, drill), animated: drill == nil)
+        host.present(sp_settings_sheet(flavors, drill, { [weak self] in self?.reloadNote() }), animated: drill == nil)
+    }
+
+    // The note's Sign In to Apple… (spapple.m's sign-in, its screen spapplescreen.swift).
+    func appleSignIn() {
+        guard let host, host.presentedViewController == nil else { return }
+        host.present(sp_apple_signin { [weak self] _ in self?.reloadNote() }, animated: true)
     }
 }
 
@@ -195,7 +220,8 @@ private struct StartView: View {
             let window = geo.size
             let layout = StartLayout(window: window, safe: model.safe, big: typeSize.isAccessibilitySize, header: logo, games: games)
             ZStack(alignment: .topLeading) {
-                Header(emblem: StartLayout.emblem(window), note: model.note)
+                Header(emblem: StartLayout.emblem(window), note: model.note,
+                       signIn: model.offersSignIn ? { model.appleSignIn() } : nil)
                     .onGeometryChange(for: CGSize.self) { $0.size } action: { logo = $0 }
                     .offset(x: layout.header.minX, y: layout.header.minY)
                 gameList(layout)

@@ -5,13 +5,20 @@
 // What's kept (owner decisions, 2026-11-02): the xcode.auth app token Apple issues at a sign-in, with the
 // adsid it goes with and the anisette server and machine identity it was made on, as one JSON blob in the
 // keychain (this device only, never synced). Never the Apple ID's password, and not the GrandSlam token,
-// which stops minting app tokens after about an hour. It comes from slashplayed-companion, which pushes it
-// at setup as Library/spappletoken.json (0600); the launcher imports it here at its start and wipes the file.
+// which stops minting app tokens after about an hour. It comes one of two ways: slashplayed-companion pushes
+// it at setup as Library/spappletoken.json (0600), which the launcher imports here at its start and wipes; or
+// the person signs in to Apple on the device, from the start screen or Settings (the launcher's own sign-in,
+// below, with spapplescreen.swift its screen): an opt-in for a device whose companion gives no token (the Mac
+// companion's, every Vision Pro), or whose token Apple stopped taking.
 //
-// The token is a credential (CLAUDE.md, "The Apple ID is a credential"): nothing here logs it, its size, or
+// The token is a credential (CLAUDE.md, "The Apple token is a credential"): nothing here logs it, its size, or
 // any of its fields but the stated expiry's date. Requests to spapple carry it in memory only, zeroed after.
+// So is the Apple ID's password the sign-in takes (CLAUDE.md, "The Apple ID is a credential"): it goes from
+// the screen to spapple in one request, written into a buffer zeroed after, and nothing logs it, its size, or
+// the Apple ID; spapple drops it once Apple has it. Only the token the sign-in makes is kept.
 #import <Foundation/Foundation.h>
 #import <Security/Security.h>
+#import <UIKit/UIKit.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -123,10 +130,13 @@ BOOL sp_apple_token_present(void) {
     return ok;
 }
 
+static void signed_out(void);
+
 NSString *sp_apple_token_forget(void) {
     OSStatus st = SecItemDelete((__bridge CFDictionaryRef) @{(__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
                                                               (__bridge id)kSecAttrService: service});
     BOOL file = wipe(home(pushed));
+    signed_out();
     return [NSString stringWithFormat:@"apple: %@%@", st == errSecSuccess ? @"forgot the token" : st == errSecItemNotFound
                                                          ? @"no token to forget" : [NSString stringWithFormat:@"couldn't forget the token: keychain %d", (int)st],
             file ? @"; a pushed one not yet imported is deleted too" : @""];
@@ -240,33 +250,62 @@ NSDate *sp_profile_expiry(void) {
 
 // The start screen's word on the renewal (Library/sprenew.txt, one line): "ok <time>" (the app's profiles
 // last until then), "signin <time>" (renewing needs a new Apple token on this device, and the app stops
-// opening at that time), or "failed <time>" (it couldn't renew this time; it tries again next launch). The
-// time is ISO 8601 in UTC, so the note can give the person's own day; "unknown" when it can't be told.
+// opening at that time), "signedin <time>" (the person has since signed in to Apple here: the next launch
+// renews), or "failed <time>" (it couldn't renew this time; it tries again next launch). The time is ISO 8601
+// in UTC, so the note can give the person's own day; "unknown" when it can't be told.
 static void write_state(NSString *word, NSDate *until) {
     NSString *line = [NSString stringWithFormat:@"%@ %@\n", word, until ? [[NSISO8601DateFormatter new] stringFromDate:until] : @"unknown"];
     [line writeToFile:home(@"Library/sprenew.txt") atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
-// What the start screen says under the games about the renewal, from Library/sprenew.txt: nothing when it's
-// fine (or nothing's been tried yet), else why the app may stop opening, with the day, in the person's words.
-// The file is only written at a game's launch, so it's checked against the profiles the app has now: once
-// they last past the day it names (the companion signed the app again, as the note asks), it's stale.
-NSString *sp_profiles_note(void) {
+// Library/sprenew.txt's word, and its time in *until (nil when it's "unknown"). Nil when there's none, or
+// it's stale: its time has passed (past it the app doesn't open), or the profiles the app has now last past
+// it (or, with no time, past the renewal window), as after the companion signed the app again. The file is
+// only written at a game's launch, so a re-sign since then leaves it behind.
+static NSString *read_state(NSDate **until) {
     NSString *line = [NSString stringWithContentsOfFile:home(@"Library/sprenew.txt") encoding:NSUTF8StringEncoding error:nil];
     NSArray *parts = [[line stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] componentsSeparatedByString:@" "];
-    if (parts.count != 2 || [parts[0] isEqual:@"ok"]) return nil;
-    NSDate *until = [[NSISO8601DateFormatter new] dateFromString:parts[1]];
-    if (until && until.timeIntervalSinceNow < 0) return nil;  // past it the app doesn't open, so a note left is stale
+    if (parts.count != 2) return nil;
+    *until = [[NSISO8601DateFormatter new] dateFromString:parts[1]];
+    if (*until && (*until).timeIntervalSinceNow < 0) return nil;
     NSDate *now = sp_profile_expiry();
-    if (now && (until ? [now compare:until] == NSOrderedDescending : now.timeIntervalSinceNow > renew_within)) return nil;
+    if (now && (*until ? [now compare:*until] == NSOrderedDescending : now.timeIntervalSinceNow > renew_within)) return nil;
+    return parts[0];
+}
+
+// Whether the start screen offers the Apple sign-in with its note: the last renewal found no token it could use.
+BOOL sp_profiles_need_signin(void) {
+    NSDate *until = nil;
+    return [read_state(&until) isEqual:@"signin"];
+}
+
+// A sign-in here answers a "signin" word, and forgetting the token takes that back.
+static void signed_in(void) {
+    NSDate *until = nil;
+    if ([read_state(&until) isEqual:@"signin"]) write_state(@"signedin", until);
+}
+
+static void signed_out(void) {
+    NSDate *until = nil;
+    if ([read_state(&until) isEqual:@"signedin"]) write_state(@"signin", until);
+}
+
+// What the start screen says under the games about the renewal, from Library/sprenew.txt: nothing when it's
+// fine (or nothing's been tried yet), else why the app may stop opening, with the day, in the person's words.
+NSString *sp_profiles_note(void) {
+    NSDate *until = nil;
+    NSString *word = read_state(&until);
+    if (!word || [word isEqual:@"ok"]) return nil;
+    if ([word isEqual:@"signedin"])
+        return @"You’re signed in to Apple. Slashplayed renews its signing the next time a game starts.";
     NSString *when = @"soon";
     if (until && [NSCalendar.currentCalendar isDateInToday:until]) when = @"later today";
     else if (until && [NSCalendar.currentCalendar isDateInTomorrow:until]) when = @"tomorrow";
     else if (until) when = [@"on " stringByAppendingString:[NSDateFormatter localizedStringFromDate:until dateStyle:NSDateFormatterMediumStyle
                                                                                             timeStyle:NSDateFormatterNoStyle]];
-    if ([parts[0] isEqual:@"signin"])
+    if ([word isEqual:@"signin"])
         return [NSString stringWithFormat:@"Slashplayed can’t renew its signing on its own, so it stops opening %@. Before then, "
-                                          @"run Slashplayed Companion again on the computer you set it up with.", when];
+                                          @"run Slashplayed Companion again on the computer you set it up with, or sign in to Apple here.", when];
     return [NSString stringWithFormat:@"Slashplayed couldn’t renew its signing. It tries again the next time a game starts "
                                       @"online, and stops opening %@ if it can’t.", when];
 }
@@ -374,4 +413,165 @@ void sp_profiles_renew(void (^pump)(double)) {
     say([NSString stringWithFormat:@"renewed: the app's profiles last until %@", now ? day(now) : @"an unknown day"]);
     write_state(@"ok", now);
     return;
+}
+
+// ---- The launcher's own Apple sign-in (opt-in: the start screen's note and Settings' Signing offer it)
+//
+// A second sign-in to the person's Apple ID, as slashplayed-companion's (spapple's "login" op, isideload's
+// GSA sign-in with 2FA), through a third-party anisette server, which the screen says plainly. What's typed
+// goes from the screen (spapplescreen.swift, which keeps none of it) to spapple here, off the main thread; the
+// screen hears back each step (sp_apple_screen_show). Its end is a token, kept as a pushed one is, once
+// spapple has checked the Apple ID is on the team that signed the app. Logged: the steps, the server's host,
+// and Apple's error number. Never the Apple ID, the password, a code, or the masked numbers Apple sends.
+
+UIViewController *sp_apple_screen(NSString *noun, NSString *server,
+                                  NSString *_Nullable (^begin)(NSString *email, NSString *password, NSString *server),
+                                  void (^answer)(NSString *kind, NSInteger number, NSString *code), void (^cancel)(void),
+                                  void (^finish)(void));  // spapplescreen.swift
+void sp_apple_screen_show(UIViewController *screen, NSDictionary *step);  // spapplescreen.swift
+NSString *sp_device_noun(void);  // spjit.m
+
+static void signin_say(NSString *s) { sp_launch_say([@"apple sign-in: " stringByAppendingString:s]); }
+
+// The anisette server the sign-in offers: the last one a sign-in here used, else slashplayed-companion's
+// default (account.rs's DEFAULT_ANISETTE: a server backed by Apple's Mac ADI, research/isideload's "Anisette").
+static NSString *const anisette_key = @"sp_anisette_url";
+static NSString *const default_anisette = @"https://mac-ani.jkcoxson.com";
+
+static NSString *anisette_server(void) {
+    NSString *s = [NSUserDefaults.standardUserDefaults stringForKey:anisette_key];
+    return s.length ? s : default_anisette;
+}
+
+// One spapple request whose JSON may hold the password: written into a buffer of our own, zeroed and freed
+// after (NSJSONSerialization's NSData can't be zeroed), and the reply read in place, which spapple_free
+// zeroes (it may hold the token). Nil when it didn't parse.
+static NSDictionary *call_zeroed(NSDictionary *request) {
+    const NSUInteger cap = 16 * 1024;
+    uint8_t *buf = calloc(cap, 1);
+    NSOutputStream *stream = [NSOutputStream outputStreamToBuffer:buf capacity:cap - 1];
+    [stream open];
+    NSInteger n = [NSJSONSerialization writeJSONObject:request toStream:stream options:0 error:nil];
+    [stream close];
+    NSDictionary *reply = nil;
+    if (n > 0 && (NSUInteger)n < cap) {
+        char *raw = spapple_call((const char *)buf);
+        if (raw) {
+            id v = [NSJSONSerialization JSONObjectWithData:[NSData dataWithBytesNoCopy:raw length:strlen(raw) freeWhenDone:NO]
+                                                   options:0 error:nil];
+            reply = [v isKindOfClass:NSDictionary.class] ? v : nil;
+            spapple_free(raw);
+        }
+    }
+    memset_s(buf, cap, 0, cap);
+    free(buf);
+    return reply;
+}
+
+// A failed step in the person's words, from spapple's reply: Apple's refusal when it gave one.
+static NSString *signin_problem(NSDictionary *reply) {
+    if ([reply[@"problem"] isEqual:@"team"])
+        return @"This Apple ID isn’t on the team Slashplayed was signed with, so it can’t renew it. Sign in with that "
+               @"Apple ID, or another on its team.";
+    long code = [reply[@"code"] isKindOfClass:NSNumber.class] ? [reply[@"code"] longValue] : 0;
+    NSString *message = [reply[@"message"] isKindOfClass:NSString.class] ? reply[@"message"] : nil;
+    if (code == -20101 || code == -22406) return @"Apple didn’t accept that Apple ID and password.";
+    if (code == -80045) return @"Apple refused the anisette server. Try again later, or another server.";
+    if (message.length) return [NSString stringWithFormat:@"Apple said: %@", message];
+    return @"The sign-in didn’t work. Check the network and the anisette server, then try again.";
+}
+
+// Keeps the sign-in's token as a pushed one is kept, and says on the start screen that the next launch
+// renews. Nil when it's kept, else what to say.
+static NSString *keep(NSDictionary *token) {
+    NSMutableData *blob = [token isKindOfClass:NSDictionary.class]
+                              ? [[NSJSONSerialization dataWithJSONObject:token options:0 error:nil] mutableCopy] : nil;
+    NSDictionary *t = parse(blob);
+    OSStatus st = t ? keychain_put(blob) : errSecParam;
+    zero(blob);
+    if (!t) {
+        signin_say(@"Apple's reply had no token");
+        return @"Apple’s reply had no token. Try again.";
+    }
+    if (st != errSecSuccess) {
+        signin_say([NSString stringWithFormat:@"the keychain refused the token (%d)", (int)st]);
+        return @"The token couldn’t be saved on this device. Try again.";
+    }
+    [NSUserDefaults.standardUserDefaults setObject:t[@"anisette_url"] forKey:anisette_key];
+    signed_in();
+    signin_say([NSString stringWithFormat:@"signed in: the token is in the keychain (this device only); Apple says it's good "
+                                          @"until %@", day(stated_expiry(t))]);
+    return nil;
+}
+
+// The sign-in screen, to present (full screen) over the start screen or Settings; `done` gets whether a token
+// was kept once it's gone (NO for Cancel).
+UIViewController *sp_apple_signin(void (^done)(BOOL signedIn)) {
+    NSString *appid = sp_app_id();
+    NSRange dot = [appid rangeOfString:@"."];
+    NSString *team = dot.location == NSNotFound ? nil : [appid substringToIndex:dot.location];
+    __block __weak UIViewController *weak = nil;
+    __block BOOL kept = NO;
+    // Every step's reply, on the main thread: the screen's next step.
+    void (^handle)(NSDictionary *) = ^(NSDictionary *reply) {
+        UIViewController *screen = weak;
+        if (!reply) {
+            signin_say(@"spapple's reply didn't parse");
+            if (screen) sp_apple_screen_show(screen, @{@"step": @"form", @"status": @"The sign-in didn’t work. Try again."});
+            return;
+        }
+        if (![reply[@"ok"] boolValue]) {
+            id code = reply[@"code"];
+            signin_say([NSString stringWithFormat:@"failed: %@%@", reply[@"error"] ?: @"no reason given",
+                        [code isKindOfClass:NSNumber.class] ? [NSString stringWithFormat:@" (code %@)", code] : @""]);
+            if (screen) sp_apple_screen_show(screen, @{@"step": @"form", @"status": signin_problem(reply)});
+            return;
+        }
+        if ([reply[@"step"] isEqual:@"code"]) {
+            signin_say([NSString stringWithFormat:@"Apple asks for a code%@%@", [reply[@"sms"] boolValue] ? @" (by text)" : @" (on the Apple devices)",
+                        [reply[@"retry"] boolValue] ? @", after a wrong one" : [reply[@"unknown"] boolValue] ? @", by another way" : @""]);
+            if (screen) sp_apple_screen_show(screen, reply);
+            return;
+        }
+        NSString *problem = keep(reply[@"token"]);
+        kept = kept || !problem;
+        if (screen) sp_apple_screen_show(screen, problem ? @{@"step": @"form", @"status": problem} : @{@"step": @"done"});
+    };
+    // Off the main thread (spapple blocks on the network, a step up to two minutes), then back to it.
+    void (^run)(NSDictionary *) = ^(NSDictionary *request) {
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            NSDictionary *reply = call_zeroed(request);
+            dispatch_async(dispatch_get_main_queue(), ^{ handle(reply); });
+        });
+    };
+    void (^close)(void) = ^{
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ call_zeroed(@{@"op": @"login_cancel"}); });
+        UIViewController *screen = weak;
+        BOOL signedIn = kept;
+        if (screen.presentingViewController) [screen dismissViewControllerAnimated:YES completion:^{ done(signedIn); }];
+        else done(signedIn);
+    };
+    UIViewController *screen = sp_apple_screen(sp_device_noun(), anisette_server(),
+        ^NSString *(NSString *email, NSString *password, NSString *server) {
+            email = [email stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+            server = [server stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+            while ([server hasSuffix:@"/"]) server = [server substringToIndex:server.length - 1];
+            if (!email.length || !password.length) return @"Type your Apple ID and its password.";
+            NSURLComponents *url = [NSURLComponents componentsWithString:server];
+            if (![url.scheme isEqual:@"https"] || !url.host.length) return @"The anisette server has to be an https:// address.";
+            if (!team) {
+                signin_say(@"no App ID in the embedded profile; not signing in");
+                return @"Slashplayed can’t tell which team signed it, so a sign-in can’t renew it.";
+            }
+            signin_say([NSString stringWithFormat:@"signing in, with anisette from %@", url.host]);
+            run(@{@"op": @"login", @"email": email, @"password": password, @"anisette_url": server, @"team": team});
+            return nil;
+        },
+        ^(NSString *kind, NSInteger number, NSString *code) {
+            signin_say([@"answering: " stringByAppendingString:kind]);  // the kind only: never the code
+            run(@{@"op": @"login_answer", @"answer": kind, @"id": @(number), @"code": code ?: @""});
+        },
+        close, close);
+    weak = screen;
+    return screen;
 }

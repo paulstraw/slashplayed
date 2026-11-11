@@ -4,7 +4,8 @@
 # for LocalDevVPN, splogin.m and spsignin.swift, the Battle.net sign-in, spstart.m and spstartscreen.swift, the
 # start screen, sppatch.m, the patch check, with spcdn.m, Blizzard's CDN, and spbind.m, the bind check on the
 # device, spguestlaunch.m with spguest.c, the loader that runs the game's unchanged client, and spapple.m,
-# the Apple token and the app's profile renewal, with the spapple library), for
+# the Apple token, the app's profile renewal, and the Apple sign-in (spapplescreen.swift its screen), with the
+# spapple library), for
 # SP_PLATFORM (scripts/platform.sh):
 #   apps/client/build-launcher.sh <output>
 # spapple, Apple's developer services for the app's profile renewal (spapple.h), comes from
@@ -22,11 +23,12 @@ done
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 # The Swift screens (spstartscreen.swift, the start screen; spsettings.swift, the Settings sheet; spsignin.swift, the Battle.net sign-in;
-# sppairscreen.swift and spvpnscreen.swift, the pairing and LocalDevVPN waits; sppatchscreen.swift, the newer-build screen; spstyle.swift, their shared
+# spapplescreen.swift, the Apple sign-in; sppairscreen.swift and spvpnscreen.swift, the pairing and LocalDevVPN waits;
+# sppatchscreen.swift, the newer-build screen; spstyle.swift, their shared
 # look), with spswift.h as their bridging header: the
 # Objective-C they call, and their C entry points the Objective-C calls. -parse-as-library: main is launcher.m's. -wmo: one module, one object.
 xcrun --sdk "$SP_SDK" swiftc -target "$SP_TARGET" -O -wmo -parse-as-library -module-name SPLauncher \
-  -import-objc-header spswift.h -c spstyle.swift spstartscreen.swift spsettings.swift spsignin.swift sppairscreen.swift spvpnscreen.swift sppatchscreen.swift -o "$TMP/spswift.o"
+  -import-objc-header spswift.h -c spstyle.swift spstartscreen.swift spsettings.swift spsignin.swift spapplescreen.swift sppairscreen.swift spvpnscreen.swift sppatchscreen.swift -o "$TMP/spswift.o"
 for m in launcher spjit sppair spvpn splogin spstart sppatch spcdn spbind spguestlaunch spapple; do
   xcrun --sdk "$SP_SDK" clang -target "$SP_TARGET" -O1 -Wall -fobjc-arc -c $m.m -o "$TMP/$m.o"
 done
