@@ -12,10 +12,13 @@
 // companion's, every Vision Pro), or whose token Apple stopped taking.
 //
 // The token is a credential (CLAUDE.md, "The Apple token is a credential"): nothing here logs it, its size, or
-// any of its fields but the stated expiry's date. Requests to spapple carry it in memory only, zeroed after.
-// So is the Apple ID's password the sign-in takes (CLAUDE.md, "The Apple ID is a credential"): it goes from
-// the screen to spapple in one request, written into a buffer zeroed after, and nothing logs it, its size, or
-// the Apple ID; spapple drops it once Apple has it. Only the token the sign-in makes is kept.
+// any of its fields but the stated expiry's date, and nothing stores it but the keychain. Requests to spapple
+// carry it in memory only. So is the Apple ID's password the sign-in takes (CLAUDE.md, "The Apple ID is a
+// credential"): it goes from the screen to spapple in one request, and nothing logs it, its size, or the
+// Apple ID, or stores it; spapple drops it once Apple has it. Only the token the sign-in makes is kept.
+// Zeroing is best effort: the buffers this file and spapple own are zeroed after use, but Foundation's
+// copies (the strings and dictionaries JSON parsing and the screen's fields make) and isideload's (its
+// AppToken and DeveloperSession) can't be, and are freed as they are.
 #import <Foundation/Foundation.h>
 #import <Security/Security.h>
 #import <UIKit/UIKit.h>

@@ -162,17 +162,21 @@ again (over an hour for Retail on the headset). Don't change it casually.
   The launcher's own Apple sign-in (opt-in, from the start screen's note and Settings: `spapple.m`, its
   screen `spapplescreen.swift`, and `spapple`'s `login` op) is held to the same: the person types the
   password on the device, it goes to `spapple` in one request written into a buffer zeroed after, `spapple`
-  zeroes it as soon as Apple has it, and nothing stores it. Nothing logs the Apple ID, the password, its
-  size, a 2FA code, or the masked numbers Apple sends; the screen keeps none of them, and its fields are
-  emptied once they're sent. Only the token the sign-in makes is kept, as the next rule says. Its screen
+  zeroes it as soon as Apple has it, and nothing stores it (the zeroing is best effort: copies Foundation
+  and isideload make on the way are freed unzeroed). Nothing logs the Apple ID, the password, its size, a
+  2FA code, or the masked numbers Apple sends; the screen keeps none of them, and its fields are emptied
+  once they're sent. Only the token the sign-in makes is kept, as the next rule says. Its screen
   says plainly that it's a second sign-in to the Apple ID through a third-party anisette server.
 - **The Apple token is a credential.** The device keeps one Apple token (the `xcode.auth` app token, its
   adsid, and the anisette server and machine identity it was made on), and only `spapple.m` handles it: in
   the keychain (this device only, never synced), imported from `Library/spappletoken.json`, which is zeroed
   and deleted at once, or kept from the launcher's own sign-in's reply, which `spapple` zeroes once it's
-  read; and handed to `spapple` in memory, zeroed after. Its screens keep nothing. Never the password or the
-  GrandSlam token. Logs give the stated expiry's date only, never the token, its fields, or its size;
-  `spapple`'s errors never carry it. `push-apple-token.sh` (dev) and `slashplayed-companion` are the only
+  read; and handed to `spapple` in memory only. Zeroing it after use is best effort: `spapple.m` and
+  `spapple` zero the buffers they own, but Foundation's and isideload's copies are freed unzeroed. What
+  holds without exception: it's never logged, and never stored anywhere but that keychain item (and the
+  pushed file until its import). Its screens keep nothing. Never the password or the GrandSlam token. Logs
+  give the stated expiry's date only, never the token, its fields, or its size; `spapple`'s errors never
+  carry it. `push-apple-token.sh` (dev) and `slashplayed-companion` are the only
   things that push one, and the launcher's sign-in the only thing on the device that makes one.
 - **Never read, print or log values from `net.battle` prefs** or the exported credentials file. Sizes
   and timestamps only, as `TokenRelay.swift` does.

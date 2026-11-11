@@ -24,11 +24,13 @@
 // anisette server's).
 //
 // The token and the password are credentials (CLAUDE.md, "The Apple ID is a credential" and "The Apple token
-// is a credential"): nothing here logs them or puts them in an error. The password is in memory only for the
-// sign-in, zeroed as soon as Apple has taken it (or the sign-in ends); the token is in only the one reply
-// that hands it over, zeroed here once it's written and by spapple_free once it's read. No tracing
-// subscriber is installed, so nothing isideload logs goes anywhere; DEBUG_SENSITIVE, which makes isideload
-// put whole plists and the full email into errors, is cleared on every call.
+// is a credential"): nothing here logs them, puts them in an error, or stores them. The password is in memory
+// only for the sign-in, and the token for the request that uses it or the one reply that hands it over.
+// Zeroing is best effort: this library zeroes the copies it owns (the request, the password once Apple has
+// taken it or the sign-in ends, Token, and the reply once it's written and again in spapple_free), but not
+// the ones isideload makes and drops as they are (its AppToken and DeveloperSession, the request bodies it
+// builds). No tracing subscriber is installed, so nothing isideload logs goes anywhere; DEBUG_SENSITIVE, which
+// makes isideload put whole plists and the full email into errors, is cleared once, before the runtime starts.
 
 use std::{
     collections::HashMap,
@@ -178,6 +180,7 @@ async fn session(token: &Token, storage: &MemoryStorage) -> Result<DeveloperSess
         .set_client_info_override(Some(client_info_override()));
     // No email: the account is only the GrandSlam client and anisette for the session, never logged in here.
     let account = AppleAccount::builder("").anisette_provider(provider).build().await?;
+    // isideload's AppToken and the session keep copies of the token that it drops unzeroed (the header).
     Ok(DeveloperSession::new(
         AppToken { token: token.token.clone(), duration: token.duration, expiry: token.expiry },
         token.adsid.clone(),
@@ -437,6 +440,10 @@ fn scrub(v: &mut Value) {
 fn runtime() -> &'static tokio::runtime::Runtime {
     static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
     RT.get_or_init(|| {
+        // SAFETY: once, before the runtime below starts this library's threads. The launcher's own threads may
+        // be up, but Darwin's getenv and unsetenv both take libc's environment lock, and nothing in the
+        // launcher keeps a pointer getenv returned for this variable.
+        unsafe { std::env::remove_var("DEBUG_SENSITIVE") };
         let _ = rustls::crypto::ring::default_provider().install_default();
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -447,8 +454,6 @@ fn runtime() -> &'static tokio::runtime::Runtime {
 }
 
 fn call(request: &[u8]) -> Value {
-    // SAFETY: called before any thread this library starts reads the environment.
-    unsafe { std::env::remove_var("DEBUG_SENSITIVE") };
     // Only "op" is read here, into its own struct: a whole Value would copy a login's password unzeroed.
     #[derive(Deserialize)]
     struct Op {
@@ -490,8 +495,9 @@ pub extern "C" fn spapple_call(request: *const c_char) -> *mut c_char {
         std::panic::catch_unwind(|| call(&bytes))
             .unwrap_or_else(|_| json!({ "ok": false, "error": "spapple panicked" }))
     };
-    // Written once into room enough for any reply but a profiles one (which holds no secret), so a login's
-    // token isn't left behind in a buffer outgrown on the way; then the Value's own copy is zeroed.
+    // Written once into room enough for any reply but a profiles one, so a login's token isn't left behind in
+    // a buffer outgrown on the way (a profiles reply holds no token, at most an anisette state, which may be);
+    // then the Value's own copy is zeroed.
     let mut out = Vec::with_capacity(64 * 1024);
     let written = serde_json::to_writer(&mut out, &reply);
     scrub(&mut reply);
