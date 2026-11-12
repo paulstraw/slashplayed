@@ -429,6 +429,10 @@ impl App {
                         && let Some(p) = s.progress
                     {
                         ui.add(egui::ProgressBar::new(p as f32 / 100.0).show_percentage().fill(GOLD.linear_multiply(0.8)));
+                    } else if step == Step::Install && s.lines.last().is_some_and(|l| l.starts_with("installing on")) {
+                        // The copy to the device reports nothing (idevice's upload has no progress), and on a
+                        // phone it takes a minute or so: say it's going, until the install's percentages come.
+                        small(ui, "Copying the app to the device. This can take a minute or two.");
                     }
                 });
             }
