@@ -6,6 +6,8 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-12
+
 ### Added
 
 - The Slashplayed Companion for Windows and Linux, experimental for now: set up Slashplayed on an iPad or
