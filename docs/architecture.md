@@ -937,6 +937,14 @@ and scroll events and `NSTextInputClient`), with no event taps. `spevent.m`:
   `GCEventInteraction` for `GCUIEventTypeGamepad`, so a controller's events go to the Game Controller framework
   alone, which the client reads. `SP_GAMEPAD_SYSTEM=1` leaves them to the system. The look highlights are off
   while a gamepad is connected (`SP_HOVER_CONTROLLER=1` keeps them).
+- **Controller rumble.** Needs no shim: the client rumbles through GameController's
+  haptics (`GCDeviceHaptics` engines for the handles, or the triggers on a controller that has them, driven
+  by a CoreHaptics player), and both frameworks are the system's. Its ForceFeedback imports stay generated
+  stubs: they serve generic HID gamepads, and iOS doesn't let an app open a HID device (`IOHIDManagerOpen`
+  returns `kIOReturnNotPermitted`), so no stub is reached. The game's own UI never asks for rumble; it comes
+  from addons that call `C_GamePad.SetVibration`, such as Deadly Boss Mods, GTFO, and SilverDragon (Classic
+  Era also needs the gamepad on, `GamePadEnable`).
+  Checked on an iPhone with a DualShock 4 in Forever and Classic Era (#19); not yet on a Vision Pro.
 - **Look highlights (visionOS).** visionOS never tells an app where the user is looking, so the game
   gets no hover from gaze. The `SPHover` addon draws the rects of the visible clickable UI as a
   3-pixel strip of colored blocks along the bottom of the screen; `sphover.m` blits those rows out of
