@@ -310,7 +310,9 @@ jobs:
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: apps/companion-rs -> target
-          key: ${{ matrix.target }}-${{ hashFiles('scripts/build-zsign.sh', 'scripts/zsign.patch', 'apps/companion-rs/build.rs', 'apps/companion-rs/zsign/**') }}
+          # matrix.os first: rust-cache keys on the OS's family, not its release, and a build from a newer
+          # Ubuntu (a newer glibc) mustn't restore onto 22.04.
+          key: ${{ matrix.os }}-${{ matrix.target }}-${{ hashFiles('scripts/build-zsign.sh', 'scripts/zsign.patch', 'apps/companion-rs/build.rs', 'apps/companion-rs/zsign/**') }}
           # build.rs and openssl-src read these (SP_ZSIGN_SRC, SP_KIT_SHA256, OPENSSL_SRC_PERL), so a
           # change to one is a different build.
           env-vars: SP_ OPENSSL

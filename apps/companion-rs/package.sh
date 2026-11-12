@@ -54,7 +54,7 @@ if [ "$os" = linux ]; then
   for b in slashplayed-companion slashplayed-cli; do
     needed=$(readelf -d "$REL/$b" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p')
     [ -n "$needed" ] || die "readelf found no NEEDED entries in $b"
-    bad=$(grep -E '^lib(X|xcb|xkb|wayland|GL|EGL|OpenGL|gbm|drm)' <<<"$needed" || true)
+    bad=$(grep -E '^lib(X|xcb|xkb|wayland|decor|vulkan|gtk|gdk|GL|EGL|OpenGL|gbm|drm)' <<<"$needed" || true)
     [ -z "$bad" ] || die "$b links display libraries it should load at run time: $(echo $bad)"
   done
 fi
@@ -139,11 +139,15 @@ if [ "$os" = windows ]; then
   # Git Bash has no zip. Windows' own tar.exe (bsdtar) writes one from the suffix, with forward slashes and
   # real folder entries; Windows PowerShell's Compress-Archive writes backslashes, which unzip and other
   # non-Windows tools take as part of a file's name. Its full path: Git Bash's tar is GNU tar, which can't.
+  [ -n "${SYSTEMROOT:-}" ] || die "SYSTEMROOT isn't set, so tar.exe can't be found"
   bsdtar=$(cygpath -u "$SYSTEMROOT")/System32/tar.exe
   [ -x "$bsdtar" ] || die "no $bsdtar (Windows 10 1803 or later has it)"
   (cd "$STAGE" && "$bsdtar" -a -c -f "$NAME.zip" "$NAME") || die "tar.exe couldn't write $NAME.zip"
-  # Check what it wrote, since a backslash name extracts as one flat file elsewhere.
-  if "$bsdtar" -t -f "$STAGE/$NAME.zip" | grep -q '\\'; then die "$NAME.zip has a backslash in an entry name"; fi
+  # Check what it wrote, since a backslash name extracts as one flat file elsewhere: the raw names
+  # (orig_filename; on Windows, zipfile's filename and libarchive's listing turn backslashes into slashes),
+  # failing closed, so a zip Python can't read fails too.
+  "${PYTHON:-python3}" -I -c 'import sys,zipfile; sys.exit(any("\\" in i.orig_filename for i in zipfile.ZipFile(sys.argv[1]).infolist()))' \
+    "$STAGE/$NAME.zip" || die "$NAME.zip has a backslash in an entry name, or couldn't be read"
   mv "$STAGE/$NAME.zip" "$OUTDIR/"
   echo "$OUTDIR/$NAME.zip"
 else
