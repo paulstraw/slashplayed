@@ -76,6 +76,9 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ### Fixed
 
+- On the Vision Pro, a game controller now plays the game: its sticks, triggers and buttons reach the
+  game, and its buttons no longer click wherever you're looking. The look highlights are off while a
+  controller is connected.
 - A game installed on the device now plays in your region, taken from the device's region in
   Settings, with the game's text and speech in your device's language when the game has it. Before, it
   always played in the Americas in US English, so players elsewhere couldn't reach their realms. The
