@@ -400,6 +400,8 @@ pub(crate) mod fake {
         pub two_factor: bool,
         /// The team's certificate limit is hit, with no store for the key: the revoke is asked.
         pub cert_limit: bool,
+        /// The first code is wrong: Apple asks again, with its error.
+        pub wrong_code: bool,
         /// What the backend was asked, in order.
         pub calls: Arc<Mutex<Vec<String>>>,
     }
@@ -416,6 +418,7 @@ pub(crate) mod fake {
                 token: true,
                 two_factor: true,
                 cert_limit: false,
+                wrong_code: false,
                 calls: Arc::default(),
             }
         }
@@ -470,12 +473,16 @@ pub(crate) mod fake {
                 push_mode: "sms".into(),
                 id: 3,
             }];
-            let mut sms = false;
+            let (mut sms, mut last_error, mut wrong) = (false, None, self.wrong_code);
             loop {
-                let params = TwoFactorCallbackParams { last_error: None, unknown: false, sms, numbers: numbers.clone(), selected_number_id: None };
+                let params = TwoFactorCallbackParams { last_error: last_error.take(), unknown: false, sms, numbers: numbers.clone(), selected_number_id: None };
                 match ui.two_factor(params).await? {
                     TwoFactorCallbackResponse::SubmitCode(c) => {
                         self.log(format!("code {c} sms={sms}"));
+                        if std::mem::take(&mut wrong) {
+                            last_error = Some("-21669 - Incorrect verification code".to_string());
+                            continue;
+                        }
                         return Ok(());
                     }
                     TwoFactorCallbackResponse::SendSms(n) => {

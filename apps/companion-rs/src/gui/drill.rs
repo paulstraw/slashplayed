@@ -52,7 +52,7 @@ pub fn fill(app: &mut App, state: &str) {
         }
         "code" => {
             s.step = Some(Step::SignIn);
-            s.question = Some(Question::TwoFactor { sms: false, retry: false, numbers, reply: oneshot::channel().0 });
+            s.question = Some(Question::TwoFactor { sms: false, retry: false, unknown: false, numbers, reply: oneshot::channel().0 });
             app.show_numbers = true;
         }
         "team" => {

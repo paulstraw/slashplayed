@@ -79,6 +79,11 @@ pub fn apply(ctx: &egui::Context) -> bool {
     });
 
     let Some(bytes) = font_paths().into_iter().find_map(|p| std::fs::read(p).ok()) else { return false };
+    // egui panics on a face it can't parse (epaint's FontFace, at the first frame), and with no console that's
+    // a window that never opens: a damaged or cut-short file is checked with the same parser, and left out.
+    if skrifa::FontRef::from_index(&bytes, 0).is_err() {
+        return false;
+    }
     let mut fonts = FontDefinitions::default();
     fonts.font_data.insert(FACE.into(), FontData::from_owned(bytes).into());
     // Goodmountain first, the default faces behind it for any character it lacks.

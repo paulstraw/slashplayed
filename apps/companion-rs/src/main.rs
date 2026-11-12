@@ -232,7 +232,7 @@ impl Frontend for Cli<'_> {
 
     fn two_factor(&self, params: TwoFactorCallbackParams) -> Ask<'_, TwoFactorCallbackResponse> {
         Box::pin(async move {
-            if params.unknown {
+            if params.last_error.is_some() || params.unknown {
                 eprintln!("That didn't work. Try again, or pick another way to get a code.");
             }
             if !params.numbers.is_empty() {

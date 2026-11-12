@@ -46,10 +46,58 @@ fn type_into(h: &mut Harness<'_, App>, label: &str, text: &str) {
 }
 
 fn sign_in(h: &mut Harness<'_, App>) {
+    sign_in_with(h, "hunter2");
+}
+
+fn sign_in_with(h: &mut Harness<'_, App>, password: &str) {
     wait_for(h, "Sign in with your Apple ID");
     type_into(h, "Apple ID", "x@example.com");
-    type_into(h, "Password", "hunter2");
+    type_into(h, "Password", password);
     h.get_by_label("Install").click();
+}
+
+/// The text field `label` names: what it holds, as the accessibility tree has it.
+fn field_value(h: &Harness<'_, App>, label: &str) -> String {
+    use eframe::egui::accesskit::Role;
+    let n = h.get_by(|n| matches!(n.role(), Role::TextInput | Role::PasswordInput) && n.label().is_some_and(|l| l == label));
+    n.value().unwrap_or_default()
+}
+
+/// The password, once sent, isn't kept anywhere Ctrl+Z can bring it back from (egui's undo history).
+#[test]
+fn undo_doesnt_bring_the_password_back() {
+    let mut h = window(|| Fake { two_factor: false, ..Default::default() });
+    wait_for(&mut h, "Sign in with your Apple ID");
+    type_into(&mut h, "Apple ID", "x@example.com");
+    type_into(&mut h, "Password", "wrong-one");
+    // egui's undo keeps text that has stood still a while (a second), as a person's pause before Install.
+    for _ in 0..90 {
+        h.step();
+    }
+    h.get_by_label("Install").click();
+    wait_for(&mut h, "Apple didn't accept the sign-in");
+    h.get_by_label("Try Again").click();
+    wait_for(&mut h, "Sign in with your Apple ID");
+    h.get_by(|n| n.role() == eframe::egui::accesskit::Role::PasswordInput).focus();
+    h.run_steps(2);
+    h.key_press_modifiers(eframe::egui::Modifiers::COMMAND, eframe::egui::Key::Z);
+    h.run_steps(2);
+    assert!(field_value(&h, "Password").is_empty(), "the password came back with Ctrl+Z");
+}
+
+/// A wrong code says so, and the next one goes through.
+#[test]
+fn a_wrong_code_says_so() {
+    let mut h = window(|| Fake { wrong_code: true, ..Default::default() });
+    sign_in(&mut h);
+    wait_for(&mut h, "Code from your Apple device");
+    assert!(h.query_by_label_contains("That didn't work").is_none());
+    type_into(&mut h, "Code from your Apple device", "111111");
+    h.get_by_label("Continue").click();
+    wait_for(&mut h, "That didn't work");
+    type_into(&mut h, "Code from your Apple device", "123456");
+    h.get_by_label("Continue").click();
+    wait_for(&mut h, "All set");
 }
 
 #[test]
@@ -129,5 +177,16 @@ fn every_drill_state_opens() {
         let mut h = Harness::builder().with_size(SIZE).build_eframe(move |cc| App::new(&cc.egui_ctx, starter, Some(state)));
         h.run_steps(3);
         assert!(h.query_by_label("…").is_some(), "{state}: no menu");
+        let title = match *state {
+            "device" | "unlock" | "developer-mode" => "Connect your device",
+            "sign-in" => "Sign in with your Apple ID",
+            "code" => "Enter the code",
+            "team" => "Pick a team",
+            "installing" | "cert-limit" => "Installing",
+            "done" => "All set",
+            "error" => "Something went wrong",
+            other => panic!("no title for the drill state {other}"),
+        };
+        assert!(h.query_by_label(title).is_some(), "{state}: not the {title:?} screen");
     }
 }

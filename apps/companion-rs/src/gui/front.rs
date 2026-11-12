@@ -25,8 +25,10 @@ pub enum Question {
     TwoFactor {
         /// The code came by text message (else to the person's Apple devices).
         sms: bool,
-        /// The last answer didn't work.
+        /// The last answer didn't work: a wrong code, or a way that failed.
         retry: bool,
+        /// Apple doesn't say where a code went: only a new one, on the devices or by text, can be asked for.
+        unknown: bool,
         /// The trusted numbers, as Apple masks them: id and number.
         numbers: Vec<(u32, String)>,
         reply: oneshot::Sender<TwoFactorCallbackResponse>,
@@ -113,7 +115,10 @@ pub fn starter<B: Backend + 'static>(
                 server_client_info: false,
             };
             let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("tokio runtime");
-            let result = runtime.block_on(async { flow::install(&mut backend()?, &gui, &opts).await });
+            // A panic in the run (an unwrap in a dependency, a keystore thread's) would leave the screen
+            // waiting on a run that's gone: it ends the run with an error instead, and Try Again.
+            let run = std::panic::AssertUnwindSafe(|| runtime.block_on(async { flow::install(&mut backend()?, &gui, &opts).await }));
+            let result = std::panic::catch_unwind(run).unwrap_or_else(|_| Err(report!("the install stopped unexpectedly")));
             drop(gui);
             let mut s = lock(&shared);
             s.question = None;
@@ -200,7 +205,7 @@ impl Frontend for Gui {
     fn two_factor(&self, p: TwoFactorCallbackParams) -> Ask<'_, TwoFactorCallbackResponse> {
         let numbers = p.numbers.iter().map(|n| (n.id, n.number_with_dial_code.clone())).collect();
         Box::pin(async move {
-            let answer = self.ask(|reply| Question::TwoFactor { sms: p.sms, retry: p.unknown, numbers, reply }).await?;
+            let answer = self.ask(|reply| Question::TwoFactor { sms: p.sms, retry: p.last_error.is_some() || p.unknown, unknown: p.unknown, numbers, reply }).await?;
             if matches!(answer, TwoFactorCallbackResponse::Abort) {
                 self.with(|s| s.cancelled = true);
             }
@@ -221,7 +226,7 @@ impl Frontend for Gui {
                 Ok(())
             } else {
                 bail!(
-                    "the team has all the development certificates Apple allows, and this computer has no credential store to keep its signing key in. Nothing was revoked. Free a slot yourself, then try again"
+                    "the team has all the development certificates Apple allows, and this computer has no credential store to keep its signing key in. Nothing was revoked. Free a slot yourself, then try again: in Xcode on a Mac (Settings > Apple Accounts > Manage Certificates), on developer.apple.com (paid teams), or in the sideloading app that made it"
                 )
             }
         })

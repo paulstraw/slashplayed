@@ -48,6 +48,8 @@ pub struct App {
     team_choice: Option<usize>,
     /// The Forget dialog: its Apple ID field and what it last said.
     forget: Option<(String, Option<String>)>,
+    /// Its Forget, running: the credential store can take a while (Secret Service's unlock prompt).
+    forgetting: Option<std::thread::JoinHandle<String>>,
     /// A drill's screenshot to save (SP_GUI_SHOT), and the frames drawn so far.
     shot: Option<(std::path::PathBuf, u32)>,
 }
@@ -67,6 +69,7 @@ impl App {
             device_choice: None,
             team_choice: None,
             forget: None,
+            forgetting: None,
             shot: None,
         };
         match drill {
@@ -102,12 +105,16 @@ impl App {
     fn restart(&mut self, ctx: &egui::Context) {
         {
             let mut s = lock(&self.shared);
-            let picked = s.picked.take();
+            // Kept for the next run, unless that device is where it failed: then the person picks again.
+            let failed_there = s.step == Some(Step::Device) && s.outcome.as_ref().is_some_and(|o| o.is_err());
+            let picked = s.picked.take().filter(|_| !failed_there);
             *s = Shared { picked, ..Default::default() };
         }
-        self.code.clear();
+        self.code.zeroize();
+        forget_typing(ctx);
         self.show_numbers = false;
         self.team_choice = None;
+        self.device_choice = None;
         (self.starter)(self.shared.clone(), ctx.clone());
     }
 }
@@ -173,6 +180,24 @@ impl App {
 
 fn retry_id() -> egui::Id {
     egui::Id::unique("sp-retry")
+}
+
+fn password_id() -> egui::Id {
+    egui::Id::unique("sp-password")
+}
+
+fn code_id() -> egui::Id {
+    egui::Id::unique("sp-code")
+}
+
+/// egui keeps each text field's undo history, its text included, in the Context for as long as the
+/// window is open: Ctrl+Z in an emptied password field would bring the password back. Dropped once the
+/// text is sent (egui's own copies are freed, not zeroed: best effort, as the zeroing is).
+fn forget_typing(ctx: &egui::Context) {
+    ctx.data_mut(|d| {
+        d.remove::<egui::text_edit::TextEditState>(password_id());
+        d.remove::<egui::text_edit::TextEditState>(code_id());
+    });
 }
 
 /// A note in a well, for what the person has to do on the device.
@@ -302,7 +327,7 @@ impl App {
         ui.add_space(4.0);
         let pw_label = ui.label("Password");
         let pw = ui
-            .add(TextEdit::singleline(&mut *self.password).password(true).desired_width(f32::INFINITY))
+            .add(TextEdit::singleline(&mut *self.password).id(password_id()).password(true).desired_width(f32::INFINITY))
             .labelled_by(pw_label.id);
         small(ui, "Your password is used once, for this sign-in, and never stored.");
         ui.add_space(16.0);
@@ -312,6 +337,7 @@ impl App {
             && let Some(Question::SignIn(reply)) = s.question.take()
         {
             let password = Zeroizing::new(std::mem::take(&mut *self.password));
+            forget_typing(ui.ctx());
             // No pair-again here: a record the device refuses, the app deletes itself (apps/client/spjit.m), and
             // the next run sends a new one. slashplayed-cli keeps --pair-again for the rare rest.
             let sign_in = SignIn { apple_id: self.apple_id.trim().to_string(), pair_again: false };
@@ -320,11 +346,29 @@ impl App {
     }
 
     fn two_factor(&mut self, ui: &mut egui::Ui, s: &mut Shared) {
-        let Some(Question::TwoFactor { sms, retry, numbers, .. }) = &s.question else { return };
-        let (sms, retry, numbers) = (*sms, *retry, numbers.clone());
+        let Some(Question::TwoFactor { sms, retry, unknown, numbers, .. }) = &s.question else { return };
+        let (sms, retry, unknown, numbers) = (*sms, *retry, *unknown, numbers.clone());
         self.header(ui, "Enter the code");
         if retry {
             ui.label(RichText::new("That didn't work. Try again, or get a code another way.").color(ERROR));
+        }
+        let mut answer = None;
+        if unknown {
+            // The last way failed and Apple says nothing of where a code went: a code can't be sent, nor
+            // resent, only asked for again (isideload's NeedsUnknown2FA).
+            ui.label("Get a new code: on your Apple devices, or by text.");
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if ui.button("Send it to my Apple devices").clicked() {
+                    answer = Some(TwoFactorCallbackResponse::SendToDevices);
+                }
+                if ui.button("Cancel").clicked() {
+                    answer = Some(TwoFactorCallbackResponse::Abort);
+                }
+            });
+            self.numbers(ui, &numbers, &mut answer);
+            self.answer_code(&ui.ctx().clone(), s, answer);
+            return;
         }
         ui.label(if sms {
             "Apple texted a code to your phone."
@@ -334,11 +378,10 @@ impl App {
         ui.add_space(8.0);
         let label = ui.label(if sms { "Code from the text message" } else { "Code from your Apple device" });
         let field = ui
-            .add(TextEdit::singleline(&mut self.code).char_limit(6).desired_width(140.0).font(egui::TextStyle::Heading))
+.add(TextEdit::singleline(&mut self.code).id(code_id()).char_limit(6).desired_width(140.0).font(egui::TextStyle::Heading))
             .labelled_by(label.id);
         self.code.retain(|c| c.is_ascii_digit());
         ui.add_space(12.0);
-        let mut answer = None;
         let ready = self.code.len() == 6;
         let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         if self.main_button(ui, "Continue", ready) || (enter && ready) {
@@ -360,19 +403,31 @@ impl App {
             }
         });
         if self.show_numbers {
-            ui.add_space(8.0);
-            ui.label("Text a code to:");
-            for (id, number) in &numbers {
-                // Apple sends them masked; they're shown only here, on the person's own screen.
-                if ui.button(format!("Text {number}")).clicked() {
-                    answer = Some(TwoFactorCallbackResponse::SendSms(*id));
-                }
+            self.numbers(ui, &numbers, &mut answer);
+        }
+        self.answer_code(&ui.ctx().clone(), s, answer);
+    }
+
+    fn numbers(&mut self, ui: &mut egui::Ui, numbers: &[(u32, String)], answer: &mut Option<TwoFactorCallbackResponse>) {
+        if numbers.is_empty() {
+            return;
+        }
+        ui.add_space(8.0);
+        ui.label("Text a code to:");
+        for (id, number) in numbers {
+            // Apple sends them masked; they're shown only here, on the person's own screen.
+            if ui.button(format!("Text {number}")).clicked() {
+                *answer = Some(TwoFactorCallbackResponse::SendSms(*id));
             }
         }
+    }
+
+    fn answer_code(&mut self, ctx: &egui::Context, s: &mut Shared, answer: Option<TwoFactorCallbackResponse>) {
         if let Some(a) = answer
             && let Some(Question::TwoFactor { reply, .. }) = s.question.take()
         {
             self.code.zeroize();
+            forget_typing(ctx);
             self.show_numbers = false;
             let _ = reply.send(a);
         }
@@ -507,6 +562,11 @@ impl App {
 
     fn forget_dialog(&mut self, ctx: &egui::Context) {
         let Some((id, said)) = &mut self.forget else { return };
+        if self.forgetting.as_ref().is_some_and(|h| h.is_finished()) {
+            let h = self.forgetting.take().unwrap();
+            *said = Some(h.join().unwrap_or_else(|_| "Couldn't reach the credential store.".into()));
+        }
+        let busy = self.forgetting.is_some();
         let mut close = false;
         egui::Modal::new(egui::Id::unique("sp-forget")).show(ctx, |ui| {
             ui.set_width(400.0);
@@ -521,12 +581,20 @@ impl App {
             }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if ui.add_enabled(!id.trim().is_empty(), Button::new("Forget")).clicked() {
-                    *said = Some(match crate::keystore::forget(id.trim()) {
-                        Ok(true) => "Deleted this computer's signing key for that Apple ID.".into(),
-                        Ok(false) => "This computer has no signing key for that Apple ID.".into(),
-                        Err(e) => capitalized(&crate::secret::safe_error(&e)),
-                    });
+                if ui.add_enabled(!busy && !id.trim().is_empty(), Button::new("Forget")).clicked() {
+                    let (id, ctx) = (id.trim().to_string(), ui.ctx().clone());
+                    self.forgetting = Some(std::thread::spawn(move || {
+                        let said = match crate::keystore::forget(&id) {
+                            Ok(true) => "Deleted this computer's signing key for that Apple ID.".into(),
+                            Ok(false) => "This computer has no signing key for that Apple ID.".into(),
+                            Err(e) => capitalized(&crate::secret::safe_error(&e)),
+                        };
+                        ctx.request_repaint();
+                        said
+                    }));
+                }
+                if busy {
+                    ui.spinner();
                 }
                 if ui.button("Close").clicked() {
                     close = true;
@@ -561,13 +629,16 @@ fn capitalized(s: &str) -> String {
 /// Runs the window, with the real device and Apple.
 pub fn run() -> eframe::Result {
     let drill = std::env::var("SP_GUI_DRILL").ok();
-    // A development build has no kit pinned (build.rs): this names one, as slashplayed-cli's --kit does.
-    let kit = std::env::var_os("SP_GUI_KIT").map(std::path::PathBuf::from);
+    // A development build has no kit pinned (build.rs): this names one, as slashplayed-cli's --kit does. A
+    // release build uses only its pinned kit, whatever the environment says.
+    let kit = std::env::var_os("SP_GUI_KIT").filter(|_| crate::kit::pinned_sha256().is_none()).map(std::path::PathBuf::from);
     let starter = front::starter(crate::live::Live::new, kit);
     let icon = eframe::icon_data::from_png_bytes(include_bytes!("../../icons/slashplayed.png")).expect("the window's icon");
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Slashplayed Companion")
+            // Wayland has no window icons: the compositor matches this to a desktop entry, if there's one.
+            .with_app_id("slashplayed-companion")
             .with_inner_size(SIZE)
             .with_resizable(false)
             .with_maximize_button(false)
