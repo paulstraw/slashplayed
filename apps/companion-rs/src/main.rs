@@ -299,6 +299,30 @@ mod tests {
         assert_eq!(p(&["devices"]).unwrap().command, "devices");
     }
 
+    fn phones() -> Vec<DeviceInfo> {
+        ["A", "B"].map(|u| DeviceInfo { udid: u.into(), name: u.into(), class: "iPhone".into(), os: "27.1".into() }).to_vec()
+    }
+
+    /// The flags that answer the window's questions on the command line.
+    #[tokio::test]
+    async fn flags_answer_the_questions() {
+        let a = p(&["--udid", "B", "--apple-id", "x@example.com", "--pair-again"]).unwrap();
+        let cli = Cli(&a);
+        assert_eq!(cli.choose_device(&phones()).await.unwrap(), Some(1));
+        let s = cli.sign_in().await.unwrap();
+        assert_eq!((s.apple_id.as_str(), s.pair_again), ("x@example.com", true));
+        let limit = CertLimit { certificates: "c".into(), oldest: "o".into() };
+        assert!(cli.confirm_revoke(&limit).await.is_err(), "no revoke without --revoke-oldest");
+
+        let a = p(&["--apple-id", "x@example.com", "--revoke-oldest"]).unwrap();
+        let cli = Cli(&a);
+        assert!(!cli.sign_in().await.unwrap().pair_again);
+        assert!(cli.confirm_revoke(&limit).await.is_ok());
+        assert!(cli.choose_device(&phones()).await.is_err(), "several devices and no --udid");
+        let a = p(&["--udid", "C"]).unwrap();
+        assert!(Cli(&a).choose_device(&phones()).await.is_err());
+    }
+
     #[test]
     fn bad_arguments() {
         assert!(p(&["--team"]).is_err());

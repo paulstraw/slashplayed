@@ -146,11 +146,20 @@ pub async fn ensure_trusted(d: &Device, ui: &dyn Frontend) -> Result<(), Report>
     loop {
         let mut l = LockdownClient::connect(&d.provider()).await?;
         let host_id = uuid_upper();
-        // Once unlocked, the device asks; the pair request waits for the answer.
-        if !said {
-            ui.report(Event::Wait(Wait::Trust { device: d.name.clone() }));
-        }
-        match l.pair(host_id, buid.clone(), Some(HOST_NAME)).await {
+        // A locked device refuses at once; an unlocked one asks, and the request waits for the answer. So the
+        // person is asked to tap Trust only once the request is waiting, which also replaces the Unlock words.
+        let answer = {
+            let pair = l.pair(host_id, buid.clone(), Some(HOST_NAME));
+            tokio::pin!(pair);
+            tokio::select! {
+                r = &mut pair => r,
+                _ = tokio::time::sleep(std::time::Duration::from_millis(750)) => {
+                    ui.report(Event::Wait(Wait::Trust { device: d.name.clone() }));
+                    pair.await
+                }
+            }
+        };
+        match answer {
             Ok(mut record) => {
                 l.start_session(&record).await.context("the device accepted the pairing, but a session with it failed")?;
                 record.udid = Some(d.usb.udid.clone());

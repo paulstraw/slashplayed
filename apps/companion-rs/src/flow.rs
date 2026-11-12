@@ -137,9 +137,8 @@ pub struct SignIn {
 pub struct CertLimit {
     /// The team's certificates by name and end date (provision::describe).
     pub certificates: String,
-    /// The one that would be revoked, by name and end date; None when none is Slashplayed's, and nothing
-    /// will be revoked whatever the answer.
-    pub oldest: Option<String>,
+    /// The one that would be revoked, by name and end date. Only asked when there is one.
+    pub oldest: String,
 }
 
 /// The person's side of a run.
@@ -235,8 +234,12 @@ pub fn only_team(teams: &[DeveloperTeam]) -> Result<Option<usize>, Report> {
 
 /// How often a wait looks at the device again.
 pub const POLL: Duration = Duration::from_secs(2);
+/// How long the Developer Mode wait goes without a word from the device before it stops: its restart takes
+/// a minute or two, and an error that lasts longer (usbmuxd gone, a pairing it now refuses) won't pass.
+pub const DEVICE_SILENCE: Duration = Duration::from_secs(300);
 
-/// One install, start to finish.
+/// One install, start to finish. To stop it early (the window closing), drop the future: every wait in it
+/// is an await.
 pub async fn install(b: &mut impl Backend, ui: &dyn Frontend, opts: &Options<'_>) -> Result<Done, Report> {
     // 1. The kit, first: a bad download shouldn't cost a sign-in.
     ui.report(Event::Step(Step::Kit));
@@ -271,15 +274,37 @@ pub async fn install(b: &mut impl Backend, ui: &dyn Frontend, opts: &Options<'_>
             );
         }
         // Turning it on restarts the device: it leaves USB, comes back locked, and asks to Turn On after its
-        // unlock. Errors on the way are the restart's, so the wait looks again rather than stop.
+        // unlock. Errors on the way are the restart's, so the wait looks again; one that outlasts any restart
+        // (DEVICE_SILENCE) stops it, with what went wrong.
+        let mut heard = tokio::time::Instant::now();
+        let mut last: Option<String> = None;
         loop {
             ui.report(Event::Wait(wait.clone()));
             tokio::time::sleep(POLL).await;
-            let Ok(devices) = b.devices().await else { continue };
-            let Some(back) = devices.into_iter().find(|x| x.udid == d.udid) else { continue };
-            d = back;
-            if matches!(b.developer_mode(&d, ui).await, Ok(true)) {
-                break;
+            let answer = match b.devices().await {
+                Ok(devices) => match devices.into_iter().find(|x| x.udid == d.udid) {
+                    Some(back) => {
+                        d = back;
+                        b.developer_mode(&d, ui).await.map(Some)
+                    }
+                    None => Ok(None),
+                },
+                Err(e) => Err(e),
+            };
+            match answer {
+                Ok(Some(true)) => break,
+                Ok(Some(false)) => heard = tokio::time::Instant::now(),
+                Ok(None) => {}
+                Err(e) => last = Some(crate::secret::safe_error(&e)),
+            }
+            if heard.elapsed() > DEVICE_SILENCE {
+                match last {
+                    Some(e) => bail!("lost {} while waiting for Developer Mode: {e}", d.name),
+                    None => bail!(
+                        "{} hasn't come back on USB since its restart for Developer Mode: plug it in, unlock it, and try again",
+                        d.name
+                    ),
+                }
             }
         }
         ui.say(&format!("Developer Mode is on on {}", d.name));
@@ -363,7 +388,9 @@ mod tests {
     /// repeated; `dev_mode` what each developer_mode() call answers, likewise.
     struct Fake {
         lists: Vec<Vec<DeviceInfo>>,
-        dev_mode: Vec<bool>,
+        dev_mode: Vec<Result<bool, &'static str>>,
+        /// The last devices() answer: developer_mode() fails for a device not in it, as the real one does.
+        seen: Vec<DeviceInfo>,
         teams: Vec<DeveloperTeam>,
         free: bool,
         has_pairing: bool,
@@ -376,7 +403,8 @@ mod tests {
         fn default() -> Self {
             Self {
                 lists: vec![vec![phone("A", "iPhone")]],
-                dev_mode: vec![true],
+                dev_mode: vec![Ok(true)],
+                seen: Vec::new(),
                 teams: vec![team("T1")],
                 free: true,
                 has_pairing: false,
@@ -396,19 +424,27 @@ mod tests {
             Ok(("9.9.9".into(), "a test".into()))
         }
         async fn devices(&mut self) -> Result<Vec<DeviceInfo>, Report> {
-            Ok(next(&mut self.lists))
+            self.seen = next(&mut self.lists);
+            Ok(self.seen.clone())
         }
         async fn trust(&mut self, d: &DeviceInfo, _: &dyn Frontend) -> Result<(), Report> {
             self.calls.push(format!("trust {}", d.udid));
             Ok(())
         }
-        async fn developer_mode(&mut self, _: &DeviceInfo, _: &dyn Frontend) -> Result<bool, Report> {
-            Ok(next(&mut self.dev_mode))
+        async fn developer_mode(&mut self, d: &DeviceInfo, _: &dyn Frontend) -> Result<bool, Report> {
+            self.calls.push(format!("devmode {}", d.udid));
+            if !self.seen.iter().any(|x| x.udid == d.udid) {
+                bail!("no device {} on USB", d.udid);
+            }
+            next(&mut self.dev_mode).map_err(|e| report!("{e}"))
         }
         /// As account::sign_in asks: the password once, then the 2FA step until it's answered with a code.
         async fn sign_in(&mut self, apple_id: &str, _: &str, _: bool, ui: &dyn Frontend) -> Result<(), Report> {
             let password = ui.password(apple_id).await?;
-            assert_eq!(&*password, "hunter2");
+            // Compared without printing it, as a real password must never be.
+            if *password != "hunter2" {
+                bail!("Apple didn't accept the sign-in");
+            }
             let numbers = vec![TrustedNumber {
                 number_with_dial_code: "+1 (•••) •••-••12".into(),
                 last_two_digits: "12".into(),
@@ -445,6 +481,7 @@ mod tests {
             Ok(())
         }
         async fn has_pairing(&mut self, _: &DeviceInfo, _: &str) -> Result<bool, Report> {
+            self.calls.push("has pairing?".into());
             Ok(self.has_pairing)
         }
         async fn send_pairing(&mut self, _: &DeviceInfo) -> Result<usize, Report> {
@@ -452,9 +489,11 @@ mod tests {
             Ok(1234)
         }
         async fn send_ddi(&mut self, _: &dyn Frontend) -> Result<bool, Report> {
+            self.calls.push("ddi".into());
             Ok(true)
         }
         async fn send_token(&mut self) -> Result<bool, Report> {
+            self.calls.push("token".into());
             Ok(self.token)
         }
     }
@@ -522,7 +561,13 @@ mod tests {
         let ui = Person::default();
         let done = install(&mut b, &ui, &opts()).await.unwrap();
         assert_eq!(done, Done { device: "iPhone A".into(), free: true, renews: true });
-        assert_eq!(b.calls, ["kit", "trust A", "sms 3", "code 123456 sms=true", "provision T1 T1.slashplayed", "install free=true", "pairing"]);
+        assert_eq!(
+            b.calls,
+            [
+                "kit", "trust A", "devmode A", "sms 3", "code 123456 sms=true", "provision T1 T1.slashplayed", "install free=true",
+                "has pairing?", "pairing", "ddi", "token",
+            ]
+        );
         // One team: never asked. The password once, the code twice (the text, then the code).
         assert_eq!(*ui.asked.lock().unwrap(), ["password", "code", "code"]);
         let steps: Vec<Step> = ui.events().into_iter().filter_map(|e| if let Event::Step(s) = e { Some(s) } else { None }).collect();
@@ -569,22 +614,44 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn developer_mode_waits_through_the_restart() {
-        // Off; then the device is gone (restarting), back with it still off (before Turn On), then on.
+        // Off; then the device is gone (restarting), back but not answering yet, back with it still off
+        // (before Turn On), then on. It comes back with a new name, which the end must use.
+        let renamed = DeviceInfo { name: "Alex's iPhone".into(), ..phone("A", "iPhone") };
         let mut b = Fake {
-            lists: vec![vec![phone("A", "iPhone")], vec![], vec![phone("A", "iPhone")], vec![phone("A", "iPhone")]],
-            dev_mode: vec![false, false, true],
+            lists: vec![vec![phone("A", "iPhone")], vec![], vec![renamed.clone()]],
+            dev_mode: vec![Ok(false), Err("locked"), Ok(false), Ok(true)],
             ..Default::default()
         };
         let ui = Person { waits: true, ..Default::default() };
-        install(&mut b, &ui, &opts()).await.unwrap();
+        let done = install(&mut b, &ui, &opts()).await.unwrap();
+        assert_eq!(done.device, "Alex's iPhone");
         let waits = ui.events().iter().filter(|e| matches!(e, Event::Wait(Wait::DeveloperMode { .. }))).count();
-        assert_eq!(waits, 3, "{:?}", ui.events());
+        assert_eq!(waits, 4, "{:?}", ui.events());
+        // Never asked while it was off USB: the first look, then the three times it was there.
+        assert_eq!(b.calls.iter().filter(|c| c.starts_with("devmode")).count(), 4, "{:?}", b.calls);
 
         // The command line stops and says to run it again.
-        let mut b = Fake { dev_mode: vec![false], ..Default::default() };
+        let mut b = Fake { dev_mode: vec![Ok(false)], ..Default::default() };
         let e = install(&mut b, &Person::default(), &opts()).await.unwrap_err();
         assert!(e.to_string().contains("then run this again"), "{e}");
-        assert_eq!(b.calls, ["kit", "trust A"], "no sign-in before Developer Mode");
+        assert_eq!(b.calls, ["kit", "trust A", "devmode A"], "no sign-in before Developer Mode");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_error_that_outlasts_the_restart_stops_the_wait() {
+        let mut b = Fake { dev_mode: vec![Ok(false), Err("the device refused the pairing")], ..Default::default() };
+        let start = tokio::time::Instant::now();
+        // Bounded, so a wait that never stops fails the test rather than hang it.
+        let (ui, o) = (Person { waits: true, ..Default::default() }, opts());
+        let run = install(&mut b, &ui, &o);
+        let e = tokio::time::timeout(DEVICE_SILENCE * 2, run).await.expect("the wait never stopped").unwrap_err();
+        assert!(e.to_string().contains("the device refused the pairing"), "{e}");
+        assert!(start.elapsed() >= DEVICE_SILENCE, "it gave up before a restart could have finished");
+
+        // Gone from USB and never back: stops too, saying so.
+        let mut b = Fake { lists: vec![vec![phone("A", "iPhone")], vec![]], dev_mode: vec![Ok(false)], ..Default::default() };
+        let e = install(&mut b, &Person { waits: true, ..Default::default() }, &opts()).await.unwrap_err();
+        assert!(e.to_string().contains("hasn't come back on USB"), "{e}");
     }
 
     #[tokio::test(start_paused = true)]

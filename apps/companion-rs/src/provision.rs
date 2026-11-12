@@ -310,16 +310,18 @@ pub async fn identity(
             // the limit every run and keep revoking: possibly another computer's certificate, which stops
             // Slashplayed opening on that one's device. So it asks first. With a stored key this happens at
             // most once, since the certificate is reused after.
-            if !stored {
-                let oldest = revocable(&certs).first().map(|c| describe(std::slice::from_ref(*c)));
-                ui.confirm_revoke(&CertLimit { certificates: describe(&certs), oldest }).await?;
-            }
+            // Asked only when there's one to revoke: with none of Slashplayed's, the error below says what to
+            // do, and there's nothing to choose.
             let Some(old) = revocable(&certs).into_iter().next() else {
                 bail!(
                     "the team has all the development certificates Apple allows ({}), and none of them is Slashplayed's. Nothing was revoked: this tool never revokes a certificate it didn't make. Free a slot yourself, then run this again: in Xcode on a Mac (Settings > Apple Accounts > Manage Certificates, which lists only Apple Development ones), on developer.apple.com (paid teams), or in the sideloading app that made an iOS Development one",
                     describe(&certs)
                 );
             };
+            if !stored {
+                let oldest = describe(std::slice::from_ref(old));
+                ui.confirm_revoke(&CertLimit { certificates: describe(&certs), oldest }).await?;
+            }
             ui.say(&format!(
                 "the team has all the certificates it may: revoking \"{}\" (made by Slashplayed's tools, on this or another computer)",
                 old.machine_name.as_deref().unwrap_or_default()
