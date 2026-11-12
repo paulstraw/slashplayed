@@ -312,7 +312,7 @@ jobs:
           workspaces: apps/companion-rs -> target
           # matrix.os first: rust-cache keys on the OS's family, not its release, and a build from a newer
           # Ubuntu (a newer glibc) mustn't restore onto 22.04.
-          key: ${{ matrix.os }}-${{ matrix.target }}-${{ hashFiles('scripts/build-zsign.sh', 'scripts/zsign.patch', 'apps/companion-rs/build.rs', 'apps/companion-rs/zsign/**') }}
+          key: ${{ matrix.os }}-${{ matrix.target }}-${{ hashFiles('scripts/build-zsign.sh', 'scripts/zsign.patch', 'apps/companion-rs/build.rs', 'apps/companion-rs/zsign/**', 'apps/companion-rs/icons/slashplayed.ico') }}
           # build.rs and openssl-src read these (SP_ZSIGN_SRC, SP_KIT_SHA256, OPENSSL_SRC_PERL), so a
           # change to one is a different build.
           env-vars: SP_ OPENSSL
@@ -322,12 +322,16 @@ jobs:
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
       # A checkout stamps every file with the time it was written, and cargo reruns a build script when
-      # a file it watches (build.rs itself, and spzsign_host.cpp) is newer than its last run: on every
-      # run, then, rebuilding OpenSSL and zsign from scratch and wasting the cache. Both files' contents
-      # are in the cache's key above, so a cache this run restored was built from exactly these bytes, and
-      # an old fixed date is safe. The crate's own sources keep their times, so it recompiles as it should.
+      # a file it watches (build.rs itself, and its rerun-if-changed files: spzsign_host.cpp and the
+      # Windows icon) is newer than its last run: on every run, then, rebuilding OpenSSL and zsign from
+      # scratch and wasting the cache. These files' contents are in the cache's key above, so a cache this
+      # run restored was built from exactly these bytes, and an old fixed date is safe. The crate's own
+      # sources keep their times, so it recompiles as it should. A file build.rs starts watching goes in
+      # both lists (build.rs says so where it names them).
       - name: Let the cached build script stand
-        run: touch -d '2000-01-01T00:00:00Z' apps/companion-rs/build.rs apps/companion-rs/zsign/spzsign_host.cpp
+        run: |
+          touch -d '2000-01-01T00:00:00Z' apps/companion-rs/build.rs apps/companion-rs/zsign/spzsign_host.cpp \
+            apps/companion-rs/icons/slashplayed.ico
 
       - name: Fetch zsign's source
         run: scripts/build-zsign.sh source
