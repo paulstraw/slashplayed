@@ -136,9 +136,14 @@ EOF
 
 rm -f "$OUTDIR/$NAME".zip "$OUTDIR/$NAME".tar.gz
 if [ "$os" = windows ]; then
-  # Git Bash has no zip; PowerShell's Compress-Archive does.
-  (cd "$STAGE" && powershell -NoProfile -Command "Compress-Archive -Path '$NAME' -DestinationPath '$NAME.zip'") ||
-    die "Compress-Archive failed"
+  # Git Bash has no zip. Windows' own tar.exe (bsdtar) writes one from the suffix, with forward slashes and
+  # real folder entries; Windows PowerShell's Compress-Archive writes backslashes, which unzip and other
+  # non-Windows tools take as part of a file's name. Its full path: Git Bash's tar is GNU tar, which can't.
+  bsdtar=$(cygpath -u "$SYSTEMROOT")/System32/tar.exe
+  [ -x "$bsdtar" ] || die "no $bsdtar (Windows 10 1803 or later has it)"
+  (cd "$STAGE" && "$bsdtar" -a -c -f "$NAME.zip" "$NAME") || die "tar.exe couldn't write $NAME.zip"
+  # Check what it wrote, since a backslash name extracts as one flat file elsewhere.
+  if "$bsdtar" -t -f "$STAGE/$NAME.zip" | grep -q '\\'; then die "$NAME.zip has a backslash in an entry name"; fi
   mv "$STAGE/$NAME.zip" "$OUTDIR/"
   echo "$OUTDIR/$NAME.zip"
 else
