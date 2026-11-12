@@ -15,6 +15,10 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|| manifest.join("../../work/zsign/src/zsign"));
     let src = zsign.join("src");
+    // Every file named in a rerun-if-changed here (this one and the icon's below) must also be in ci.yml's
+    // "Let the cached build script stand" touch and its cargo cache key. A checkout makes each file newer
+    // than the cached build, so one missing from the touch reruns this script, OpenSSL and all, on every
+    // run (on Windows, twenty minutes). One missing from the key would let an older build stand once touched.
     println!("cargo:rerun-if-env-changed=SP_ZSIGN_SRC");
     println!("cargo:rerun-if-env-changed=SP_KIT_SHA256");
     println!("cargo:rerun-if-changed=zsign/spzsign_host.cpp");
