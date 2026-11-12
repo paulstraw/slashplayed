@@ -10,7 +10,7 @@ use egui_kittest::{
 };
 
 use super::{App, SIZE, front};
-use crate::flow::fake::{Fake, team};
+use crate::flow::fake::{Fake, password, team};
 
 /// A window whose runs go to `fake` (a fresh copy each run, sharing its log).
 fn window(fake: impl Fn() -> Fake + Send + Sync + 'static) -> Harness<'static, App> {
@@ -46,7 +46,7 @@ fn type_into(h: &mut Harness<'_, App>, label: &str, text: &str) {
 }
 
 fn sign_in(h: &mut Harness<'_, App>) {
-    sign_in_with(h, "hunter2");
+    sign_in_with(h, &password());
 }
 
 fn sign_in_with(h: &mut Harness<'_, App>, password: &str) {

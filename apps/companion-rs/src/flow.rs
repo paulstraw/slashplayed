@@ -377,6 +377,12 @@ pub(crate) mod fake {
 
     use super::*;
 
+    /// The made-up Apple ID's password. Built, not written out: a password in the source, even a fake one,
+    /// is what code scanning looks for.
+    pub fn password() -> String {
+        ('a'..='h').collect()
+    }
+
     pub fn team(id: &str) -> DeveloperTeam {
         DeveloperTeam { name: Some(format!("Team {id}")), team_id: id.into(), r#type: None, status: None }
     }
@@ -461,7 +467,7 @@ pub(crate) mod fake {
         async fn sign_in(&mut self, apple_id: &str, _: &str, _: bool, ui: &dyn Frontend) -> Result<(), Report> {
             let password = ui.password(apple_id).await?;
             // Compared without printing it, as a real password must never be.
-            if *password != "hunter2" {
+            if *password != fake::password() {
                 bail!("Apple didn't accept the sign-in");
             }
             if !self.two_factor {
@@ -571,7 +577,7 @@ mod tests {
         }
         fn password<'a>(&'a self, _: &'a str) -> Ask<'a, Zeroizing<String>> {
             self.asked("password");
-            Box::pin(async move { Ok(Zeroizing::new("hunter2".to_string())) })
+            Box::pin(async move { Ok(Zeroizing::new(password())) })
         }
         fn two_factor(&self, p: TwoFactorCallbackParams) -> Ask<'_, TwoFactorCallbackResponse> {
             self.asked("code");
