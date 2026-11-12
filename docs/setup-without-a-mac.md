@@ -46,8 +46,11 @@ You install the games on the device itself: open Slashplayed and tap one.
    - **Windows:** [`slashplayed-companion-windows-x86_64.zip`](https://github.com/paulstraw/slashplayed/releases/latest/download/slashplayed-companion-windows-x86_64.zip)
    - **Linux (x86_64):** [`slashplayed-companion-linux-x86_64.tar.gz`](https://github.com/paulstraw/slashplayed/releases/latest/download/slashplayed-companion-linux-x86_64.tar.gz)
    - **Linux (ARM):** [`slashplayed-companion-linux-aarch64.tar.gz`](https://github.com/paulstraw/slashplayed/releases/latest/download/slashplayed-companion-linux-aarch64.tar.gz)
-2. Unzip it (on Linux, `tar xzf slashplayed-companion-linux-*.tar.gz`). Keep the folder's files
-   together: the window reads `Goodmountain-Regular.otf` from beside itself.
+2. Extract it, and keep the folder's files together: the window reads `Goodmountain-Regular.otf` from
+   beside itself.
+   - **Windows:** right-click the zip, choose **Extract All…**, and open the folder it makes. Opening the
+     `.exe` from inside the zip, without extracting it, leaves the font behind.
+   - **Linux:** `tar xzf slashplayed-companion-linux-*.tar.gz`, then `cd slashplayed-companion-linux-*`.
 3. Open the window:
    - **Windows:** double-click **Slashplayed Companion.exe**. It isn't signed, so SmartScreen may say
      Windows protected your PC: choose **More info**, then **Run anyway**.
@@ -98,11 +101,12 @@ app to the device takes a minute or two. **Details** shows what it did.
 
 ![Installing: the steps, with Sign and install the app at 64%](images/companion-installing.png)
 
-Once a team has all the development certificates Apple allows, and this computer has no credential store
-to keep its signing key in (see [What it keeps](#what-it-keeps)), it asks before revoking one: **Revoke**
-revokes the oldest one a Slashplayed tool made, and **Cancel** stops with nothing revoked. A device
-signed with that certificate needs its own run again before Slashplayed opens there. It never revokes a
-certificate made by Xcode or another app.
+When the team has all the development certificates Apple allows, the companion makes room by revoking
+the oldest one a Slashplayed tool made, never one made by Xcode or another app. With a credential store
+(see [What it keeps](#what-it-keeps)) it does that without asking, at most once per computer, since the
+certificate is reused after. With no credential store it would do it every run, so it asks first:
+**Revoke** revokes that oldest one, and **Cancel** stops with nothing revoked. Either way, a device signed
+with the revoked certificate needs its own run again before Slashplayed opens there.
 
 ![The team has all its certificates: the certificates listed, with Revoke and Cancel](images/companion-cert-limit.png)
 
@@ -115,8 +119,8 @@ device and trust your Apple ID, or the app won't open. Then open Slashplayed and
 
 ### When something goes wrong
 
-The step that failed says why. **Try Again** runs it again, and **Copy Details** copies what happened, for
-an issue (it never holds your password). More is under [Troubleshooting](#troubleshooting).
+The step that failed says why. **Try Again** starts the run over, from the device, and asks for your
+password again. **Copy Details** copies what happened, for an issue (it never holds your password). More is under [Troubleshooting](#troubleshooting).
 
 ![Something went wrong: the sign-in step says the Apple ID or password is wrong, with Try Again and Copy Details](images/companion-error.png)
 
@@ -148,9 +152,10 @@ steps in a terminal, and runs on a computer with no display:
 - **Windows:** in PowerShell, in the folder, `.\slashplayed-cli.exe`
 - **Linux:** `./slashplayed-cli`
 
-It asks for the Apple ID, the password (not shown as you type), and the code; type `sms 1` at the code
-prompt to get it by text instead. It waits for the device's unlock, Trust, and Developer Mode as the
-window does.
+It asks for the Apple ID, the password (not shown as you type), and the code; to get the code by text
+instead, type `sms <n>` at the code prompt, with the number it lists beside the phone number. It waits for
+the device's unlock and Trust as the window does, but not for Developer Mode: if that's off, it says how
+to turn it on and stops, so run it again once the device has restarted and you've tapped **Turn On**.
 
 | Option | What it does |
 |---|---|
@@ -173,12 +178,13 @@ signing key kept for that Apple ID, as the window's **Forget this computer's sig
 - **Your Apple ID password:** never kept. You type it each run.
 - **The signing key:** kept in your system's own credential store (Windows Credential Manager, the
   Secret Service on Linux, the Keychain on a Mac), so each run reuses the same certificate instead of
-  making a new one. Where there's no credential store, each run makes a new certificate, and once the
-  team has all the certificates Apple allows, the window asks before revoking the oldest one a
-  Slashplayed tool made (`--revoke-oldest` for slashplayed-cli). If you use Slashplayed from another
-  computer too, that one's device then needs its own run before Slashplayed opens again.
-- **Certificates:** a free Apple ID can have only a few. It never removes a certificate made by Xcode or
-  another app; if those fill every slot, it says so and stops.
+  making a new one. Where there's no credential store, each run makes a new certificate.
+- **Certificates:** a free Apple ID can have only a few. When there's no room, the companion revokes the
+  oldest one a Slashplayed tool made: with a credential store without asking (at most once per computer,
+  since the certificate is reused after); with none, only once you choose **Revoke** in the window, or
+  with `--revoke-oldest` for slashplayed-cli, which otherwise stops. If you use Slashplayed from another
+  computer too, that one's device then needs its own run before Slashplayed opens again. It never removes
+  a certificate made by Xcode or another app; if those fill every slot, it says so and stops.
 - **On the device:** the app, its pairing record, and the developer disk image, in Slashplayed's own
   data. No signing key goes to the device: it installs and updates games without one. The Apple token
   goes into the app's keychain, on that device only. It's a token Apple gives for the developer services,
@@ -192,7 +198,8 @@ signing key kept for that Apple ID, as the window's **Forget this computer's sig
 - **The window doesn't open on Linux:** it needs an X11 or Wayland desktop with OpenGL. On a computer
   with no display, use [slashplayed-cli](#from-the-command-line).
 - **"couldn't reach usbmuxd":** Apple's driver isn't installed or running. Install Apple Devices on
-  Windows, or start usbmuxd on Linux (`sudo systemctl start usbmuxd`), then plug the device in again.
+  Windows, or the usbmuxd package on Linux, then unplug the device and plug it in again (on Linux, that
+  starts usbmuxd).
 - **The device doesn't show up:** use a data cable, unlock the device, and plug it in directly rather
   than through a hub.
 - **The sign-in fails with -80045 or "This action cannot be completed at this time":** the anisette
