@@ -1,12 +1,10 @@
 # Signed, notarized release on a v* tag: build with scripts/release/release.sh, publish the GitHub
 # release, then put the new item into the appcast on the Pages site.
 #
-# The Companion for Windows and Linux (apps/companion-rs) ships in v* releases only once the owner sets the
-# repository variable SP_RELEASE_COMPANION_RS to true (owner decision, 2026-11-02: prereleases only until
-# then, companion-rs-prerelease.yml). With it on, the release also carries the device kit
-# (scripts/release/device-kit.sh) and slashplayed-companion for Windows and Linux, built against that kit
-# by companion-rs-build.yml: unsigned (owner decision), with SHA256SUMS and build-provenance attestations
-# (gh attestation verify <file> -R paulstraw/slashplayed). release.sh builds and checks the kit either way.
+# Every v* release also carries the Companion for Windows and Linux (apps/companion-rs), labeled
+# experimental (owner decision, 2026-11-12): the device kit (scripts/release/device-kit.sh) and the window and
+# slashplayed-cli for Windows and Linux, built against that kit by companion-rs-build.yml: unsigned (owner
+# decision), with SHA256SUMS and build-provenance attestations (gh attestation verify <file> -R paulstraw/slashplayed).
 #
 # The job runs in the `release` environment, which holds every signing secret; the owner approves each
 # run there before any step (and so any secret) runs. Only the owner pushes tags. Never add a
@@ -229,27 +227,18 @@ jobs:
         run: echo "sha256=$(shasum -a 256 build/release/slashplayed-device-kit.zip | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        if: vars.SP_RELEASE_COMPANION_RS == 'true'
         with:
           subject-path: build/release/slashplayed-device-kit.zip
 
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          SHIP_KIT: ${{ vars.SP_RELEASE_COMPANION_RS == 'true' }}
         run: |
           set -euo pipefail
-          assets=("build/release/Slashplayed-Companion-$VERSION.dmg")
-          if [[ "$SHIP_KIT" == true ]]; then
-            assets+=(build/release/slashplayed-device-kit.zip)
-          else
-            # Without the kit, SHA256SUMS lists only what ships.
-            grep -v ' slashplayed-device-kit\.zip$' build/release/SHA256SUMS > "$RUNNER_TEMP/SHA256SUMS"
-            cp "$RUNNER_TEMP/SHA256SUMS" build/release/SHA256SUMS
-          fi
           gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --verify-tag \
             --title "Slashplayed $VERSION" --notes-file build/release/notes.md \
-            "${assets[@]}" build/release/SHA256SUMS
+            "build/release/Slashplayed-Companion-$VERSION.dmg" build/release/slashplayed-device-kit.zip \
+            build/release/SHA256SUMS
 
       # The live feed is the source of truth for past items, not site/: site/'s copy is only the empty
       # seed. A 404 means nothing has been deployed yet, so start from the seed. Anything else fails the
@@ -293,11 +282,10 @@ jobs:
           fi
           rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/asc-api-key.p8"
 
-  # slashplayed-companion, built against the kit the release now carries. No secrets, no environment: the
-  # build is companion-rs-build.yml, the same one prereleases use.
+  # The Windows and Linux programs, built against the kit the release now carries (companion-rs-build.yml),
+  # with no secrets and no environment.
   companion-rs-build:
     needs: release
-    if: vars.SP_RELEASE_COMPANION_RS == 'true'
     permissions:
       contents: read
     uses: ./.github/workflows/companion-rs-build.yml

@@ -1,7 +1,6 @@
-# Builds slashplayed-companion (apps/companion-rs) for each system it ships for, packaged with its notices
-# (apps/companion-rs/package.sh), as artifacts named companion-rs-<target>. Called by release.yml (a v* release) and
-# companion-rs-prerelease.yml (a volunteer prerelease, on the owner's approval); it publishes nothing itself and
-# holds no secrets. The caller passes the device kit's SHA-256, which the build compiles in (apps/companion-rs/build.rs)
+# Builds the host tool (apps/companion-rs: the window and slashplayed-cli) for each system it ships for, packaged
+# with its notices (apps/companion-rs/package.sh), as artifacts named companion-rs-<target>. Called by release.yml
+# for every v* release; it publishes nothing itself and holds no secrets. The caller passes the device kit's SHA-256, which the build compiles in (apps/companion-rs/build.rs)
 # so the tool installs only that kit, downloaded from the release named by release_tag.
 name: Build slashplayed-companion
 
@@ -30,13 +29,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          # 22.04, not latest: the binaries need the glibc they're built against or newer, and 22.04's
+          # 2.35 reaches Ubuntu 22.04, Debian 12, and SteamOS (24.04's would need 2.39).
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             rustup_url: x86_64-unknown-linux-gnu/rustup-init
             rustup_sha256: 5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4
             perl: perl
             python: python3
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
             rustup_url: aarch64-unknown-linux-gnu/rustup-init
             rustup_sha256: a9c168dbea81a84671c6b7a5c1795cb0eb699020110d107ddfca427bd797e697
@@ -87,6 +88,10 @@ jobs:
 
       - name: Fetch zsign's source
         run: scripts/build-zsign.sh source
+
+      # The window's title face, which package.sh puts beside it unchanged.
+      - name: Fetch the window's font
+        run: scripts/fetch-font.sh
 
       - name: Test
         working-directory: apps/companion-rs

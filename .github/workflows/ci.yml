@@ -201,11 +201,12 @@ jobs:
       - name: Test the companion
         run: apps/companion/test.sh
 
-  # The host tool, slashplayed-companion (apps/companion-rs), on the two systems it's for: its unit tests and a
-  # release build, from source as a volunteer would build it. zsign's patched source comes from
-  # scripts/build-zsign.sh source (git only); build.rs compiles it with OpenSSL from openssl-src. On
-  # Linux, the crates' notices too, which fail on a GPL-family crate (the binary links statically:
-  # apps/companion-rs/vendor/isideload/VENDORED.md). Gated like the companion jobs.
+  # The host tool (apps/companion-rs: the window, slashplayed-companion, and slashplayed-cli) on the two systems
+  # it's for: its unit tests and a release build, from source as a volunteer would build it. zsign's patched
+  # source comes from scripts/build-zsign.sh source (git only); build.rs compiles it with OpenSSL from
+  # openssl-src. Then package.sh, as a release runs it: the crates' notices, which fail on a GPL-family
+  # crate (the binaries link statically: apps/companion-rs/vendor/isideload/VENDORED.md), and on Linux the
+  # check that neither program links a display library. Gated like the companion jobs.
   companion-rs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
@@ -213,7 +214,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          # 22.04, not latest: the binaries need the glibc they're built against or newer, and 22.04's
+          # 2.35 reaches Ubuntu 22.04, Debian 12, and SteamOS (24.04's would need 2.39).
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             rustup_url: x86_64-unknown-linux-gnu/rustup-init
             rustup_sha256: 5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4
@@ -307,7 +310,9 @@ jobs:
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: apps/companion-rs -> target
-          key: ${{ matrix.target }}-${{ hashFiles('scripts/build-zsign.sh', 'scripts/zsign.patch', 'apps/companion-rs/build.rs', 'apps/companion-rs/zsign/**') }}
+          # matrix.os first: rust-cache keys on the OS's family, not its release, and a build from a newer
+          # Ubuntu (a newer glibc) mustn't restore onto 22.04.
+          key: ${{ matrix.os }}-${{ matrix.target }}-${{ hashFiles('scripts/build-zsign.sh', 'scripts/zsign.patch', 'apps/companion-rs/build.rs', 'apps/companion-rs/zsign/**') }}
           # build.rs and openssl-src read these (SP_ZSIGN_SRC, SP_KIT_SHA256, OPENSSL_SRC_PERL), so a
           # change to one is a different build.
           env-vars: SP_ OPENSSL
@@ -326,6 +331,10 @@ jobs:
 
       - name: Fetch zsign's source
         run: scripts/build-zsign.sh source
+
+      # The window's title face, which package.sh puts beside it unchanged.
+      - name: Fetch the window's font
+        run: scripts/fetch-font.sh
 
       - name: Test slashplayed-companion
         working-directory: apps/companion-rs
