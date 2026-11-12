@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in Slashplayed or its companion doesn't work the way it should.
+description: Something in Slashplayed or the Mac companion doesn't work the way it should.
 labels: [bug]
 body:
   - type: markdown
@@ -9,7 +9,7 @@ body:
 
         **Never paste your Battle.net email or password, a `login.txt`, Battle.net preference contents (`net.battle`), your launch credentials, a signing identity (`.p12`) or a pairing record** here, in a log or a screenshot. Export Diagnostics already leaves them out.
 
-        Check [troubleshooting](https://github.com/paulstraw/slashplayed/blob/main/docs/troubleshooting.md) first. For a security problem, use the private report linked from the new-issue page instead. If the companion said your game version isn't supported yet, or the device said "This patch needs a Slashplayed update", use the "New game patch broke it" form.
+        Check [troubleshooting](https://github.com/paulstraw/slashplayed/blob/main/docs/troubleshooting.md) first. For a security problem, use the private report linked from the new-issue page instead. Set up from Windows or Linux? Use the "Bug report (Windows or Linux)" form. If the companion said your game version isn't supported yet, or the device said "This patch needs a Slashplayed update", use the "New game patch broke it" form.
   - type: input
     id: companion-version
     attributes:
