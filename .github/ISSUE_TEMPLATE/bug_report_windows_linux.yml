@@ -1,0 +1,99 @@
+# For the Windows and Linux companion (apps/companion-rs): bug_report.yml asks for what only the Mac
+# companion has (its About box, macOS and Xcode, Export Diagnostics), which someone setting up from a PC
+# can't give. The window's Copy Details (gui/front.rs, Shared::details) already carries the version, the
+# device kit, the OS, and every step's line through secret::safe_error, so it's the log asked for here.
+name: Bug report (Windows or Linux)
+description: The Slashplayed Companion for Windows and Linux, or slashplayed-cli, doesn't work the way it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. The Windows and Linux companion is experimental, so every report helps. Issues are public.
+
+        **Never paste your Apple ID password, a two-factor code, your Battle.net email or password, a signing identity (`.p12`), or a pairing record** here, in a log, or in a screenshot. The window's **Copy Details** already leaves them out.
+
+        Check [the setup guide's troubleshooting](https://github.com/paulstraw/slashplayed/blob/main/docs/setup-without-a-mac.md#troubleshooting) first. For a security problem, use the private report linked from the new-issue page instead. Setting up from a Mac with the Mac companion? Use the other "Bug report" form.
+  - type: dropdown
+    id: os
+    attributes:
+      label: Computer
+      options:
+        - Windows (x86_64)
+        - Windows on ARM
+        - Linux (x86_64)
+        - Linux (ARM)
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: Windows version or Linux distribution
+      description: On Windows, Settings › System › About. On Linux, the distribution and its version, and X11 or Wayland.
+      placeholder: Windows 11 24H2, Ubuntu 24.04 on Wayland, Fedora 43…
+    validations:
+      required: true
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Which one did you use?
+      options:
+        - The window (Slashplayed Companion)
+        - slashplayed-cli
+    validations:
+      required: true
+  - type: input
+    id: companion-version
+    attributes:
+      label: Companion version
+      description: The release you downloaded, or `slashplayed-cli --version` in the same folder. Copy Details also ends with it.
+      placeholder: 1.5.0
+    validations:
+      required: true
+  - type: input
+    id: device-model
+    attributes:
+      label: Device model and iPadOS or iOS version
+      description: Settings › General › About on the device.
+      placeholder: iPhone 16 Pro, iOS 27.2
+    validations:
+      required: true
+  - type: dropdown
+    id: apple-id
+    attributes:
+      label: Apple ID
+      options:
+        - Free (a personal team)
+        - Paid Apple Developer Program
+        - Didn't get as far as signing in
+    validations:
+      required: true
+  - type: dropdown
+    id: step
+    attributes:
+      label: Where did it go wrong?
+      options:
+        - Starting the companion (the window didn't open, or it closed)
+        - Finding the device (driver, Trust, Developer Mode)
+        - Signing in to the Apple ID, or the code
+        - Picking a team
+        - Installing (profiles, signing, copying the app)
+        - After setup, in Slashplayed on the device
+        - Somewhere else
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead, with the error message. Screenshots help, without your Apple ID password or code in them.
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Copy Details
+      description: |
+        In the window, **Copy Details** under the error, then paste it here. If it didn't stop with an error, copy what's under **Details** instead. With slashplayed-cli, paste what it printed.
+        It holds the steps the companion took and its version, never your password. Look through it first if you like.
+      render: text
