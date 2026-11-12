@@ -23,19 +23,19 @@ Classic**, and **Retail**. They run on an **iPad** with M1 or later (or the A17 
 and **Apple Vision Pro**. M1 iPads (the 2021 iPad Pros and the 5th-generation iPad Air) and the A17 Pro
 iPad mini are untested: Slashplayed has only been played on M2 and later iPads. If you try one, please
 [report how it goes](https://github.com/paulstraw/slashplayed/issues/new/choose), working or not,
-with the zip from the companion's **Help > Export Diagnostics…**.
+with the zip from the Mac companion's **Help > Export Diagnostics…** (or, from Windows or Linux, what
+the window's **Copy Details** copies).
 In-game voice chat isn't supported on the device yet
 ([#12](https://github.com/paulstraw/slashplayed/issues/12)).
 
 ## Requirements
 
-- An **Apple Silicon Mac** with macOS 15 or later and Xcode. No Mac? For an iPad or iPhone, a tool for
-  Windows and Linux is in testing: see [Setting up without a Mac](docs/setup-without-a-mac.md).
-  Vision Pro needs a Mac.
-- An **Apple ID signed in to Xcode**. A free one works, and the app is signed again every 7 days; a
-  paid Apple Developer Program membership signs it for a year.
+- An **Apple Silicon Mac** with macOS 15 or later and Xcode, or, for an iPad or iPhone, a **Windows or
+  Linux** computer (see [On Windows or Linux](#on-windows-or-linux)). Vision Pro needs a Mac.
+- An **Apple ID**, signed in to Xcode on a Mac. A free one works, and the app is signed again every 7
+  days; a paid Apple Developer Program membership signs it for a year.
 - Your device on **iPadOS 26, iOS 26, or visionOS 27**. Setup walks you through pairing it with the
-  Mac and turning on Developer Mode.
+  computer and turning on Developer Mode.
 - A **Battle.net account** with an active World of Warcraft subscription. The game doesn't need to be
   installed on the Mac.
 - A **hardware keyboard** for typing in the game, which has no on-screen keyboard. On an iPhone, a
@@ -56,6 +56,8 @@ In-game voice chat isn't supported on the device yet
 
 ## Get started
 
+### On a Mac
+
 1. Download **Slashplayed Companion** from the
    [latest release](https://github.com/paulstraw/slashplayed/releases/latest) and drag it to
    Applications.
@@ -68,13 +70,32 @@ In-game voice chat isn't supported on the device yet
 5. From then on, play from the device alone. When Blizzard patches a game, the device updates it
    itself, or the companion's next Play copies the new version over.
 
+### On Windows or Linux
+
+For an iPad or iPhone, the Slashplayed Companion for Windows and Linux does the Mac's setup with no Mac
+or Xcode. It's **experimental**: newer than the Mac companion, and less tested on real devices.
+
+1. Download it from the [latest release](https://github.com/paulstraw/slashplayed/releases/latest):
+   `slashplayed-companion-windows-x86_64.zip`, `slashplayed-companion-linux-x86_64.tar.gz`, or
+   `slashplayed-companion-linux-aarch64.tar.gz`. Windows needs Apple Devices (or iTunes) installed, and
+   Linux needs usbmuxd.
+2. Extract it, and open **Slashplayed Companion.exe** (Windows) or `slashplayed-companion` (Linux). Plug in
+   the device, sign in with your Apple ID, and it installs Slashplayed.
+3. Then play as from step 3 of [On a Mac](#on-a-mac): open Slashplayed on the device and tap a game.
+
+[Setting up without a Mac](docs/setup-without-a-mac.md) walks through each screen, and covers
+`slashplayed-cli`, the same steps from a terminal.
+
+### Playing
+
 Leaving the game for more than about 30 seconds (closing its window, taking off the headset, or
 switching apps) can disconnect it. Use **Exit** or **Log Out** first to keep that session's settings.
 
 The [guide](docs/guide.md) covers the rest: playing from the Mac, copying game files over, addons,
 and free and paid Apple IDs. Something wrong? See [troubleshooting](docs/troubleshooting.md), then
 [report an issue](https://github.com/paulstraw/slashplayed/issues/new/choose) with the zip from the
-companion's **Help > Export Diagnostics…**.
+Mac companion's **Help > Export Diagnostics…**, or what the Windows and Linux companion's **Copy
+Details** copies.
 
 ## How it works
 

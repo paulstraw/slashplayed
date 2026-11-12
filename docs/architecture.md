@@ -568,13 +568,14 @@ addon reaches a device with the rebuild the companion's resources digest asks fo
 
 ## The host tool (no Mac)
 
-`slashplayed-companion` (`apps/companion-rs`, Rust) sets up an iPad or iPhone from Windows, Linux, or a Mac without
-Xcode. It does what the companion does with Xcode and devicectl, and nothing the device does for itself:
+The Slashplayed Companion for Windows and Linux (`apps/companion-rs`, Rust: the window, `slashplayed-companion`,
+and the command line, `slashplayed-cli`, on one library) sets up an iPad or iPhone from Windows, Linux, or a Mac
+without Xcode. It does what the companion does with Xcode and devicectl, and nothing the device does for itself:
 the device installs and updates games, picks their region, and writes `.build.info`, `Config.wtf`, and the
 addons. **Vision Pro stays Mac-only:** there's no public visionOS developer disk image besides Xcode's, and
 pairing a headset without a Mac is unproven. The tool refuses a headset.
 
-One run, `slashplayed-companion [install]`, which also signs the app again whenever the device can't renew
+One run, of the window or of `slashplayed-cli [install]`, which also signs the app again whenever the device can't renew
 its own profiles:
 
 1. **The device kit** (`src/kit.rs`): the device app, unsigned and, like every build of it, with no game
@@ -586,7 +587,8 @@ its own profiles:
 2. **The device** (`src/device.rs`), over USB through usbmuxd: Apple's driver on Windows (Apple Devices or
    iTunes), the `usbmuxd` service on Linux, macOS's own on a Mac. If this computer isn't trusted, the tool
    pairs (lockdown `Pair`; the person taps Trust) and saves the record with usbmuxd, as Finder or iTunes
-   would. If Developer Mode is off, the tool reveals it in Settings (amfi) and stops.
+   would. If Developer Mode is off, the tool reveals it in Settings (amfi); the window then waits through
+   the device's restart and Turn On, while `slashplayed-cli` stops and is run again.
 3. **The Apple ID** (`src/account.rs`), through the vendored isideload: GSA over SRP, 2FA, anisette from
    `mac-ani.jkcoxson.com` by default (`--anisette` for another). The password is typed, used for the one
    login, and zeroed. The whole login lives in memory and ends with the process (owner decision), so
@@ -636,8 +638,9 @@ certificates, not the "iOS Development" kind these are, so this is the only way 
 without a paid team's developer site.
 - With no store, the tool can't find its certificate again next run, so it would reach the limit every
   run and keep revoking, possibly another computer's certificate (that computer's device then won't open
-  Slashplayed until it runs again). So without a store it stops at the limit and revokes only with
-  `--revoke-oldest`.
+  Slashplayed until it runs again). So without a store it asks first: the window shows the certificates
+  with Revoke and Cancel, and `slashplayed-cli` stops at the limit and revokes only with
+  `--revoke-oldest`. With a store it revokes without asking, at most once per computer.
 
 **The developer disk image** (`src/ddi.rs`). Owner decision (2026-11-01): with no Xcode on the host, the
 iOS cryptex comes from the `doronz88/DeveloperDiskImage` mirror at run time, from a pinned commit, each
