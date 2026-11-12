@@ -56,7 +56,9 @@ the owner asks for it.
   dev scripts (`build.sh`, the app with no game in it, `run.sh`, `seed.sh`, `seed-client.sh`, the Mac's
   client into `Library/spgames`, `pull-logs.sh`, `grab-token.sh`, `push-apple-token.sh`, `casc_archives.py`).
 - `apps/companion-rs/`: `slashplayed-companion`, the host tool for an iPad or iPhone without a Mac (Windows, Linux, a
-  Mac without Xcode; Rust, `rust-toolchain.toml` pins it): `src/kit.rs` (the device kit, the unsigned app
+  Mac without Xcode; Rust, `rust-toolchain.toml` pins it): `src/flow.rs` (one install's steps and questions,
+  behind a `Frontend` (the program's prompts) and a `Backend` (`live.rs`: the device and Apple); `main.rs` is the
+  command line's `Frontend`), `kit.rs` (the device kit, the unsigned app
   `scripts/release/device-kit.sh` makes at release), `device.rs` (usbmuxd, trust, Developer Mode, install,
   house_arrest, the RemotePairing record), `account.rs` (the Apple ID sign-in, memory only), `provision.rs`
   (device, App IDs, capabilities, certificate, profiles), `keystore.rs` (the signing key, in the OS's

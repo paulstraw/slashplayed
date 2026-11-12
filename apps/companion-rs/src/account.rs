@@ -7,11 +7,10 @@
 //
 // No tracing subscriber is installed anywhere in this tool, so nothing isideload logs reaches any output; and
 // DEBUG_SENSITIVE, which makes it put whole plists and the full email into errors, is cleared before the
-// runtime starts (main.rs).
+// runtime starts (lib.rs, init).
 
 use std::{
     collections::HashMap,
-    io::{BufRead, Write},
     sync::{Arc, Mutex},
 };
 
@@ -20,12 +19,14 @@ use isideload::{
         AnisetteClientInfo,
         remote_v3::{ANISETTE_STATE_KEY, RemoteV3AnisetteProvider},
     },
-    auth::apple_account::{AppToken, AppleAccount, TwoFactorCallbackParams, TwoFactorCallbackResponse},
+    auth::apple_account::{AppToken, AppleAccount},
     dev::developer_session::DeveloperSession,
     util::storage::SideloadingStorage,
 };
 use rootcause::prelude::*;
 use zeroize::Zeroizing;
+
+use crate::flow::Frontend;
 
 /// iloader 2.4.1's default: a server backed by Apple's Mac ADI. The Android-ADI servers (ani.sidestore.io,
 /// ani.stikstore.app, ani.jkcoxson.com) have been refused with GSA -80045 since about 2026-10-12
@@ -59,40 +60,6 @@ impl SideloadingStorage for MemoryStorage {
     }
 }
 
-/// One line from the person (stdin), for the Apple ID, team, and 2FA prompts.
-pub fn ask(prompt: &str) -> Result<String, Report> {
-    eprint!("{prompt}");
-    std::io::stderr().flush()?;
-    let mut line = String::new();
-    if std::io::stdin().lock().read_line(&mut line)? == 0 {
-        bail!("no answer (the input ended)");
-    }
-    Ok(line.trim().to_string())
-}
-
-async fn two_factor(params: TwoFactorCallbackParams) -> Result<TwoFactorCallbackResponse, Report> {
-    if params.unknown {
-        eprintln!("That didn't work. Try again, or pick another way to get a code.");
-    }
-    if !params.numbers.is_empty() {
-        eprintln!("Type \"sms <n>\" to get a text instead, \"devices\" for your Apple devices, \"resend\", or \"abort\":");
-        // Apple sends the numbers masked; they're shown only on this person's own screen.
-        for n in &params.numbers {
-            eprintln!("  {}: {}", n.id, n.number_with_dial_code);
-        }
-    }
-    let line = ask(if params.sms { "Code from the text message: " } else { "Code shown on your Apple devices: " })?;
-    Ok(match line.as_str() {
-        "abort" | "" => TwoFactorCallbackResponse::Abort,
-        "devices" => TwoFactorCallbackResponse::SendToDevices,
-        "resend" => TwoFactorCallbackResponse::ResendCode,
-        s if s.starts_with("sms ") => TwoFactorCallbackResponse::SendSms(
-            s[4..].trim().parse().map_err(|_| report!("not a number from the list"))?,
-        ),
-        s => TwoFactorCallbackResponse::SubmitCode(s.to_string()),
-    })
-}
-
 /// What the device keeps of this sign-in, as the launcher's spapple.m stores it and spapple's Token reads it
 /// (apps/client/spapple/src/lib.rs): the xcode.auth app token, the adsid it goes with, and the anisette
 /// server and machine identity it was made on. Pushed as Library/spappletoken.json, so the device can get its
@@ -104,26 +71,25 @@ pub fn device_token(token: &AppToken, adsid: &str, anisette_url: &str, anisette_
     }))?))
 }
 
-/// Signs in and returns a developer session, and the device's token (device_token). The password is read
-/// here, with no echo, and dropped (zeroed) as soon as the login call returns. With the server's client
+/// Signs in and returns a developer session, and the device's token (device_token). The password comes from
+/// the Frontend here, once the anisette server has provisioned, and is dropped (zeroed) as soon as the login
+/// call returns; the Frontend answers the 2FA step. With the server's client
 /// identity (--server-client-info) there's no device token: the device always claims the override's.
 pub async fn sign_in(
     apple_id: &str,
     anisette_url: &str,
     server_client_info: bool,
+    ui: &dyn Frontend,
 ) -> Result<(DeveloperSession, Option<Zeroizing<Vec<u8>>>), Report> {
     let storage = MemoryStorage::default();
     let provider = RemoteV3AnisetteProvider::new(anisette_url, Box::new(storage.clone()), "0".into())?
         .set_client_info_override((!server_client_info).then(client_info_override));
     let mut account = AppleAccount::builder(apple_id).anisette_provider(provider).build().await?;
-    let password = Zeroizing::new(
-        rpassword::prompt_password(format!("Apple ID password for {apple_id} (not shown as you type): "))
-            .map_err(|_| report!("couldn't read the password: run this in a terminal"))?,
-    );
+    let password = ui.password(apple_id).await?;
     if password.is_empty() {
         bail!("no password typed");
     }
-    let result = account.login(&password, two_factor).await;
+    let result = account.login(&password, |params| ui.two_factor(params)).await;
     drop(password);
     result.context("Apple didn't accept the sign-in")?;
     let token = account.get_app_token("xcode.auth").await?;
