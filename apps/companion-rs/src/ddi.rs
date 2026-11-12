@@ -15,8 +15,8 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     device,
+    flow::Frontend,
     kit::{http_client, http_error},
-    say,
 };
 
 pub const DEVICE_DIR: &str = "Library/spddi";
@@ -65,7 +65,7 @@ pub fn verify(f: &File, data: &[u8]) -> Result<(), Report> {
 }
 
 /// Copies the image into the container unless it holds this version already. Returns whether it copied.
-pub async fn send_if_needed(afc: &mut idevice::afc::AfcClient) -> Result<bool, Report> {
+pub async fn send_if_needed(afc: &mut idevice::afc::AfcClient, ui: &dyn Frontend) -> Result<bool, Report> {
     let want = version();
     if let Some(have) = device::get(afc, &format!("{DEVICE_DIR}/version.txt")).await
         && String::from_utf8_lossy(&have).trim() == want
@@ -89,7 +89,7 @@ pub async fn send_if_needed(afc: &mut idevice::afc::AfcClient) -> Result<bool, R
         files.push((f, data));
     }
     for (f, data) in &files {
-        say(&format!("copying the developer disk image's {} ({} bytes)", f.path, data.len()));
+        ui.say(&format!("copying the developer disk image's {} ({} bytes)", f.path, data.len()));
         device::put(afc, &format!("{DEVICE_DIR}/Restore/{}", f.path), data).await?;
     }
     let list: String = FILES.iter().map(|f| format!("{}\n", f.path)).collect();

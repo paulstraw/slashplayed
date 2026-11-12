@@ -55,6 +55,8 @@ openssl-src = "=300.5.5"
 
 [dev-dependencies]
 tempfile = "3"
+# Paused time for flow.rs's tests: its waits poll every two seconds.
+tokio = { version = "1.49", features = ["test-util"] }
 
 [patch.crates-io]
 idevice = { git = "https://github.com/jkcoxson/idevice", rev = "d32c8189c51c2789496b0768039419c3705498c3" }

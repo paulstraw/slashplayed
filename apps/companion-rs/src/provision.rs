@@ -22,7 +22,7 @@ use isideload::{
         certificates::{CertificatesApi, DevelopmentCertificate},
         developer_session::DeveloperSession,
         devices::DevicesApi,
-        teams::{DeveloperTeam, TeamsApi},
+        teams::DeveloperTeam,
     },
 };
 use http::HeaderValue;
@@ -40,7 +40,10 @@ use x509_cert::{
 };
 use zeroize::Zeroizing;
 
-use crate::{keystore, profile, say};
+use crate::{
+    flow::{CertLimit, Frontend},
+    keystore, profile,
+};
 
 /// The name Apple shows for this tool's certificate (the developer site, Xcode's Manage Certificates): how
 /// a person, and this tool at the certificate limit, tells it from Xcode's and other tools'.
@@ -61,53 +64,31 @@ pub fn developer_code(e: &Report) -> Option<i64> {
     })
 }
 
-/// Picks the team: the one named, else the only one, else the person chooses.
-pub async fn pick_team(session: &mut DeveloperSession, wanted: Option<&str>) -> Result<DeveloperTeam, Report> {
-    let mut teams = session.list_teams().await?;
-    if let Some(id) = wanted {
-        return teams
-            .into_iter()
-            .find(|t| t.team_id == id)
-            .ok_or_else(|| report!("this Apple ID has no team {id}"));
-    }
-    match teams.len() {
-        0 => bail!("this Apple ID has no developer team. Sign in once at developer.apple.com to make its free Personal Team, then try again"),
-        1 => Ok(teams.remove(0)),
-        _ => {
-            eprintln!("This Apple ID has {} teams:", teams.len());
-            for (i, t) in teams.iter().enumerate() {
-                eprintln!("  {}: {} ({})", i + 1, t.name.as_deref().unwrap_or("?"), t.team_id);
-            }
-            let n: usize = crate::account::ask("Which one should sign Slashplayed? ")?
-                .parse()
-                .map_err(|_| report!("not a number from the list"))?;
-            if n == 0 || n > teams.len() {
-                bail!("not a number from the list");
-            }
-            Ok(teams.remove(n - 1))
-        }
-    }
-}
-
 /// The device, registered on the team (once; a free team's limit is Apple's to say).
 pub async fn register_device(
     session: &mut DeveloperSession,
     team: &DeveloperTeam,
     device: &UsbmuxdDevice,
     name: &str,
+    ui: &dyn Frontend,
 ) -> Result<(), Report> {
     let devices = session.list_devices(team, None).await?;
     if devices.iter().any(|d| d.device_number == device.udid) {
-        say(&format!("{name} is already registered on the team"));
+        ui.say(&format!("{name} is already registered on the team"));
         return Ok(());
     }
     session.add_device(team, name, &device.udid, None).await?;
-    say(&format!("registered {name} on the team"));
+    ui.say(&format!("registered {name} on the team"));
     Ok(())
 }
 
 /// The app's and the helper's App IDs, found or (only when missing) made.
-pub async fn app_ids(session: &mut DeveloperSession, team: &DeveloperTeam, bundle_id: &str) -> Result<(AppId, AppId), Report> {
+pub async fn app_ids(
+    session: &mut DeveloperSession,
+    team: &DeveloperTeam,
+    bundle_id: &str,
+    ui: &dyn Frontend,
+) -> Result<(AppId, AppId), Report> {
     let helper = crate::kit::helper_id(bundle_id);
     let list = session.list_app_ids(team, None).await?;
     let missing: Vec<String> = [bundle_id.to_string(), helper.clone()]
@@ -126,7 +107,7 @@ pub async fn app_ids(session: &mut DeveloperSession, team: &DeveloperTeam, bundl
         for b in &missing {
             let name = if b.ends_with(".helper") { "Slashplayed helper" } else { "Slashplayed" };
             session.add_app_id(team, name, b, None).await?;
-            say(&format!("made the App ID {b}"));
+            ui.say(&format!("made the App ID {b}"));
         }
     }
     let list = session.list_app_ids(team, None).await?;
@@ -172,13 +153,18 @@ fn classify(status: u16) -> PatchAnswer {
 /// increased-memory-limit). Says whether extended-virtual-addressing was granted: Apple refuses it for a
 /// free team (403, classify), which is then signed with increased-memory-limit alone
 /// (Signing.freeTeamDropped).
-pub async fn capabilities(session: &mut DeveloperSession, team: &DeveloperTeam, app_id: &AppId) -> Result<Eva, Report> {
+pub async fn capabilities(
+    session: &mut DeveloperSession,
+    team: &DeveloperTeam,
+    app_id: &AppId,
+    ui: &dyn Frontend,
+) -> Result<Eva, Report> {
     let status = patch_capabilities(session, team, app_id, &["INCREASED_MEMORY_LIMIT", "EXTENDED_VIRTUAL_ADDRESSING"]).await?;
     match classify(status) {
         PatchAnswer::Granted => Ok(Eva::Granted),
         PatchAnswer::Refused => {
             // The status alone (no body), so a run shows which answer it took.
-            say(&format!("Apple refused extended-virtual-addressing (HTTP {status}): signing with increased-memory-limit alone"));
+            ui.say(&format!("Apple refused extended-virtual-addressing (HTTP {status}): signing with increased-memory-limit alone"));
             session
                 .add_increased_memory_limit(team, app_id)
                 .await
@@ -283,12 +269,12 @@ pub fn describe(certs: &[DevelopmentCertificate]) -> String {
         .join("; ")
 }
 
-/// `revoke_oldest`: at the certificate limit with no stored key, revoke anyway (see below).
+/// At the certificate limit with no stored key, the Frontend confirms the revoke first (see below).
 pub async fn identity(
     session: &mut DeveloperSession,
     team: &DeveloperTeam,
     apple_id: &str,
-    revoke_oldest: bool,
+    ui: &dyn Frontend,
 ) -> Result<Identity, Report> {
     let (key, stored) = match keystore::load(apple_id) {
         keystore::Loaded::Key(k) => (k, true),
@@ -297,13 +283,13 @@ pub async fn identity(
             let stored = match (&loaded, keystore::save(apple_id, &k)) {
                 (_, Ok(())) => true,
                 (keystore::Loaded::Unavailable(why), Err(_)) => {
-                    say(&format!(
+                    ui.say(&format!(
                         "no credential store to keep the signing key in ({why}): this run makes a new certificate"
                     ));
                     false
                 }
                 (_, Err(e)) => {
-                    say(&format!("{}: this run makes a new certificate", crate::secret::safe_error(&e)));
+                    ui.say(&format!("{}: this run makes a new certificate", crate::secret::safe_error(&e)));
                     false
                 }
             };
@@ -312,7 +298,7 @@ pub async fn identity(
     };
     let certs = session.list_ios_certs(team).await?;
     if let Some(cert) = certs.iter().find_map(|c| is_ours(c, &key)) {
-        say("reusing this computer's Slashplayed certificate");
+        ui.say("reusing this computer's Slashplayed certificate");
         let cert_der = cert.to_der()?;
         return Ok(Identity { key, cert_der });
     }
@@ -324,11 +310,9 @@ pub async fn identity(
             // the limit every run and keep revoking: possibly another computer's certificate, which stops
             // Slashplayed opening on that one's device. So it asks first. With a stored key this happens at
             // most once, since the certificate is reused after.
-            if !stored && !revoke_oldest {
-                bail!(
-                    "the team has all the development certificates Apple allows ({}), and this computer has no credential store to keep its signing key in, so it can't reuse a certificate. Nothing was revoked. Free a slot yourself, or run this again with --revoke-oldest to revoke the oldest certificate a Slashplayed tool made, on this or another computer (that computer's device then needs its own run before Slashplayed opens again)",
-                    describe(&certs)
-                );
+            if !stored {
+                let oldest = revocable(&certs).first().map(|c| describe(std::slice::from_ref(*c)));
+                ui.confirm_revoke(&CertLimit { certificates: describe(&certs), oldest }).await?;
             }
             let Some(old) = revocable(&certs).into_iter().next() else {
                 bail!(
@@ -336,7 +320,7 @@ pub async fn identity(
                     describe(&certs)
                 );
             };
-            say(&format!(
+            ui.say(&format!(
                 "the team has all the certificates it may: revoking \"{}\" (made by Slashplayed's tools, on this or another computer)",
                 old.machine_name.as_deref().unwrap_or_default()
             ));
@@ -345,7 +329,7 @@ pub async fn identity(
         }
         Err(e) => return Err(e),
     };
-    say(if stored { "made a Slashplayed certificate for this computer" } else { "made a Slashplayed certificate for this run" });
+    ui.say(if stored { "made a Slashplayed certificate for this computer" } else { "made a Slashplayed certificate for this run" });
     let certs = session.list_ios_certs(team).await?;
     let cert = certs
         .iter()
@@ -368,6 +352,7 @@ pub async fn profiles(
     udid: &str,
     id: &Identity,
     eva: Eva,
+    ui: &dyn Frontend,
 ) -> Result<(Vec<u8>, Vec<u8>, bool), Report> {
     let app = session.download_team_provisioning_profile(team, app_id, None).await?;
     let app_bytes: Vec<u8> = app.encoded_profile.as_ref().to_vec();
@@ -386,7 +371,7 @@ pub async fn profiles(
     profile::check(&profile::Profile::parse(&helper_bytes)?, &team.team_id, &helper_id.identifier, udid, &id.cert_der, &[], &[])?;
     if let Some(exp) = parsed.expires() {
         let days = exp.duration_since(std::time::SystemTime::now()).map(|d| d.as_secs() / 86400).unwrap_or(0);
-        say(&format!(
+        ui.say(&format!(
             "profiles made: {} team, good for {days} more days{}",
             if free { "a free" } else { "a paid" },
             if free { " (run this again within a week to keep Slashplayed opening)" } else { "" }

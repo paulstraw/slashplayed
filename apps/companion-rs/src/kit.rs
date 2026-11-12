@@ -43,7 +43,7 @@ const STALL_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// The one HTTP client for every download (the kit, ddi.rs's disk image): bare `reqwest::get` has no
 /// timeout at all, so a stalled connection hung the run forever. TLS is rustls with the ring provider
-/// main.rs installs as the process default (reqwest is built with rustls-no-provider), so this is only
+/// lib.rs's init installs as the process default (reqwest is built with rustls-no-provider), so this is only
 /// called after that, never from a unit test.
 pub fn http_client() -> Result<reqwest::Client, Report> {
     reqwest::Client::builder()

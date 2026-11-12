@@ -22,13 +22,14 @@ use idevice::{
 use rootcause::prelude::*;
 use zeroize::Zeroizing;
 
-use crate::say;
+use crate::flow::{DeviceInfo, Event, Frontend, Wait};
 
 /// The name this computer's pairings go by on the device (Settings > Developer lists the RemotePairing one).
 pub const HOST_NAME: &str = "Slashplayed";
 /// Where the launcher finds its RemotePairing record (Pairing.devicePath).
 pub const PAIRING_PATH: &str = "Library/sppairing.plist";
 
+#[derive(Clone)]
 pub struct Device {
     pub usb: UsbmuxdDevice,
     pub name: String,
@@ -37,6 +38,10 @@ pub struct Device {
 }
 
 impl Device {
+    pub fn info(&self) -> DeviceInfo {
+        DeviceInfo { udid: self.usb.udid.clone(), name: self.name.clone(), class: self.class.clone(), os: self.os.clone() }
+    }
+
     pub fn provider(&self) -> UsbmuxdProvider {
         self.usb.to_provider(UsbmuxdAddr::default(), HOST_NAME)
     }
@@ -76,36 +81,6 @@ pub async fn list() -> Result<Vec<Device>, Report> {
     Ok(out)
 }
 
-/// The device to set up: the one named, else the only one.
-pub async fn pick(udid: Option<&str>) -> Result<Device, Report> {
-    let mut devices = list().await?;
-    let d = match udid {
-        Some(u) => devices
-            .into_iter()
-            .find(|d| d.usb.udid == u)
-            .ok_or_else(|| report!("no device {u} on USB: plug it in with its cable and unlock it"))?,
-        None => match devices.len() {
-            0 => bail!("no iPhone or iPad on USB: plug one in with its cable and unlock it"),
-            1 => devices.remove(0),
-            n => {
-                eprintln!("{n} devices are plugged in:");
-                for d in &devices {
-                    eprintln!("  {} ({}, iOS {}): --udid {}", d.name, d.class, d.os, d.usb.udid);
-                }
-                bail!("name the one to set up with --udid");
-            }
-        },
-    };
-    match d.class.as_str() {
-        "iPhone" | "iPad" => Ok(d),
-        "RealityDevice" | "AppleVision" => bail!(
-            "{} is a Vision Pro. Setting up Slashplayed on Vision Pro still needs a Mac with the Slashplayed Companion",
-            d.name
-        ),
-        other => bail!("{} is a {other}: Slashplayed runs on iPhone, iPad, and Vision Pro", d.name),
-    }
-}
-
 /// What a failed StartSession with usbmuxd's existing record means for that record.
 #[derive(Debug, PartialEq, Eq)]
 enum SessionRefusal {
@@ -135,7 +110,7 @@ fn classify_refusal(e: &IdeviceError) -> SessionRefusal {
 
 /// Makes sure this computer is trusted by the device (a lockdown pair record usbmuxd keeps), asking the
 /// person to tap Trust when it isn't. On a Mac that already syncs with the device, nothing happens.
-pub async fn ensure_trusted(d: &Device) -> Result<(), Report> {
+pub async fn ensure_trusted(d: &Device, ui: &dyn Frontend) -> Result<(), Report> {
     let mut mux = UsbmuxdConnection::default().await.map_err(no_usbmuxd)?;
     // No record at all (usbmuxd answers with an error for an unknown UDID) means pairing from scratch. If
     // usbmuxd itself is unreachable, get_buid below says so.
@@ -152,7 +127,7 @@ pub async fn ensure_trusted(d: &Device) -> Result<(), Report> {
                 SessionRefusal::NotAccepted => break,
                 SessionRefusal::Locked => {
                     if !said {
-                        eprintln!("Unlock {}: it trusts this computer, and setup goes on once it's unlocked.", d.name);
+                        ui.report(Event::Wait(Wait::UnlockTrusted { device: d.name.clone() }));
                         said = true;
                     }
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -171,18 +146,22 @@ pub async fn ensure_trusted(d: &Device) -> Result<(), Report> {
     loop {
         let mut l = LockdownClient::connect(&d.provider()).await?;
         let host_id = uuid_upper();
+        // Once unlocked, the device asks; the pair request waits for the answer.
+        if !said {
+            ui.report(Event::Wait(Wait::Trust { device: d.name.clone() }));
+        }
         match l.pair(host_id, buid.clone(), Some(HOST_NAME)).await {
             Ok(mut record) => {
                 l.start_session(&record).await.context("the device accepted the pairing, but a session with it failed")?;
                 record.udid = Some(d.usb.udid.clone());
                 let bytes = Zeroizing::new(record.serialize()?);
                 mux.save_pair_record(&d.usb.udid, bytes.to_vec()).await.map_err(no_usbmuxd)?;
-                say(&format!("{} trusts this computer", d.name));
+                ui.say(&format!("{} trusts this computer", d.name));
                 return Ok(());
             }
             Err(IdeviceError::PasswordProtected) => {
                 if !said {
-                    eprintln!("Unlock {}: it asks whether to trust this computer once it's unlocked.", d.name);
+                    ui.report(Event::Wait(Wait::UnlockToTrust { device: d.name.clone() }));
                     said = true;
                 }
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -204,23 +183,23 @@ fn uuid_upper() -> String {
     format!("{}-{}-{}-{}-{}", &h[..8], &h[8..12], &h[12..16], &h[16..20], &h[20..])
 }
 
-/// Developer Mode, which a development-signed app needs. If it's off, the option is revealed in Settings
-/// (iOS hides it until a developer tool asks) and the person turns it on there: that restarts the device,
-/// so this run stops and they run it again.
+/// Whether Developer Mode is on, which a development-signed app needs. If it's off, the option is revealed
+/// in Settings (iOS hides it until a developer tool asks) and the person turns it on there, which restarts
+/// the device (flow.rs says what then).
 ///
 /// This is the run's first lockdown service, and where a device still locked since its restart says so:
 /// StartSession works before the first unlock (ensure_trusted gets through), but StartService answers
 /// "PasswordProtected" until then (checked on an iPhone, iOS 27.0.1, after Developer Mode's own restart). So
 /// a locked answer waits here for the unlock, as ensure_trusted's does; once unlocked, the later services
 /// (installation_proxy, house_arrest) work even if it locks again.
-pub async fn ensure_developer_mode(d: &Device) -> Result<(), Report> {
+pub async fn developer_mode(d: &Device, ui: &dyn Frontend) -> Result<bool, Report> {
     let mut said = false;
     let mut amfi = loop {
         match AmfiClient::connect(&d.provider()).await {
             Ok(a) => break a,
             Err(e) if classify_refusal(&e) == SessionRefusal::Locked => {
                 if !said {
-                    eprintln!("Unlock {}: setup goes on once it's unlocked.", d.name);
+                    ui.report(Event::Wait(Wait::Unlock { device: d.name.clone() }));
                     said = true;
                 }
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -229,18 +208,20 @@ pub async fn ensure_developer_mode(d: &Device) -> Result<(), Report> {
         }
     };
     if amfi.get_developer_mode_status().await? {
-        return Ok(());
+        return Ok(true);
     }
     let _ = amfi.reveal_developer_mode_option_in_ui().await;
-    bail!(
-        "Developer Mode is off on {}. On it, open Settings > Privacy & Security > Developer Mode, turn it on, and restart when asked; after the restart, tap Turn On, enter the passcode, then run this again",
-        d.name
-    )
+    Ok(false)
 }
 
-/// Installs (or updates, keeping its data) the signed app from its IPA.
-pub async fn install(d: &Device, ipa: &Path) -> Result<(), Report> {
-    idevice::utils::installation::install_package(&d.provider(), ipa, None)
+/// Installs (or updates, keeping its data) the signed app from its IPA, saying how far along it is.
+pub async fn install(d: &Device, ipa: &Path, ui: &dyn Frontend) -> Result<(), Report> {
+    // Said at once, so the future it returns holds no borrow.
+    let progress = |(percent, ui): (u64, &dyn Frontend)| {
+        ui.report(Event::Progress(percent));
+        std::future::ready(())
+    };
+    idevice::utils::installation::install_package_with_callback(&d.provider(), ipa, None, progress, ui)
         .await
         .map_err(|e| report!("the install failed: {e}"))?;
     Ok(())
