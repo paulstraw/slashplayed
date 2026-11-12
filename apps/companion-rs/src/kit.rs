@@ -18,8 +18,8 @@ use std::{
 use rootcause::prelude::*;
 use sha2::{Digest, Sha256};
 
-/// The release the kit comes from: the tag this build was made for (SP_RELEASE_TAG at build time, as the
-/// release workflow sets it for a prerelease), else v<version>.
+/// The release the kit comes from: the tag this build was made for (SP_RELEASE_TAG at build time, which
+/// the release workflow sets), else v<version>.
 pub fn release_tag() -> String {
     option_env!("SP_RELEASE_TAG")
         .map(str::to_string)

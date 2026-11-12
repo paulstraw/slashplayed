@@ -99,6 +99,13 @@ impl App {
                 });
             });
         });
+        // Windows and Linux are new, and tested on fewer devices than the Mac: said on every screen, under the
+        // title (beside it, the longest titles would run into the menu).
+        egui::Frame::new()
+            .stroke(egui::Stroke::new(1.0, GOLD.linear_multiply(0.6)))
+            .corner_radius(4.0)
+            .inner_margin(egui::vec2(6.0, 1.0))
+            .show(ui, |ui| ui.label(RichText::new("Experimental").small().color(GOLD)));
         ui.add_space(12.0);
     }
 

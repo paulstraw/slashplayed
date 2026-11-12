@@ -8,10 +8,10 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ### Added
 
-- The Slashplayed Companion for Windows and Linux: set up Slashplayed on an iPad or iPhone from a Windows
-  or Linux computer, in a window that walks you through it, from plugging in the device and signing in
-  with your Apple ID and its code to the app on your device. Download it from the release next to the Mac
-  companion. slashplayed-cli, in the same download, does the same from a terminal.
+- The Slashplayed Companion for Windows and Linux, experimental for now: set up Slashplayed on an iPad or
+  iPhone from a Windows or Linux computer, in a window that walks you through it, from plugging in the
+  device and signing in with your Apple ID and its code to the app on your device. Download it from the
+  release next to the Mac companion. slashplayed-cli, in the same download, does the same from a terminal.
 - An iPad or iPhone set up from Windows or Linux keeps itself signed. On a free Apple ID, Slashplayed
   renews its own signing over the internet when a game starts in the last 3 days before it runs out, so
   you don't run the tool again every week. If a game starts then and it can't, the start screen says so
