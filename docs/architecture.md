@@ -541,9 +541,11 @@ each start by `sp_game_region_now` in `launcher.m`). Who decides depends on wher
   Blizzard's (`sp_region_for_country`: the Americas and Oceania `us`; Europe, Russia, the Middle East, and
   Africa `eu`; Korea `kr`; Taiwan, Hong Kong, and Macao `tw`; anything else `us`, never `cn`, `sg`, or `xx`),
   and the device's first preferred language that region has a locale for (`sp_region_locale`: us enUS esMX
-  ptBR; eu enGB deDE esES frFR itIT ruRU; kr koKR; tw zhTW), else the region's default. Speech follows text.
+  ptBR; eu enUS deDE esES frFR itIT ruRU; kr koKR; tw zhTW), else the region's default. Speech follows text.
+  Europe's English is `enUS`, as Blizzard ships it: the clients have no `enGB`, and one set to it opens the
+  region picker the device can't show, and exits (issue #88), so an `enGB` that 1.4 or 1.5 wrote reads as `enUS`.
   The slice download reads the build's install manifest, so the locale is checked against the tags it lists
-  (`sp_locale_shipped`; no manifest lists enGB, which ships as the enUS data, and Classic's have no itIT).
+  (`sp_locale_shipped`; Classic's have no itIT).
   Settings' **Region** picker rewrites the file; nothing else does but an install or Update.
 
 Everything else follows that file at each start, so a change isn't put back by a copy written before it:

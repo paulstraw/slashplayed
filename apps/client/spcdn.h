@@ -107,21 +107,20 @@ NSString *sp_region_for_country(NSString *_Nullable country);
 // What a person reads for a region: Americas, Europe, Korea, Taiwan (the code in capitals for another).
 NSString *sp_region_name(NSString *region);
 
-// The game's locales in a region, its default first: us enUS esMX ptBR; eu enGB deDE esES frFR itIT ruRU;
-// kr koKR; tw zhTW. Empty for another region.
+// The game's locales in a region, its default first: us enUS esMX ptBR; eu enUS deDE esES frFR itIT ruRU;
+// kr koKR; tw zhTW. Empty for another region. Europe's English is enUS: the clients have no enGB.
 NSArray<NSString *> *sp_region_locales(NSString *region);
 
 // Whether a build ships `locale`, by its install manifest's tag names (`shipped`; nil when not known: YES).
-// enGB is shipped with enUS: Blizzard's EU English is the US English data, and no manifest lists enGB.
 BOOL sp_locale_shipped(NSString *locale, NSArray<NSString *> *_Nullable shipped);
 
 // The text language a game in `region` gets: the first of `preferred` (BCP 47: the device's preferred
 // languages, in order) whose language is one of the region's locales' and that the build ships (`shipped`,
-// sp_locale_shipped), else the region's default (us enUS, eu enGB, kr koKR, tw zhTW). Speech follows it.
+// sp_locale_shipped), else the region's default (us enUS, eu enUS, kr koKR, tw zhTW). Speech follows it.
 NSString *sp_region_locale(NSString *region, NSArray<NSString *> *preferred, NSArray<NSString *> *_Nullable shipped);
 
 // .build.info's Tags for a game in `region` with those languages, in Flavor.tags' layout (the speech group,
-// then the text group): "OSX x86_64 EU? enGB speech?:OSX x86_64 EU? enGB text?".
+// then the text group): "OSX x86_64 EU? deDE speech?:OSX x86_64 EU? deDE text?".
 NSString *sp_region_tags(NSString *region, NSString *text, NSString *speech);
 
 // The text and speech locales a Tags value names (nil for one it doesn't).
