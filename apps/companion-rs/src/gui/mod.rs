@@ -42,7 +42,6 @@ pub struct App {
     apple_id: String,
     /// The password field's text, until Install hands it to the sign-in. Zeroed on drop.
     password: Zeroizing<String>,
-    pair_again: bool,
     code: String,
     show_numbers: bool,
     device_choice: Option<String>,
@@ -63,7 +62,6 @@ impl App {
             face,
             apple_id: String::new(),
             password: Zeroizing::new(String::new()),
-            pair_again: false,
             code: String::new(),
             show_numbers: false,
             device_choice: None,
@@ -307,9 +305,6 @@ impl App {
             .add(TextEdit::singleline(&mut *self.password).password(true).desired_width(f32::INFINITY))
             .labelled_by(pw_label.id);
         small(ui, "Your password is used once, for this sign-in, and never stored.");
-        ui.add_space(8.0);
-        ui.checkbox(&mut self.pair_again, "Make a new pairing record")
-            .on_hover_text("Only when Slashplayed's start screen can't reach the device's debugger.");
         ui.add_space(16.0);
         let ready = !self.apple_id.trim().is_empty() && !self.password.is_empty();
         let enter = pw.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
@@ -317,7 +312,10 @@ impl App {
             && let Some(Question::SignIn(reply)) = s.question.take()
         {
             let password = Zeroizing::new(std::mem::take(&mut *self.password));
-            let _ = reply.send((SignIn { apple_id: self.apple_id.trim().to_string(), pair_again: self.pair_again }, password));
+            // No pair-again here: a record the device refuses, the app deletes itself (apps/client/spjit.m), and
+            // the next run sends a new one. slashplayed-cli keeps --pair-again for the rare rest.
+            let sign_in = SignIn { apple_id: self.apple_id.trim().to_string(), pair_again: false };
+            let _ = reply.send((sign_in, password));
         }
     }
 

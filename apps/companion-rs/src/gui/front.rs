@@ -20,7 +20,7 @@ use crate::flow::{self, Ask, Backend, CertLimit, DeviceInfo, Done, Event, Fronte
 
 /// What the flow waits for the person to answer.
 pub enum Question {
-    /// The Apple ID, the password (kept by Gui until the sign-in asks), and the pairing checkbox.
+    /// The Apple ID, and the password (kept by Gui until the sign-in asks).
     SignIn(oneshot::Sender<(SignIn, Zeroizing<String>)>),
     TwoFactor {
         /// The code came by text message (else to the person's Apple devices).
