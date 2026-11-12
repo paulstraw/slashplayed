@@ -18,8 +18,8 @@ use std::{
 use rootcause::prelude::*;
 use sha2::{Digest, Sha256};
 
-/// The release the kit comes from: the tag this build was made for (SP_RELEASE_TAG at build time, as the
-/// release workflow sets it for a prerelease), else v<version>.
+/// The release the kit comes from: the tag this build was made for (SP_RELEASE_TAG at build time, which
+/// the release workflow sets), else v<version>.
 pub fn release_tag() -> String {
     option_env!("SP_RELEASE_TAG")
         .map(str::to_string)
@@ -79,7 +79,7 @@ pub async fn fetch(path: Option<&Path>) -> Result<(Vec<u8>, String), Report> {
         return Ok((bytes, format!("{} (SHA-256 {sha})", p.display())));
     }
     let Some(want) = pinned_sha256() else {
-        bail!("this build of slashplayed-companion has no device kit pinned: name one with --kit <{ASSET}>");
+        bail!("this build has no device kit pinned: run slashplayed-cli with --kit <{ASSET}>");
     };
     let tag = release_tag();
     let url = format!("https://github.com/{REPO}/releases/download/{tag}/{ASSET}");

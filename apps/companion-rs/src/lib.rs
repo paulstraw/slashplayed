@@ -1,10 +1,11 @@
 // The host tool's library: everything one install does (flow.rs, with live.rs's device and Apple), for the
-// program that runs it, main.rs's command line. How it works: docs/architecture.md, "The host tool".
+// two programs that run it: the window (gui/, window.rs) and the command line (main.rs). How it works: docs/architecture.md, "The host tool".
 
 pub mod account;
 pub mod ddi;
 pub mod device;
 pub mod flow;
+pub mod gui;
 pub mod keystore;
 pub mod kit;
 pub mod live;

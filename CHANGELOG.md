@@ -8,12 +8,16 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ### Added
 
-- An iPad or iPhone set up with slashplayed-companion keeps itself signed. On a free Apple ID, Slashplayed
+- The Slashplayed Companion for Windows and Linux, experimental for now: set up Slashplayed on an iPad or
+  iPhone from a Windows or Linux computer, in a window that walks you through it, from plugging in the
+  device and signing in with your Apple ID and its code to the app on your device. Download it from the
+  release next to the Mac companion. slashplayed-cli, in the same download, does the same from a terminal.
+- An iPad or iPhone set up from Windows or Linux keeps itself signed. On a free Apple ID, Slashplayed
   renews its own signing over the internet when a game starts in the last 3 days before it runs out, so
   you don't run the tool again every week. If a game starts then and it can't, the start screen says so
   and on which day the app stops opening.
-- Settings on the device shows until when Slashplayed is signed and, on a device set up with
-  slashplayed-companion, has Forget Apple Token, which stops it renewing its own signing.
+- Settings on the device shows until when Slashplayed is signed and, on a device set up from Windows or
+  Linux, has Forget Apple Token, which stops it renewing its own signing.
 - Sign In to Apple on the iPad, iPhone, or Vision Pro, so Slashplayed renews its own signing without a
   computer, including when it was set up with the Mac companion. It's optional, in Settings > Signing and
   under the start screen's note when renewing needs it. It's a second sign-in to your Apple ID, with its
@@ -47,16 +51,17 @@ All notable changes to Slashplayed are documented here. The format is based on
   step are gone, the key is deleted from your device the first time Slashplayed starts there, and the
   certificate's key from your Mac the first time the companion starts. On a paid team, you can revoke the
   "Slashplayed" certificate on Apple's developer site (Certificates, IDs & Profiles > Certificates).
-- slashplayed-companion, the setup tool for Windows and Linux, no longer sends a signing key to your iPad
-  or iPhone: the device installs and updates games without one.
+- The Slashplayed Companion for Windows and Linux no longer sends a signing key to your iPad or iPhone:
+  the device installs and updates games without one.
 
 ### Fixed
 
 - On the Vision Pro, a game controller now plays the game: its sticks, triggers, and buttons reach the
   game, and its buttons no longer click wherever you're looking. The look highlights are off while a
   controller is connected.
-- slashplayed-companion no longer stops with "…helper's profile grants … which it shouldn't" on a paid team
-  whose Slashplayed helper has the memory capabilities turned on, as Xcode's setup can leave it.
+- The Slashplayed Companion for Windows and Linux no longer stops with "…helper's profile grants … which
+  it shouldn't" on a paid team whose Slashplayed helper has the memory capabilities turned on, as Xcode's
+  setup can leave it.
 - The iPad mini (A17 Pro) was refused as an iPad that can't run the game, though it has the iPhone
   15 Pro's chip and 8 GB of memory. It can now be picked and played on. It hasn't been played on yet,
   so the companion marks it untested, as it does M1 iPads: if you try one, please report how it goes,

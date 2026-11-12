@@ -1,4 +1,4 @@
-// slashplayed-companion: sets up Slashplayed on an iPad or iPhone from Windows, Linux, or a Mac, with no Xcode
+// slashplayed-cli: sets up Slashplayed on an iPad or iPhone from Windows, Linux, or a Mac, with no Xcode
 // and no Mac companion (docs/setup-without-a-mac.md; how it works: docs/architecture.md, "The host tool").
 // Run it again to re-sign when the app can't renew its own profiles (its start screen says so). Each run:
 //
@@ -29,14 +29,14 @@ use slashplayed_companion::{
 use zeroize::Zeroizing;
 
 const USAGE: &str = "\
-slashplayed-companion: set up Slashplayed on an iPhone or iPad without a Mac.
+slashplayed-cli: set up Slashplayed on an iPhone or iPad without a Mac.
 
 Usage:
-  slashplayed-companion [install] [options]   install or re-sign Slashplayed on the device on USB
-  slashplayed-companion devices               list the iPhones and iPads on USB
-  slashplayed-companion forget --apple-id <id>
+  slashplayed-cli [install] [options]         install or re-sign Slashplayed on the device on USB
+  slashplayed-cli devices                     list the iPhones and iPads on USB
+  slashplayed-cli forget --apple-id <id>
                                           delete this computer's signing key for that Apple ID
-  slashplayed-companion --version
+  slashplayed-cli --version
 
 Options for install:
   --apple-id <id>       the Apple ID to sign with (asked for if not given)
@@ -97,7 +97,7 @@ fn main() {
     let args = match parse(std::env::args().skip(1)) {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("slashplayed-companion: {}", secret::safe_error(&e));
+            eprintln!("slashplayed-cli: {}", secret::safe_error(&e));
             std::process::exit(2);
         }
     };
@@ -106,12 +106,12 @@ fn main() {
         return;
     }
     if args.flag("--version") || args.command == "version" {
-        println!("slashplayed-companion {} (device kit: {})", env!("CARGO_PKG_VERSION"), kit::release_tag());
+        println!("slashplayed-cli {} (device kit: {})", env!("CARGO_PKG_VERSION"), kit::release_tag());
         return;
     }
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("tokio runtime");
     if let Err(e) = runtime.block_on(run(&args)) {
-        eprintln!("slashplayed-companion: {}", secret::safe_error(&e));
+        eprintln!("slashplayed-cli: {}", secret::safe_error(&e));
         std::process::exit(1);
     }
 }
@@ -232,7 +232,7 @@ impl Frontend for Cli<'_> {
 
     fn two_factor(&self, params: TwoFactorCallbackParams) -> Ask<'_, TwoFactorCallbackResponse> {
         Box::pin(async move {
-            if params.unknown {
+            if params.last_error.is_some() || params.unknown {
                 eprintln!("That didn't work. Try again, or pick another way to get a code.");
             }
             if !params.numbers.is_empty() {
