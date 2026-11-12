@@ -753,7 +753,9 @@ NSString *sp_region_name(NSString *region) {
 NSArray<NSString *> *sp_region_locales(NSString *region) {
     NSDictionary<NSString *, NSArray<NSString *> *> *locales = @{
         @"us": @[@"enUS", @"esMX", @"ptBR"],
-        @"eu": @[@"enGB", @"deDE", @"esES", @"frFR", @"itIT", @"ruRU"],
+        // Europe's English is enUS: the clients have no enGB (no install manifest lists it), and one with
+        // textLocale enGB opens its region picker, which the device can't show, and exits (issue #88).
+        @"eu": @[@"enUS", @"deDE", @"esES", @"frFR", @"itIT", @"ruRU"],
         @"kr": @[@"koKR"],
         @"tw": @[@"zhTW"],
     };
@@ -761,10 +763,12 @@ NSArray<NSString *> *sp_region_locales(NSString *region) {
 }
 
 BOOL sp_locale_shipped(NSString *locale, NSArray<NSString *> *shipped) {
-    if (!shipped) return YES;
-    // Blizzard ships Europe's English as the US English data: no install manifest lists an enGB tag.
-    return [shipped containsObject:locale] || ([locale isEqual:@"enGB"] && [shipped containsObject:@"enUS"]);
+    return !shipped || [shipped containsObject:locale];
 }
+
+// Slashplayed 1.4 and 1.5 gave Europe's English as enGB, in region files and the kept rows' Tags: read as enUS,
+// so a game installed then plays without installing it again (the start then writes enUS everywhere else).
+static NSString *game_locale(NSString *locale) { return [locale isEqual:@"enGB"] ? @"enUS" : locale; }
 
 NSString *sp_region_locale(NSString *region, NSArray<NSString *> *preferred, NSArray<NSString *> *shipped) {
     NSArray<NSString *> *locales = sp_region_locales(region);
@@ -823,6 +827,8 @@ NSDictionary<NSString *, NSString *> *sp_game_region(NSString *product, BOOL dev
     NSDictionary * (^from)(NSString *, NSString *, NSString *) = ^NSDictionary *(NSString *region, NSString *tags, NSString *source) {
         NSString *text = nil, *speech = nil;
         sp_tags_locales(tags, &text, &speech);
+        text = game_locale(text);
+        speech = game_locale(speech);
         text = text ?: speech ?: (device ? sp_region_locale(region, preferred, nil) : sp_region_locales(region).firstObject ?: @"enUS");
         return @{@"Region": region, @"Text": text, @"Speech": speech ?: text, @"Source": source};
     };
@@ -834,8 +840,9 @@ NSDictionary<NSString *, NSString *> *sp_game_region(NSString *product, BOOL dev
     }
     NSDictionary<NSString *, NSString *> *chosen = sp_table_row(regionFile, @"Product", product);
     if ([sp_regions() containsObject:chosen[@"Region"]] && chosen[@"Text"].length) {
-        NSMutableDictionary *out = [@{@"Region": chosen[@"Region"], @"Text": chosen[@"Text"],
-                                      @"Speech": chosen[@"Speech"].length ? chosen[@"Speech"] : chosen[@"Text"], @"Source": @"chosen"}
+        NSMutableDictionary *out = [@{@"Region": chosen[@"Region"], @"Text": game_locale(chosen[@"Text"]),
+                                      @"Speech": game_locale(chosen[@"Speech"].length ? chosen[@"Speech"] : chosen[@"Text"]),
+                                      @"Source": @"chosen"}
                                     mutableCopy];
         if (chosen[@"Shipped"].length) out[@"Shipped"] = chosen[@"Shipped"];
         return out;

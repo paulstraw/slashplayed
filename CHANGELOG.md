@@ -6,6 +6,12 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- A game installed on an iPad or iPhone for Europe in English, or in a language the game doesn't have,
+  no longer closes a moment after it starts. A game already installed that way plays after this
+  update, without installing it again.
+
 ## [1.5.0] - 2026-11-12
 
 ### Added
