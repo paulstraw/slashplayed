@@ -260,13 +260,10 @@ again (over an hour for Retail on the headset). Don't change it casually.
   `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`, `ASC_API_KEY_P8_BASE64`, `ASC_API_KEY_ID`,
   `ASC_API_ISSUER_ID`, `SPARKLE_ED_PRIVATE_KEY`. A re-run after the Release exists fails on purpose;
   delete the Release first.
-- **slashplayed-companion** ships in prereleases only, until the owner sets the repository variable
-  `SP_RELEASE_COMPANION_RS` to `true`; then it rides the same release. `release.sh` makes the device kit
-  (`scripts/release/device-kit.sh`, attached as `slashplayed-device-kit.zip`), then `release.yml` builds the
-  tool against its hash (`companion-rs-build.yml`) and attaches the Windows and Linux archives, their attestations,
-  and their SHA256SUMS lines.
-  Volunteer prereleases: `companion-rs-prerelease.yml` (run by hand on a branch, which it builds), published only after the owner
-  approves the `prerelease` environment.
+- **The Windows and Linux companion** (`apps/companion-rs`, labeled experimental) rides every `v*` release.
+  `release.sh` makes the device kit (`scripts/release/device-kit.sh`, attached as `slashplayed-device-kit.zip`),
+  then `release.yml` builds the window and `slashplayed-cli` against its hash (`companion-rs-build.yml`) and
+  attaches the Windows and Linux archives, their attestations, and their SHA256SUMS lines.
 - **Locally**: `scripts/release/release.sh --unsigned` smoke-tests the whole script with no certificate.
   A signed local build (release candidates: `SP_RELEASE_VERSION=X.Y.Z-rc1`) uses `NOTARY_PROFILE` and
   the Sparkle key in the login keychain. `scripts/release/update-test.sh` tests a Sparkle update

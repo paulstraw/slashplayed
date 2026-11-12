@@ -672,15 +672,12 @@ file checked against a pinned SHA-256. Slashplayed never hosts it. The files go 
 - `scripts/crate-notices.py --deny-copyleft` fails a release build that links any GPL-family crate.
 
 **Releases.**
-- **Prereleases only for now** (owner decision, 2026-11-02): `v*` releases ship it only once the repository
-  variable `SP_RELEASE_COMPANION_RS` is `true`. With it on, `release.yml` attaches the kit to the release,
-  then builds the tool against it for Linux x86_64
+- **Every `v*` release, labeled experimental** (owner decision, 2026-11-12): `release.yml` attaches the kit
+  to the release, then builds the tool against it for Linux x86_64
   and aarch64 and Windows x86_64 (`companion-rs-build.yml`). The Windows `.exe` is unsigned (owner decision),
   so each archive gets SHA256SUMS lines and a build-provenance attestation.
 - `apps/companion-rs/package.sh` packs each archive with its notices: the crates, the Rust standard library,
   zsign, OpenSSL, and zlib/minizip.
-- `companion-rs-prerelease.yml` makes the same as a GitHub prerelease of the branch it runs on (`companion-<version>-pre.<n>`),
-  published only after the owner approves the `prerelease` environment.
 - CI's `companion-rs` job tests and builds it on Linux and Windows.
 
 ## Game data on the device

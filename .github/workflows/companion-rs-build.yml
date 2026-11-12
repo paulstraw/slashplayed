@@ -1,7 +1,6 @@
-# Builds slashplayed-companion (apps/companion-rs) for each system it ships for, packaged with its notices
-# (apps/companion-rs/package.sh), as artifacts named companion-rs-<target>. Called by release.yml (a v* release) and
-# companion-rs-prerelease.yml (a volunteer prerelease, on the owner's approval); it publishes nothing itself and
-# holds no secrets. The caller passes the device kit's SHA-256, which the build compiles in (apps/companion-rs/build.rs)
+# Builds the host tool (apps/companion-rs: the window and slashplayed-cli) for each system it ships for, packaged
+# with its notices (apps/companion-rs/package.sh), as artifacts named companion-rs-<target>. Called by release.yml
+# for every v* release; it publishes nothing itself and holds no secrets. The caller passes the device kit's SHA-256, which the build compiles in (apps/companion-rs/build.rs)
 # so the tool installs only that kit, downloaded from the release named by release_tag.
 name: Build slashplayed-companion
 
