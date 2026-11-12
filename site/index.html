@@ -123,6 +123,9 @@
     .tagline { margin: 0; max-width: 36rem; font-size: clamp(1.125rem, 2.2vw, 1.3125rem); line-height: 1.5; }
     .cta { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; margin-top: 16px; }
     .cta-sub { margin: 0; font-size: .9375rem; color: var(--text-2); }
+    /* The Windows and Linux companion, under the Mac one: plain links, so the one big button stays the Mac's. */
+    .cta-alt { margin: 0; font-size: .9375rem; color: var(--text-2); text-align: center; }
+    .cta-alt span { white-space: nowrap; }
     .cta-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; margin: 4px 0 0; font-size: .9375rem; }
 
     /* The Download button: the start screen's chamfered gold game button. Its frame is three stacked
@@ -317,6 +320,7 @@
             <i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i>
           </a>
           <p class="cta-sub">Free and open source (MIT). Early and experimental. For macOS 15 or later on Apple Silicon.</p>
+          <p class="cta-alt">On Windows or Linux, for iPad and iPhone: <span><a href="https://github.com/paulstraw/slashplayed/releases/latest/download/slashplayed-companion-windows-x86_64.zip">Windows</a> · <a href="https://github.com/paulstraw/slashplayed/releases/latest/download/slashplayed-companion-linux-x86_64.tar.gz">Linux (x86_64)</a> · <a href="https://github.com/paulstraw/slashplayed/releases/latest/download/slashplayed-companion-linux-aarch64.tar.gz">Linux (ARM)</a></span></p>
           <p class="cta-links">
             <a href="https://github.com/paulstraw/slashplayed">Source on GitHub</a>
             <a href="https://github.com/paulstraw/slashplayed/blob/main/docs/guide.md">Guide</a>

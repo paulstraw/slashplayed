@@ -568,13 +568,14 @@ addon reaches a device with the rebuild the companion's resources digest asks fo
 
 ## The host tool (no Mac)
 
-`slashplayed-companion` (`apps/companion-rs`, Rust) sets up an iPad or iPhone from Windows, Linux, or a Mac without
-Xcode. It does what the companion does with Xcode and devicectl, and nothing the device does for itself:
+The Slashplayed Companion for Windows and Linux (`apps/companion-rs`, Rust: the window, `slashplayed-companion`,
+and the command line, `slashplayed-cli`, on one library) sets up an iPad or iPhone from Windows, Linux, or a Mac
+without Xcode. It does what the companion does with Xcode and devicectl, and nothing the device does for itself:
 the device installs and updates games, picks their region, and writes `.build.info`, `Config.wtf`, and the
 addons. **Vision Pro stays Mac-only:** there's no public visionOS developer disk image besides Xcode's, and
 pairing a headset without a Mac is unproven. The tool refuses a headset.
 
-One run, `slashplayed-companion [install]`, which also signs the app again whenever the device can't renew
+One run, of the window or of `slashplayed-cli [install]`, which also signs the app again whenever the device can't renew
 its own profiles:
 
 1. **The device kit** (`src/kit.rs`): the device app, unsigned and, like every build of it, with no game
