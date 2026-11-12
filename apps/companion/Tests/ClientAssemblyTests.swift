@@ -101,6 +101,10 @@ final class ClientAssemblyTests: XCTestCase {
             XCTAssertEqual((plist["CFBundleIcons~ipad"] != nil), platform == .ios)
             XCTAssertEqual(plist["UISupportedInterfaceOrientations~iphone"] as? [String],
                            platform == .ios ? ["UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"] : nil)
+            // An iPad or iPhone runs it in Game Mode and lets Settings remap a controller for it.
+            XCTAssertEqual(plist["LSSupportsGameMode"] as? Bool, platform == .ios ? true : nil)
+            XCTAssertEqual((plist["GCSupportedGameControllers"] as? [[String: String]])?.first?["ProfileName"],
+                           platform == .ios ? "ExtendedGamepad" : nil)
         }
         let ents = ClientAssembly.entitlements(template: try String(contentsOf: client.appending(path: "entitlements.plist"), encoding: .utf8),
                                                team: "ABCDE12345", bundleID: "ABCDE12345.slashplayed")

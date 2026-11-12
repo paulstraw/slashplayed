@@ -39,7 +39,12 @@ case $SP_PLATFORM in
     _keys='<key>UILaunchScreen</key><dict/><key>UIStatusBarHidden</key><true/>'
     _keys="$_keys<key>UISupportedInterfaceOrientations~iphone</key><array><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>"
     _keys="$_keys<key>CFBundleIcons</key><dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key><array><string>AppIcon60x60</string></array><key>CFBundleIconName</key><string>AppIcon</string></dict></dict>"
-    _keys="$_keys<key>CFBundleIcons~ipad</key><dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key><array><string>AppIcon60x60</string><string>AppIcon76x76</string></array><key>CFBundleIconName</key><string>AppIcon</string></dict></dict>" ;;
+    _keys="$_keys<key>CFBundleIcons~ipad</key><dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key><array><string>AppIcon60x60</string><string>AppIcon76x76</string></array><key>CFBundleIconName</key><string>AppIcon</string></dict></dict>"
+    # A game, with Game Mode (less background work, lower Bluetooth latency for a controller and AirPods),
+    # and a game controller's extended profile, which is what lets Settings remap a controller for this app
+    # (the client reads controllers itself, through GCController). ClientAssembly.swift has the same keys.
+    _keys="$_keys<key>LSApplicationCategoryType</key><string>public.app-category.games</string><key>LSSupportsGameMode</key><true/>"
+    _keys="$_keys<key>GCSupportsControllerUserInteraction</key><true/><key>GCSupportedGameControllers</key><array><dict><key>ProfileName</key><string>ExtendedGamepad</string></dict></array>" ;;
   *) echo "unknown SP_PLATFORM $SP_PLATFORM (xros, ios)" >&2; exit 1 ;;
 esac
 _root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null || git rev-parse --show-toplevel)

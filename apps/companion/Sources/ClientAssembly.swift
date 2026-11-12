@@ -42,7 +42,14 @@ enum ClientAssembly {
                                       + "<key>CFBundleIconName</key><string>AppIcon</string></dict></dict>"
                                       + "<key>CFBundleIcons~ipad</key><dict><key>CFBundlePrimaryIcon</key><dict>"
                                       + "<key>CFBundleIconFiles</key><array><string>AppIcon60x60</string><string>AppIcon76x76</string></array>"
-                                      + "<key>CFBundleIconName</key><string>AppIcon</string></dict></dict>")
+                                      + "<key>CFBundleIconName</key><string>AppIcon</string></dict></dict>"
+                                      // A game, with Game Mode and the controller profile that lets Settings
+                                      // remap a controller for the app, as scripts/platform.sh says.
+                                      + "<key>LSApplicationCategoryType</key><string>public.app-category.games</string>"
+                                      + "<key>LSSupportsGameMode</key><true/>"
+                                      + "<key>GCSupportsControllerUserInteraction</key><true/>"
+                                      + "<key>GCSupportedGameControllers</key><array><dict>"
+                                      + "<key>ProfileName</key><string>ExtendedGamepad</string></dict></array>")
 
         static func named(_ name: String) -> Platform? { [xros, ios].first { $0.name == name } }
     }
