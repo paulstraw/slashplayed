@@ -28,7 +28,13 @@ FILES=(
 
 die() { echo "fetch-font: $*" >&2; exit 1; }
 command -v curl >/dev/null || die "curl isn't installed"
-sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
+# sha256sum where there is one (Linux, and Git Bash on Windows, which has no shasum: the companion-rs
+# builds fetch the font there), else the Mac's shasum.
+if command -v sha256sum >/dev/null; then
+  sha() { sha256sum "$1" | cut -d' ' -f1; }
+else
+  sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
+fi
 
 mkdir -p "$OUT"
 for entry in "${FILES[@]}"; do
