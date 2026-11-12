@@ -349,20 +349,28 @@ where
         account.grandslam_client.clone(),
         account.anisette_generator.clone(),
     );
-    if !session.list_teams().await?.iter().any(|t| t.team_id == req.team) {
-        return Ok(json!({
+    let mut token = token;
+    let on_team = session.list_teams().await.map(|teams| teams.iter().any(|t| t.team_id == req.team));
+    let reply = match on_team {
+        Err(e) => Err(e),
+        Ok(false) => Ok(json!({
             "ok": false, "problem": "team",
             "error": "this Apple ID isn't on the team that signed the app",
-        }));
-    }
-    let state = Zeroizing::new(storage.retrieve(ANISETTE_STATE_KEY)?.unwrap_or_default());
-    Ok(json!({
-        "ok": true, "step": "done",
-        "token": {
-            "token": token.token, "expiry": token.expiry, "duration": token.duration, "adsid": *adsid,
-            "anisette_url": req.anisette_url, "anisette_state": *state,
-        },
-    }))
+        })),
+        Ok(true) => storage.retrieve(ANISETTE_STATE_KEY).map(|state| {
+            let state = Zeroizing::new(state.unwrap_or_default());
+            json!({
+                "ok": true, "step": "done",
+                "token": {
+                    "token": token.token, "expiry": token.expiry, "duration": token.duration, "adsid": *adsid,
+                    "anisette_url": req.anisette_url, "anisette_state": *state,
+                },
+            })
+        }),
+    };
+    // json! copied it: the original goes too, on every path (the session's own copy is isideload's).
+    token.token.zeroize();
+    reply
 }
 
 /// The sign-in's task: its 2FA callback hands Apple's ask to the waiting call and waits for the next call's
@@ -505,7 +513,18 @@ pub extern "C" fn spapple_call(request: *const c_char) -> *mut c_char {
         out.zeroize();
         return std::ptr::null_mut();
     }
-    CString::new(out).map(CString::into_raw).unwrap_or(std::ptr::null_mut())
+    // Copied into exactly the room CString needs (the reply and its NUL), so its push and into_boxed_slice
+    // don't reallocate and free a copy unzeroed; then the writer's buffer is zeroed.
+    let mut exact = Vec::with_capacity(out.len() + 1);
+    exact.extend_from_slice(&out);
+    out.zeroize();
+    match CString::new(exact) {
+        Ok(c) => c.into_raw(),
+        Err(e) => {
+            e.into_vec().zeroize();
+            std::ptr::null_mut()
+        }
+    }
 }
 
 /// Frees a reply, zeroing it first (a login's carries the token).

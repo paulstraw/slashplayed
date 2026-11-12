@@ -162,7 +162,8 @@ again (over an hour for Retail on the headset). Don't change it casually.
   The launcher's own Apple sign-in (opt-in, from the start screen's note and Settings: `spapple.m`, its
   screen `spapplescreen.swift`, and `spapple`'s `login` op) is held to the same: the person types the
   password on the device, it goes to `spapple` in one request written into a buffer zeroed after, `spapple`
-  zeroes it as soon as Apple has it, and nothing stores it (the zeroing is best effort: copies Foundation
+  zeroes it once the sign-in ends (isideload signs in again with it after the 2FA code, so it's held through
+  the code's wait), and nothing stores it (the zeroing is best effort: copies Foundation
   and isideload make on the way are freed unzeroed). Nothing logs the Apple ID, the password, its size, a
   2FA code, or the masked numbers Apple sends; the screen keeps none of them, and its fields are emptied
   once they're sent. Only the token the sign-in makes is kept, as the next rule says. Its screen

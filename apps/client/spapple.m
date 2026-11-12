@@ -15,7 +15,7 @@
 // any of its fields but the stated expiry's date, and nothing stores it but the keychain. Requests to spapple
 // carry it in memory only. So is the Apple ID's password the sign-in takes (CLAUDE.md, "The Apple ID is a
 // credential"): it goes from the screen to spapple in one request, and nothing logs it, its size, or the
-// Apple ID, or stores it; spapple drops it once Apple has it. Only the token the sign-in makes is kept.
+// Apple ID, or stores it; spapple drops it once the sign-in ends. Only the token the sign-in makes is kept.
 // Zeroing is best effort: the buffers this file and spapple own are zeroed after use, but Foundation's
 // copies (the strings and dictionaries JSON parsing and the screen's fields make) and isideload's (its
 // AppToken and DeveloperSession) can't be, and are freed as they are.
@@ -165,7 +165,7 @@ NSString *sp_apple_token_forget(void) {
 // The app's and its helper's renewed profiles from Apple, with the keychain's token, for team `team` and
 // the App IDs `app` and `app`.helper: @{@"app": NSData, @"helper": NSData, @"remade": the App IDs made again
 // because they'd lapsed, and @"unsaved" when the keychain refused a re-provisioned anisette identity, saying
-// so}. Blocks on the network (up to a minute or so): never on the main thread. Nil when it can't: *problem
+// so}. Blocks on the network (up to a minute or so for this op): never on the main thread. Nil when it can't: *problem
 // says why (no secret in it), *code is Apple's error number when Apple sent one, and *http the HTTP status
 // when Apple's own servers refused the request. A re-provisioned anisette identity goes back into the
 // keychain with the token, even when a later step failed.
@@ -477,7 +477,10 @@ static NSDictionary *call_zeroed(NSDictionary *request) {
     uint8_t *buf = calloc(cap, 1);
     NSOutputStream *stream = [NSOutputStream outputStreamToBuffer:buf capacity:cap - 1];
     [stream open];
-    NSInteger n = [NSJSONSerialization writeJSONObject:request toStream:stream options:0 error:nil];
+    // Without escaped slashes: an escape in the password would pass through serde_json's scratch buffer, which
+    // is freed unzeroed.
+    NSInteger n = [NSJSONSerialization writeJSONObject:request toStream:stream options:NSJSONWritingWithoutEscapingSlashes
+                                                 error:nil];
     [stream close];
     NSDictionary *reply = nil;
     if (n > 0 && (NSUInteger)n < cap) {
@@ -537,9 +540,11 @@ UIViewController *sp_apple_signin(void (^done)(BOOL signedIn)) {
     NSRange dot = [appid rangeOfString:@"."];
     NSString *team = dot.location == NSNotFound ? nil : [appid substringToIndex:dot.location];
     __block __weak UIViewController *weak = nil;
-    __block BOOL kept = NO;
-    // Every step's reply, on the main thread: the screen's next step.
+    __block BOOL kept = NO, closed = NO;
+    // Every step's reply, on the main thread: the screen's next step. Once the screen's closed, a step still
+    // under way is dropped when it answers, whatever it says: a Cancel never keeps a token.
     void (^handle)(NSDictionary *) = ^(NSDictionary *reply) {
+        if (closed) return;
         UIViewController *screen = weak;
         if (!reply) {
             signin_say(@"spapple's reply didn't parse");
@@ -547,15 +552,18 @@ UIViewController *sp_apple_signin(void (^done)(BOOL signedIn)) {
             return;
         }
         if (![reply[@"ok"] boolValue]) {
-            id code = reply[@"code"];
-            signin_say([NSString stringWithFormat:@"failed: %@%@", reply[@"error"] ?: @"no reason given",
-                        [code isKindOfClass:NSNumber.class] ? [NSString stringWithFormat:@" (code %@)", code] : @""]);
+            // Apple's numbers only, never "error": a refused text or code puts Apple's whole reply in it, with
+            // the masked trusted numbers.
+            id code = reply[@"code"], http = reply[@"http_status"];
+            signin_say([NSString stringWithFormat:@"failed%@%@%@", [reply[@"problem"] isEqual:@"team"] ? @": not on the app's team" : @"",
+                        [code isKindOfClass:NSNumber.class] ? [NSString stringWithFormat:@" (code %@)", code] : @"",
+                        [http isKindOfClass:NSNumber.class] ? [NSString stringWithFormat:@" (HTTP %@)", http] : @""]);
             if (screen) sp_apple_screen_show(screen, @{@"step": @"form", @"status": signin_problem(reply)});
             return;
         }
         if ([reply[@"step"] isEqual:@"code"]) {
             signin_say([NSString stringWithFormat:@"Apple asks for a code%@%@", [reply[@"sms"] boolValue] ? @" (by text)" : @" (on the Apple devices)",
-                        [reply[@"retry"] boolValue] ? @", after a wrong one" : [reply[@"unknown"] boolValue] ? @", by another way" : @""]);
+                        [reply[@"retry"] boolValue] ? @", after an error" : [reply[@"unknown"] boolValue] ? @", by another way" : @""]);
             if (screen) sp_apple_screen_show(screen, reply);
             return;
         }
@@ -563,15 +571,22 @@ UIViewController *sp_apple_signin(void (^done)(BOOL signedIn)) {
         kept = kept || !problem;
         if (screen) sp_apple_screen_show(screen, problem ? @{@"step": @"form", @"status": problem} : @{@"step": @"done"});
     };
-    // Off the main thread (spapple blocks on the network, a step up to two minutes), then back to it.
+    // Off the main thread (spapple blocks on the network, a step up to two minutes), then back to it. One
+    // serial queue for every sign-in: a step under way holds its sign-in on its own stack, not where
+    // login_cancel finds it, so the cancel has to come after it, and before a later screen's login, which it
+    // would otherwise end instead.
+    static dispatch_queue_t queue;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ queue = dispatch_queue_create("slashplayed.apple-signin", DISPATCH_QUEUE_SERIAL); });
     void (^run)(NSDictionary *) = ^(NSDictionary *request) {
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        dispatch_async(queue, ^{
             NSDictionary *reply = call_zeroed(request);
             dispatch_async(dispatch_get_main_queue(), ^{ handle(reply); });
         });
     };
     void (^close)(void) = ^{
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ call_zeroed(@{@"op": @"login_cancel"}); });
+        closed = YES;
+        dispatch_async(queue, ^{ call_zeroed(@{@"op": @"login_cancel"}); });
         UIViewController *screen = weak;
         BOOL signedIn = kept;
         if (screen.presentingViewController) [screen dismissViewControllerAnimated:YES completion:^{ done(signedIn); }];

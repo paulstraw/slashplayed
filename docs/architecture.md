@@ -178,7 +178,8 @@ code, a text to one of Apple's trusted numbers, or the Apple devices, so the scr
 can ask between calls. At the end `spapple` mints the `xcode.auth` token, checks with `listTeams` that the
 Apple ID is on the team that signed the app (a token for another team renews nothing), and hands the token
 to `spapple.m`, which keeps it as a pushed one. The password is typed on the device and used once: it's
-zeroed in `spapple` once Apple has it, and never kept or logged (CLAUDE.md, "The Apple ID is a
+held in `spapple` only for the sign-in (isideload signs in again with it after the 2FA code) and zeroed
+when that ends, and never kept or logged (CLAUDE.md, "The Apple ID is a
 credential"). The screen says plainly that this is a second sign-in through a third-party anisette server,
 which sees the device's anisette identity but never the Apple ID, the password, or the token; the server
 can be changed there, and the last one used is offered next time (`sp_anisette_url` in the app's defaults).

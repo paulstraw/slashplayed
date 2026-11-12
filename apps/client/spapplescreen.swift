@@ -30,6 +30,7 @@ final class AppleSignIn: ObservableObject {
     @Published var unknown = false
     @Published var numbers: [Number] = []
     @Published var selected: Int?  // the number a text went to
+    private var lastSent = ""  // the last answer sent: a retry means a wrong code only after a "code"
 
     let noun: String
     // spapple.m's: nil when it took them (the steps follow through show), else what to say.
@@ -63,6 +64,7 @@ final class AppleSignIn: ObservableObject {
     // An answer to Apple's ask: "code" (what's typed), "sms" (to `number`), "devices", or "resend".
     func send(_ kind: String, number: Int = 0, saying: String) {
         let typed = kind == "code" ? code : ""
+        lastSent = kind
         code = ""
         status = saying
         step = .working
@@ -80,7 +82,11 @@ final class AppleSignIn: ObservableObject {
                 return Number(id: id, number: number)
             }
             selected = s["selected"] as? Int
-            status = s["retry"] as? Bool == true ? "That code didn’t work. Type it again, or get a new one." : ""
+            // A retry is Apple's last error: a wrong code, or a text or a way it refused to send.
+            if s["retry"] as? Bool != true { status = "" }
+            else if lastSent == "code" { status = "That code didn’t work. Type it again, or get a new one." }
+            else if unknown { status = "Apple couldn’t send a code that way. Choose another way." }
+            else { status = "Apple didn’t send a new code. Type the last one, or choose another way." }
             step = .code
         case "done":
             status = ""
