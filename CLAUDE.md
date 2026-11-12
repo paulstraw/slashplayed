@@ -55,10 +55,12 @@ the owner asks for it.
   `signing/` (stub project for the explicit-App-ID profile), and
   dev scripts (`build.sh`, the app with no game in it, `run.sh`, `seed.sh`, `seed-client.sh`, the Mac's
   client into `Library/spgames`, `pull-logs.sh`, `grab-token.sh`, `push-apple-token.sh`, `casc_archives.py`).
-- `apps/companion-rs/`: `slashplayed-companion`, the host tool for an iPad or iPhone without a Mac (Windows, Linux, a
-  Mac without Xcode; Rust, `rust-toolchain.toml` pins it): `src/flow.rs` (one install's steps and questions,
-  behind a `Frontend` (the program's prompts) and a `Backend` (`live.rs`: the device and Apple); `main.rs` is the
-  command line's `Frontend`), `kit.rs` (the device kit, the unsigned app
+- `apps/companion-rs/`: the host tool for an iPad or iPhone without a Mac (Windows, Linux, a Mac without Xcode;
+  Rust, `rust-toolchain.toml` pins it), two programs on one library: `slashplayed-companion` (the window,
+  "Slashplayed Companion.exe" on Windows: `src/window.rs`, `src/gui/`, egui; `SP_GUI_DRILL=<state>` opens one
+  screen with made-up data, `SP_GUI_SHOT=<png>` saves it, `SP_GUI_KIT` names a kit for a dev build) and
+  `slashplayed-cli` (`src/main.rs`). `src/flow.rs` (one install's steps and questions, behind a `Frontend` (each
+  program's prompts or screens) and a `Backend` (`live.rs`: the device and Apple)), `kit.rs` (the device kit, the unsigned app
   `scripts/release/device-kit.sh` makes at release), `device.rs` (usbmuxd, trust, Developer Mode, install,
   house_arrest, the RemotePairing record), `account.rs` (the Apple ID sign-in, memory only), `provision.rs`
   (device, App IDs, capabilities, certificate, profiles), `keystore.rs` (the signing key, in the OS's
@@ -101,7 +103,8 @@ apps/companion/build.sh                    # build/companion/Slashplayed Compani
 apps/companion/test.sh                     # companion unit tests; extra args go to xcodebuild
 SP_PLATFORM=ios SP_NO_INSTALL=1 apps/client/build.sh   # the script build of the device app, no install
 scripts/build-zsign.sh source; (cd apps/companion-rs && cargo test --locked && cargo build --release --locked)
-                                           # slashplayed-companion; a device run needs --kit <zip>:
+                                           # both programs; a device run needs a kit (slashplayed-cli --kit
+                                           # <zip>, or SP_GUI_KIT=<zip> for the window's dev build):
                                            # scripts/release/device-kit.sh <bundle-resources.sh --build dir> <zip>
 SP_GUEST_REFS=none apps/client/guesttest/build.sh mac   # spguest's toy on the Mac, as CI runs it
 research/<harness>/build.sh                # research harnesses (they install; no no-install switch)
@@ -153,12 +156,12 @@ again (over an hour for Retail on the headset). Don't change it casually.
 - **No Blizzard bytes, ever**, in the repo, CI, fixtures or release artifacts: no client binaries
   (thinned or not), no game data, no metallibs from the client, no logs or crash reports with
   credentials. Test fixtures are built from our own code (`research/loadertest` is the model).
-- **The Apple ID is a credential.** `slashplayed-companion` (`apps/companion-rs/src/account.rs`) takes the password
-  typed by the person, uses it once for the sign-in, and zeroes it; the login lives in memory only and
+- **The Apple ID is a credential.** The host tool (`apps/companion-rs/src/account.rs`, for both programs) takes the
+  password typed by the person (in the window's field, which is emptied as it's handed over, or the terminal), uses it once for the sign-in, and zeroes it; the login lives in memory only and
   ends with the process. Nothing about it is logged or stored on the computer, not even sizes, and no
   tracing subscriber is ever installed (isideload's logs would carry account data). The one thing that
   outlives the process is the Apple token this sign-in makes, which goes only to the device, for the app to
-  renew its own profiles (the next rule). The person types it; test runs use the owner's own Terminal. The
+  renew its own profiles (the next rule). The person types it; test runs use the owner's own hands, in the window or their own Terminal. The
   tool's signing key goes only to the OS credential store, never to the device. It never revokes a
   certificate a Slashplayed tool didn't make.
   The launcher's own Apple sign-in (opt-in, from the start screen's note and Settings: `spapple.m`, its
@@ -179,7 +182,7 @@ again (over an hour for Retail on the headset). Don't change it casually.
   holds without exception: it's never logged, and never stored anywhere but that keychain item (and the
   pushed file until its import). Its screens keep nothing. Never the password or the GrandSlam token. Logs
   give the stated expiry's date only, never the token, its fields, or its size; `spapple`'s errors never
-  carry it. `push-apple-token.sh` (dev) and `slashplayed-companion` are the only
+  carry it. `push-apple-token.sh` (dev) and the host tool (`apps/companion-rs`) are the only
   things that push one, and the launcher's sign-in the only thing on the device that makes one.
 - **Never read, print or log values from `net.battle` prefs** or the exported credentials file. Sizes
   and timestamps only, as `TokenRelay.swift` does.

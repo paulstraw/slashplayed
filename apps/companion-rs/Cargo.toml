@@ -1,4 +1,4 @@
-# slashplayed-companion: the host tool that sets up Slashplayed on an iPad or iPhone from Windows, Linux, or a
+# slashplayed-companion (the window) and slashplayed-cli (the command line): the host tool that sets up Slashplayed on an iPad or iPhone from Windows, Linux, or a
 # Mac without Xcode (docs/setup-without-a-mac.md; how it works: docs/architecture.md, "The host tool").
 # Built with the Rust that rust-toolchain.toml pins, and --locked: Cargo.lock is committed. build.rs
 # compiles zsign (scripts/build-zsign.sh source, with scripts/zsign.patch) into it.
@@ -9,6 +9,16 @@ edition = "2024"
 publish = false
 license = "MIT"
 build = "build.rs"
+
+# Two programs on one library (src/lib.rs, the install): the window, and the command line. Cargo's names
+# can't hold a space; package.sh names the Windows window program "Slashplayed Companion.exe".
+[[bin]]
+name = "slashplayed-companion"
+path = "src/window.rs"
+
+[[bin]]
+name = "slashplayed-cli"
+path = "src/main.rs"
 
 # Its own workspace: nothing above it is a Cargo project, and cargo shouldn't go looking.
 [workspace]
@@ -24,7 +34,7 @@ isideload = { path = "vendor/isideload", default-features = false, features = ["
 idevice = { version = "0.1.68", default-features = false, features = [
   "ring", "usbmuxd", "pair", "afc", "house_arrest", "installation_proxy", "amfi", "remote_pairing",
 ] }
-tokio = { version = "1.49", features = ["rt-multi-thread", "macros", "fs"] }
+tokio = { version = "1.49", features = ["rt-multi-thread", "macros", "fs", "sync"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 reqwest = { version = "0.13.2", default-features = false, features = ["rustls-no-provider", "http2"] }
 plist = "1.8"
@@ -47,13 +57,26 @@ keyring = { version = "3.6.3", default-features = false, features = [
   "apple-native", "windows-native", "async-secret-service", "tokio", "crypto-rust",
 ] }
 
+# The window (src/gui): egui on OpenGL (glow), with winit's X11 and Wayland, both loaded at run time, so
+# slashplayed-cli, which uses none of it, links no display library and runs headless. accesskit: screen
+# readers, and the accessibility tree egui_kittest's tests query.
+eframe = { version = "0.37", default-features = false, features = [
+  "accesskit", "clipboard", "default_fonts", "glow", "wayland", "x11",
+] }
+# PNG out for the drill's screenshots (SP_GUI_SHOT), as eframe already builds it.
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+
 [build-dependencies]
 cc = "1.2"
 # zsign's OpenSSL, built from source and linked statically: openssl-src's 3.5 line, OpenSSL's
 # long-term-support series (docs/architecture.md, "The host tool").
 openssl-src = "=300.5.5"
+# The Windows programs' icon and version resource (icons/slashplayed.ico), compiled with the SDK's rc.exe.
+winresource = "0.1.34"
 
 [dev-dependencies]
+# The window's tests (src/gui/tests.rs): its accessibility tree, no image snapshots.
+egui_kittest = { version = "0.37", features = ["eframe"] }
 tempfile = "3"
 # Paused time for flow.rs's tests: its waits poll every two seconds.
 tokio = { version = "1.49", features = ["test-util"] }

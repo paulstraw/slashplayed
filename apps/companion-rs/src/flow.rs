@@ -369,34 +369,39 @@ pub async fn install(b: &mut impl Backend, ui: &dyn Frontend, opts: &Options<'_>
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::Mutex;
+pub(crate) mod fake {
+    //! A device and an Apple ID made up here, for flow.rs's tests and the window's (src/gui/tests.rs).
+    use std::sync::{Arc, Mutex};
 
     use isideload::auth::apple_account::TrustedNumber;
 
     use super::*;
 
-    fn team(id: &str) -> DeveloperTeam {
+    pub fn team(id: &str) -> DeveloperTeam {
         DeveloperTeam { name: Some(format!("Team {id}")), team_id: id.into(), r#type: None, status: None }
     }
 
-    fn phone(udid: &str, class: &str) -> DeviceInfo {
+    pub fn phone(udid: &str, class: &str) -> DeviceInfo {
         DeviceInfo { udid: udid.into(), name: format!("{class} {udid}"), class: class.into(), os: "27.1".into() }
     }
 
     /// A device and an Apple ID made up here. `lists` is what each devices() call answers, the last one
     /// repeated; `dev_mode` what each developer_mode() call answers, likewise.
-    struct Fake {
-        lists: Vec<Vec<DeviceInfo>>,
-        dev_mode: Vec<Result<bool, &'static str>>,
+    pub struct Fake {
+        pub lists: Vec<Vec<DeviceInfo>>,
+        pub dev_mode: Vec<Result<bool, &'static str>>,
         /// The last devices() answer: developer_mode() fails for a device not in it, as the real one does.
-        seen: Vec<DeviceInfo>,
-        teams: Vec<DeveloperTeam>,
-        free: bool,
-        has_pairing: bool,
-        token: bool,
+        pub seen: Vec<DeviceInfo>,
+        pub teams: Vec<DeveloperTeam>,
+        pub free: bool,
+        pub has_pairing: bool,
+        pub token: bool,
+        /// The person must answer Apple's two-factor step (a text, then the code).
+        pub two_factor: bool,
+        /// The team's certificate limit is hit, with no store for the key: the revoke is asked.
+        pub cert_limit: bool,
         /// What the backend was asked, in order.
-        calls: Vec<String>,
+        pub calls: Arc<Mutex<Vec<String>>>,
     }
 
     impl Default for Fake {
@@ -409,7 +414,9 @@ mod tests {
                 free: true,
                 has_pairing: false,
                 token: true,
-                calls: Vec::new(),
+                two_factor: true,
+                cert_limit: false,
+                calls: Arc::default(),
             }
         }
     }
@@ -418,9 +425,18 @@ mod tests {
         if v.len() > 1 { v.remove(0) } else { v[0].clone() }
     }
 
+    impl Fake {
+        fn log(&self, s: String) {
+            self.calls.lock().unwrap().push(s);
+        }
+        pub fn calls(&self) -> Vec<String> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
     impl Backend for Fake {
         async fn kit(&mut self, _: Option<&Path>) -> Result<(String, String), Report> {
-            self.calls.push("kit".into());
+            self.log("kit".into());
             Ok(("9.9.9".into(), "a test".into()))
         }
         async fn devices(&mut self) -> Result<Vec<DeviceInfo>, Report> {
@@ -428,11 +444,11 @@ mod tests {
             Ok(self.seen.clone())
         }
         async fn trust(&mut self, d: &DeviceInfo, _: &dyn Frontend) -> Result<(), Report> {
-            self.calls.push(format!("trust {}", d.udid));
+            self.log(format!("trust {}", d.udid));
             Ok(())
         }
         async fn developer_mode(&mut self, d: &DeviceInfo, _: &dyn Frontend) -> Result<bool, Report> {
-            self.calls.push(format!("devmode {}", d.udid));
+            self.log(format!("devmode {}", d.udid));
             if !self.seen.iter().any(|x| x.udid == d.udid) {
                 bail!("no device {} on USB", d.udid);
             }
@@ -445,6 +461,9 @@ mod tests {
             if *password != "hunter2" {
                 bail!("Apple didn't accept the sign-in");
             }
+            if !self.two_factor {
+                return Ok(());
+            }
             let numbers = vec![TrustedNumber {
                 number_with_dial_code: "+1 (•••) •••-••12".into(),
                 last_two_digits: "12".into(),
@@ -456,11 +475,11 @@ mod tests {
                 let params = TwoFactorCallbackParams { last_error: None, unknown: false, sms, numbers: numbers.clone(), selected_number_id: None };
                 match ui.two_factor(params).await? {
                     TwoFactorCallbackResponse::SubmitCode(c) => {
-                        self.calls.push(format!("code {c} sms={sms}"));
+                        self.log(format!("code {c} sms={sms}"));
                         return Ok(());
                     }
                     TwoFactorCallbackResponse::SendSms(n) => {
-                        self.calls.push(format!("sms {n}"));
+                        self.log(format!("sms {n}"));
                         sms = true;
                     }
                     TwoFactorCallbackResponse::Abort => bail!("aborted"),
@@ -471,32 +490,44 @@ mod tests {
         async fn teams(&mut self) -> Result<Vec<DeveloperTeam>, Report> {
             Ok(self.teams.clone())
         }
-        async fn provision(&mut self, t: &DeveloperTeam, _: &DeviceInfo, bundle_id: &str, _: &str, _: &dyn Frontend) -> Result<bool, Report> {
-            self.calls.push(format!("provision {} {bundle_id}", t.team_id));
+        async fn provision(&mut self, t: &DeveloperTeam, _: &DeviceInfo, bundle_id: &str, _: &str, ui: &dyn Frontend) -> Result<bool, Report> {
+            self.log(format!("provision {} {bundle_id}", t.team_id));
+            if self.cert_limit {
+                let oldest = "\"Slashplayed companion\", until 2026-12-01".to_string();
+                ui.confirm_revoke(&CertLimit { certificates: oldest.clone(), oldest }).await?;
+                self.log("revoked".into());
+            }
             Ok(self.free)
         }
         async fn sign_and_install(&mut self, _: &DeviceInfo, _: &DeveloperTeam, _: &str, free: bool, ui: &dyn Frontend) -> Result<(), Report> {
-            self.calls.push(format!("install free={free}"));
+            self.log(format!("install free={free}"));
             ui.report(Event::Progress(50));
             Ok(())
         }
         async fn has_pairing(&mut self, _: &DeviceInfo, _: &str) -> Result<bool, Report> {
-            self.calls.push("has pairing?".into());
+            self.log("has pairing?".into());
             Ok(self.has_pairing)
         }
         async fn send_pairing(&mut self, _: &DeviceInfo) -> Result<usize, Report> {
-            self.calls.push("pairing".into());
+            self.log("pairing".into());
             Ok(1234)
         }
         async fn send_ddi(&mut self, _: &dyn Frontend) -> Result<bool, Report> {
-            self.calls.push("ddi".into());
+            self.log("ddi".into());
             Ok(true)
         }
         async fn send_token(&mut self) -> Result<bool, Report> {
-            self.calls.push("token".into());
+            self.log("token".into());
             Ok(self.token)
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use super::{fake::*, *};
 
     /// The person, scripted: picks the first device once there is one, signs in, asks for a text first.
     #[derive(Default)]
@@ -562,7 +593,7 @@ mod tests {
         let done = install(&mut b, &ui, &opts()).await.unwrap();
         assert_eq!(done, Done { device: "iPhone A".into(), free: true, renews: true });
         assert_eq!(
-            b.calls,
+            b.calls(),
             [
                 "kit", "trust A", "devmode A", "sms 3", "code 123456 sms=true", "provision T1 T1.slashplayed", "install free=true",
                 "has pairing?", "pairing", "ddi", "token",
@@ -582,7 +613,7 @@ mod tests {
         let ui = Person { team: 1, ..Default::default() };
         install(&mut b, &ui, &opts()).await.unwrap();
         assert!(ui.asked.lock().unwrap().contains(&"team".to_string()));
-        assert!(b.calls.contains(&"provision T2 T2.slashplayed".to_string()), "{:?}", b.calls);
+        assert!(b.calls().contains(&"provision T2 T2.slashplayed".to_string()), "{:?}", b.calls());
 
         // Named on the command line: not asked, and a team it doesn't have is an error.
         let mut b = Fake { teams: vec![team("T1"), team("T2")], ..Default::default() };
@@ -609,7 +640,7 @@ mod tests {
         let mut b = Fake { lists: vec![vec![phone("V", "RealityDevice")]], ..Default::default() };
         let e = install(&mut b, &Person::default(), &opts()).await.unwrap_err();
         assert!(e.to_string().contains("still needs a Mac"), "{e}");
-        assert_eq!(b.calls, ["kit"], "nothing is asked of a Vision Pro");
+        assert_eq!(b.calls(), ["kit"], "nothing is asked of a Vision Pro");
     }
 
     #[tokio::test(start_paused = true)]
@@ -628,13 +659,13 @@ mod tests {
         let waits = ui.events().iter().filter(|e| matches!(e, Event::Wait(Wait::DeveloperMode { .. }))).count();
         assert_eq!(waits, 4, "{:?}", ui.events());
         // Never asked while it was off USB: the first look, then the three times it was there.
-        assert_eq!(b.calls.iter().filter(|c| c.starts_with("devmode")).count(), 4, "{:?}", b.calls);
+        assert_eq!(b.calls().iter().filter(|c| c.starts_with("devmode")).count(), 4, "{:?}", b.calls());
 
         // The command line stops and says to run it again.
         let mut b = Fake { dev_mode: vec![Ok(false)], ..Default::default() };
         let e = install(&mut b, &Person::default(), &opts()).await.unwrap_err();
         assert!(e.to_string().contains("then run this again"), "{e}");
-        assert_eq!(b.calls, ["kit", "trust A", "devmode A"], "no sign-in before Developer Mode");
+        assert_eq!(b.calls(), ["kit", "trust A", "devmode A"], "no sign-in before Developer Mode");
     }
 
     #[tokio::test(start_paused = true)]
@@ -658,10 +689,10 @@ mod tests {
     async fn the_pairing_record_is_kept_unless_asked() {
         let mut b = Fake { has_pairing: true, ..Default::default() };
         install(&mut b, &Person::default(), &opts()).await.unwrap();
-        assert!(!b.calls.contains(&"pairing".to_string()));
+        assert!(!b.calls().contains(&"pairing".to_string()));
         let mut b = Fake { has_pairing: true, ..Default::default() };
         install(&mut b, &Person { pair_again: true, ..Default::default() }, &opts()).await.unwrap();
-        assert!(b.calls.contains(&"pairing".to_string()));
+        assert!(b.calls().contains(&"pairing".to_string()));
     }
 
     #[test]

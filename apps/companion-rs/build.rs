@@ -115,6 +115,17 @@ fn main() {
         }
     }
 
+    // The icon Explorer shows for both programs (icons/make-icons.sh makes it from art/icon.svg), and the
+    // name and version its Properties show.
+    println!("cargo:rerun-if-changed=icons/slashplayed.ico");
+    if windows {
+        let mut res = winresource::WindowsResource::new();
+        res.set_icon(manifest.join("icons/slashplayed.ico").to_str().expect("a UTF-8 path"))
+            .set("ProductName", "Slashplayed Companion")
+            .set("FileDescription", "Slashplayed Companion");
+        res.compile().expect("couldn't compile the Windows resources (rc.exe, from the Windows SDK)");
+    }
+
     if let Ok(h) = env::var("SP_KIT_SHA256") {
         let h = h.trim().to_ascii_lowercase();
         if h.len() != 64 || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
