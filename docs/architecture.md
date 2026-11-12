@@ -1008,6 +1008,11 @@ clang target differs. The differences:
   compatibility mode. The iPad Info.plist has it, and NSScreen and CoreGraphics report the real screen,
   landscape. The status bar and home indicator are hidden and edge gestures deferred.
 - **Pointer lock** works, so mouselook locks the pointer by default.
+- **Game Mode and controllers.** The Info.plist calls the app a game (`LSApplicationCategoryType`) with
+  `LSSupportsGameMode`, so iOS turns Game Mode on while it runs (less background work, lower Bluetooth
+  latency for controllers and AirPods), and declares the extended gamepad profile
+  (`GCSupportsControllerUserInteraction`, `GCSupportedGameControllers`), which is what lets Settings remap
+  a controller for the app. The client reads controllers itself, through the system's GameController.
 - **No look highlights** (there's no gaze), so the `SPHover` addon isn't installed.
 - **Storage.** Most iPads can't hold every game's data (Retail alone needs ~150 GB). The companion
   computes which storage archives the chosen games use (`GameStore.swift`) and, with copying on,

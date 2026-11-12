@@ -20,6 +20,9 @@ All notable changes to Slashplayed are documented here. The format is based on
   two-factor code, through a third-party anisette server, as sideloading tools do, so a secondary Apple ID
   on the team is safest. Your password is used once and isn't kept: only an Apple token is, in the
   device's keychain.
+- On an iPad or iPhone, the game runs in Game Mode, with less background activity and lower latency
+  for a Bluetooth controller and AirPods, and Settings can remap a game controller's buttons for
+  Slashplayed.
 
 ### Changed
 
