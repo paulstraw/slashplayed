@@ -73,7 +73,7 @@ In-game voice chat isn't supported on the device yet
 ### On Windows or Linux
 
 For an iPad or iPhone, the Slashplayed Companion for Windows and Linux does the Mac's setup with no Mac
-or Xcode:
+or Xcode. It's **experimental**: newer than the Mac companion, and less tested on real devices.
 
 1. Download it from the [latest release](https://github.com/paulstraw/slashplayed/releases/latest):
    `slashplayed-companion-windows-x86_64.zip`, `slashplayed-companion-linux-x86_64.tar.gz`, or

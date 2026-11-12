@@ -5,6 +5,11 @@ PC, with no Mac. It's a window that walks you through it: plug in the device, si
 and it installs the app. **slashplayed-cli**, in the same download, does the same from a terminal (see
 [From the command line](#from-the-command-line)).
 
+**It's experimental.** It ships with every release, but it's newer than the Mac companion and has had
+less testing on real devices: if something goes wrong,
+[open an issue](https://github.com/paulstraw/slashplayed/issues/new/choose) with what **Copy Details**
+copies (see [Troubleshooting](#troubleshooting)).
+
 **Apple Vision Pro still needs a Mac** with the [Slashplayed Companion](../README.md#get-started).
 
 ## What it does
