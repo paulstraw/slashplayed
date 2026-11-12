@@ -239,8 +239,10 @@ static NSString *session(void (^*pump)(double), NSData **pairing_out, NSDictiona
         [NSFileManager.defaultManager removeItemAtPath:record error:nil];
         pairing = nil;
 #if !TARGET_OS_VISION
-        return [NSString stringWithFormat:@"This %@ no longer accepts Slashplayed's pairing.\n\nOpen Slashplayed Companion "
-                @"on your Mac and play once with this %@ connected by USB: it pairs it again.", noun, noun];
+        // Set up from a Mac or from Windows or Linux: either companion sends a new record once this one's gone.
+        return [NSString stringWithFormat:@"This %@ no longer accepts Slashplayed's pairing.\n\nConnect this %@ by USB "
+                @"to the computer that set it up: on a Mac, open Slashplayed Companion and play once; on Windows or "
+                @"Linux, run the Slashplayed Companion again. Either pairs it again.", noun, noun];
 #endif
     }
     *pairing_out = pairing;
