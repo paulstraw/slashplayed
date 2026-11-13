@@ -9,7 +9,7 @@ and tested on a free and a paid team. Its `LICENSE` is the repository's. The cra
 isideload depends on [apple-codesign-quick](https://crates.io/crates/apple-codesign-quick), its own code
 signer, unconditionally, and that crate is LGPL-2.1-or-later. `slashplayed-companion` is one statically linked
 binary, so linking the crate would bind the whole binary to the LGPL's relinking terms, even though the tool
-never calls the signer: it signs with zsign (`apps/companion-rs/build.rs`). The owner chose (2026-11-01) to patch
+never calls the signer: it signs with zsign (`apps/companion-rs/zsign/`). The owner chose (2026-11-01) to patch
 the dependency out, here in the repository, so the change is reviewed with the rest.
 
 ## What changed

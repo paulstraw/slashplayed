@@ -609,8 +609,9 @@ its own profiles:
      the entitlements.
    - Free or paid is the profile's call (`IsFreeProvisioningProfile`, or a 7-day life): listTeams has no
      flag for it.
-5. **Signing** (`src/sign.rs`, `zsign/spzsign_host.cpp`): zsign, compiled in by `build.rs` from the source
-   `scripts/build-zsign.sh source` patches, with OpenSSL 3.5 from openssl-src.
+5. **Signing** (`src/sign.rs`, `zsign/`): zsign, compiled in by the spzsign crate (`zsign/build.rs`) from
+   the source `scripts/build-zsign.sh source` patches, with OpenSSL 3.5 from openssl-src. It's a crate of its
+   own, at a fixed version, so a release's version bump doesn't rebuild OpenSSL.
    - Each bundle is signed with its own profile and the entitlements the Mac signs it with: the kit's
      templates, less `Signing.freeTeamDropped` on a free team. A profile's own entitlements carry more
      (keychain-access-groups).

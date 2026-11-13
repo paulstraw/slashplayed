@@ -1,7 +1,7 @@
 # slashplayed-companion (the window) and slashplayed-cli (the command line): the host tool that sets up Slashplayed on an iPad or iPhone from Windows, Linux, or a
 # Mac without Xcode (docs/setup-without-a-mac.md; how it works: docs/architecture.md, "The host tool").
-# Built with the Rust that rust-toolchain.toml pins, and --locked: Cargo.lock is committed. build.rs
-# compiles zsign (scripts/build-zsign.sh source, with scripts/zsign.patch) into it.
+# Built with the Rust that rust-toolchain.toml pins, and --locked: Cargo.lock is committed. spzsign
+# (zsign/) compiles zsign (scripts/build-zsign.sh source, with scripts/zsign.patch) into it.
 [package]
 name = "slashplayed-companion"
 version = "1.5.1"
@@ -29,6 +29,9 @@ path = "src/main.rs"
 # whatever is enabled; tokio-mt: anisette's provisioning websocket). keyring-storage off: nothing of the
 # login is stored.
 isideload = { path = "vendor/isideload", default-features = false, features = ["install", "tokio-mt"] }
+# zsign and OpenSSL, the app's signer (src/sign.rs): a crate of its own so a version bump here doesn't
+# rebuild them (zsign/Cargo.toml says why).
+spzsign = { path = "zsign" }
 # usbmuxd, lockdown and its pairing, installation_proxy over AFC, house_arrest, amfi, and the RemotePairing
 # record. Patched below to the repo's pinned idevice (scripts/build-idevice.sh pins the same commit).
 idevice = { version = "0.1.68", default-features = false, features = [
@@ -73,10 +76,6 @@ skrifa = { version = "0.44", default-features = false }
 windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
 
 [build-dependencies]
-cc = "1.2"
-# zsign's OpenSSL, built from source and linked statically: openssl-src's 3.5 line, OpenSSL's
-# long-term-support series (docs/architecture.md, "The host tool").
-openssl-src = "=300.5.5"
 # The Windows programs' icon and version resource (icons/slashplayed.ico), compiled with the SDK's rc.exe.
 winresource = "0.1.34"
 

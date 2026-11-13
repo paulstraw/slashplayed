@@ -1,32 +1,13 @@
-// Signing the kit's app with zsign (build.rs links it; zsign/spzsign_host.cpp is the entry point): the app
-// and its JIT helper each with its own profile and the entitlements the Mac signs them with (the kit's
+// Signing the kit's app with zsign (the spzsign crate, zsign/, links it; spzsign_host.cpp is its entry point):
+// the app and its JIT helper each with its own profile and the entitlements the Mac signs them with (the kit's
 // templates, filled in by kit.rs), not the profiles' (which carry keychain-access-groups and more:
 // research/isideload/README.md). The key is passed as PKCS#8 PEM in a Zeroizing buffer and never written.
 
 use std::{ffi::CString, path::Path};
 
 use rootcause::prelude::*;
+use spzsign::spz_sign_app;
 use zeroize::Zeroizing;
-
-unsafe extern "C" {
-    fn spz_sign_app(
-        app_dir: *const std::ffi::c_char,
-        key: *const u8,
-        key_len: usize,
-        cert: *const u8,
-        cert_len: usize,
-        app_prov: *const u8,
-        app_prov_len: usize,
-        app_ents: *const u8,
-        app_ents_len: usize,
-        helper_prov: *const u8,
-        helper_prov_len: usize,
-        helper_ents: *const u8,
-        helper_ents_len: usize,
-        err: *mut std::ffi::c_char,
-        err_len: usize,
-    ) -> std::ffi::c_int;
-}
 
 pub struct Inputs<'a> {
     pub key_pem: &'a Zeroizing<String>,

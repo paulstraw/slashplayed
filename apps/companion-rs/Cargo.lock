@@ -5139,7 +5139,6 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 name = "slashplayed-companion"
 version = "1.5.1"
 dependencies = [
- "cc",
  "eframe",
  "egui_kittest",
  "hex",
@@ -5148,7 +5147,6 @@ dependencies = [
  "image",
  "isideload",
  "keyring",
- "openssl-src",
  "plist",
  "rand 0.8.8",
  "rcgen",
@@ -5161,6 +5159,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "skrifa",
+ "spzsign",
  "tempfile",
  "tokio",
  "windows-sys 0.61.2",
@@ -5291,6 +5290,14 @@ checksum = "7ef958a98b9d5da290cfc78946e9f3e61e1e62a18db0d92cac0b83cc161491a9"
 dependencies = [
  "base64ct",
  "der 0.8.3",
+]
+
+[[package]]
+name = "spzsign"
+version = "0.0.0"
+dependencies = [
+ "cc",
+ "openssl-src",
 ]
 
 [[package]]
