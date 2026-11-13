@@ -409,13 +409,17 @@ static void region_sync(NSString *flavor, NSDictionary<NSString *, NSString *> *
 // same way. A Config.wtf without them is easy to come by: the one the launcher makes itself for a game's first
 // launch (the render scale and the intro, below), one Reset Game Settings deleted, or those blanks. So every
 // launch adds any that are missing and replaces any that are "", from the game's region (`choice`). A value
-// already set stays (a person's own choice in the game, or the game's), except that a game whose region the
-// device decides and that Settings moved to another region gets all three replaced.
+// already set stays (a person's own choice in the game, or the game's), except that a portal that isn't the
+// game's region gets all three replaced: a game whose region the device decides and that Settings moved, or a
+// Mac game whose row says another region than Config.wtf. That one is the Mac's Battle.net moving it, or an
+// older companion's first Config.wtf, which said "us" whatever the Mac's region, so a game copied from a Mac in
+// Europe signed in to the Americas, where the account may have no game (likely issue #94's "no active
+// account"). Not a Mac game whose row and stamp say no region ("default"): nothing says the portal is wrong.
 static void game_region(NSString *flavor, NSDictionary<NSString *, NSString *> *choice) {
     NSString *wtf = home_path([NSString stringWithFormat:@"Documents/_%@_/WTF", flavor]);
     NSString *config = [wtf stringByAppendingPathComponent:@"Config.wtf"];
     NSArray<NSString *> *set = nil;
-    NSString *text = sp_config_with_region(read_text(config), choice, [choice[@"Device"] isEqual:@"1"], &set);
+    NSString *text = sp_config_with_region(read_text(config), choice, &set);
     if (!set.count) return;
     [NSFileManager.defaultManager createDirectoryAtPath:wtf withIntermediateDirectories:YES attributes:nil error:nil];
     if (![text writeToFile:config atomically:YES encoding:NSUTF8StringEncoding error:nil])

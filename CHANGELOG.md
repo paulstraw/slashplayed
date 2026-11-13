@@ -21,6 +21,14 @@ All notable changes to Slashplayed are documented here. The format is based on
 - Swiping on a DualSense or DualShock 4 touchpad presses F16 (up), F17 (down), F18 (left), or F19
   (right), so you can bind them in addons that take key bindings.
 
+### Fixed
+
+- A game copied from a Mac that plays outside the Americas now signs in to its own region on the iPad,
+  iPhone, or Vision Pro. Before, the device's first copy of the game's settings always named the Americas,
+  so an account that plays in Europe, Korea, or Taiwan could be told it has no active account. A game
+  already copied that way moves to the Mac's region and languages the next time it starts, with nothing to
+  copy again.
+
 ### Known issues
 
 - Signing in on the device can fail with "You have been disconnected. (BLZ51914400)", sometimes after

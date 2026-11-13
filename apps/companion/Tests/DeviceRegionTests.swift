@@ -169,27 +169,50 @@ final class DeviceRegionTests: XCTestCase {
     func testConfigFollowsTheRegion() {
         let eu = ["Region": "eu", "Text": "deDE", "Speech": "deDE"]
         var set: NSArray?
-        var text = sp_config_with_region(nil, eu, true, &set)
+        var text = sp_config_with_region(nil, eu, &set)
         XCTAssertEqual(text, "SET portal \"eu\"\nSET textLocale \"deDE\"\nSET audioLocale \"deDE\"\n")
         XCTAssertEqual(set as? [String], ["portal", "textLocale", "audioLocale"])
         // Again: nothing to do.
-        XCTAssertEqual(sp_config_with_region(text, eu, true, &set), text)
+        XCTAssertEqual(sp_config_with_region(text, eu, &set), text)
         XCTAssertEqual(set?.count, 0)
         // The game saved them empty after a region picker it couldn't show: filled, the rest kept.
         let blank = "SET gxApi \"metal\"\nSET portal \"\"\nSET textLocale \"\"\nSET audioLocale \"enUS\"\n"
-        text = sp_config_with_region(blank, eu, false, &set)
+        text = sp_config_with_region(blank, eu, &set)
         XCTAssertEqual(text, "SET gxApi \"metal\"\nSET portal \"eu\"\nSET textLocale \"deDE\"\nSET audioLocale \"enUS\"\n")
         XCTAssertEqual(set as? [String], ["portal", "textLocale"])
         // A language picked in the game's options, same region: kept.
         let picked = "SET portal \"eu\"\nSET textLocale \"frFR\"\nSET audioLocale \"frFR\"\n"
-        XCTAssertEqual(sp_config_with_region(picked, eu, true, &set), picked)
+        XCTAssertEqual(sp_config_with_region(picked, eu, &set), picked)
         // Settings moved the game to Europe: all three follow.
         let us = "SET portal \"us\"\nSET textLocale \"enUS\"\nSET audioLocale \"enUS\"\nSET gxApi \"metal\"\n"
-        XCTAssertEqual(sp_config_with_region(us, eu, true, &set),
+        XCTAssertEqual(sp_config_with_region(us, eu, &set),
                        "SET portal \"eu\"\nSET textLocale \"deDE\"\nSET audioLocale \"deDE\"\nSET gxApi \"metal\"\n")
         XCTAssertEqual(set as? [String], ["portal", "textLocale", "audioLocale"])
-        // The Mac's game: its values stay, whatever the device thinks.
-        XCTAssertEqual(sp_config_with_region(us, eu, false, &set), us)
+        // Nothing said the region (a Mac game with no Branch in its row or stamp): what's set stays.
+        XCTAssertEqual(sp_config_with_region(us, ["Region": "us", "Text": "enUS", "Speech": "enUS", "Source": "default"], &set), us)
         XCTAssertEqual(set?.count, 0)
+    }
+
+    /// A game copied from a Mac in Europe (issue #94): the companion's first Config.wtf says the Mac's region and
+    /// languages, and one an older companion sent, "us" whatever the Mac's, is moved to the Mac's row at the next
+    /// start, so the client signs in to Europe's account server. The Mac's own row decides both.
+    func testMacGameConfigFollowsTheMacsRow() {
+        let frTags = "OSX x86_64 EU? acct-FRA? geoip-FR? frFR speech?:OSX x86_64 EU? acct-FRA? geoip-FR? frFR text?"
+        let info = table(header, ["eu|1|aa|cc|\(frTags)|1.60.1.70938|wowf"])
+        let choice = sp_game_region("wowf", false, nil, nil, nil, info, "US", ["en-US"])
+        let config = "SET portal \"eu\"\nSET textLocale \"frFR\"\nSET audioLocale \"frFR\"\n"
+        XCTAssertEqual(GameFiles.firstConfig(region: "eu", tags: frTags), config)
+        var set: NSArray?
+        XCTAssertEqual(sp_config_with_region(config, choice, &set), config)  // the launcher agrees with it
+        XCTAssertEqual(set?.count, 0)
+        let old = "SET gxApi \"metal\"\nSET portal \"us\"\nSET textLocale \"enUS\"\nSET audioLocale \"enUS\"\n"
+        XCTAssertEqual(sp_config_with_region(old, choice, &set), "SET gxApi \"metal\"\n" + config)
+        XCTAssertEqual(set as? [String], ["portal", "textLocale", "audioLocale"])
+        // Speech and text apart; Europe's English as enUS (issue #88); no locale in the Tags: the region's own.
+        let mixed = "OSX x86_64 EU? deDE speech?:OSX x86_64 EU? enGB text?"
+        XCTAssertEqual(GameFiles.firstConfig(region: "eu", tags: mixed),
+                       "SET portal \"eu\"\nSET textLocale \"enUS\"\nSET audioLocale \"deDE\"\n")
+        XCTAssertEqual(GameFiles.firstConfig(region: "kr", tags: "OSX x86_64 KR?"),
+                       "SET portal \"kr\"\nSET textLocale \"koKR\"\nSET audioLocale \"koKR\"\n")
     }
 }
