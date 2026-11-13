@@ -128,7 +128,8 @@ update". If no update is out, the companion's **Report It…** opens a pre-fille
 - **LocalDevVPN has to be on at every start.** Slashplayed's helper attaches to the game for a second
   or two to prepare its code, and reaches the device's developer services through LocalDevVPN. If
   it's off, Slashplayed opens LocalDevVPN and starts the game once it's on.
-- **No on-screen keyboard in the game.** Chat and authenticator codes need a hardware keyboard.
+- **No on-screen keyboard in the game.** Chat and authenticator codes need a hardware keyboard, or on an
+  iPad or iPhone, Paste from a two-finger hold.
   [Details](troubleshooting.md#no-on-screen-keyboard).
 - **A mouse on an iPhone needs AssistiveTouch** for its cursor.
   [Details](troubleshooting.md#no-cursor-with-a-mouse-on-an-iphone).

@@ -431,7 +431,8 @@ struct SettingsView: View {
     }
 
     #if !os(visionOS)
-    // Finger chords (spevent.m): two fingers right-click, three middle-click, at one finger's spot.
+    // Finger chords (spevent.m): two fingers right-click, three middle-click, at one finger's spot; two held
+    // still open the edit menu (Copy and Paste) as they lift.
     private var touch: some View {
         Section {
             LabeledContent("Click With") {
@@ -447,7 +448,7 @@ struct SettingsView: View {
         } header: {
             Text("Touch")
         } footer: {
-            Text("Press with two fingers together to right-click, or three to middle-click. The click is where the left or right finger is. With Accessibility Zoom on, three-finger presses lag.")
+            Text("Press with two fingers together to right-click, or three to middle-click. The click is where the left or right finger is. Hold two fingers still for a moment, then lift them, for Copy and Paste. With Accessibility Zoom on, three-finger presses lag.")
         }
     }
     #endif

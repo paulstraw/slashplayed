@@ -619,6 +619,10 @@ from a hardware keyboard, so chat, and an authenticator's code at sign-in, need 
 iPhone; a Bluetooth keyboard works, chat included. (Slashplayed's own screens, such as the sign-in
 screen, do get the on-screen keyboard.)
 
+On an iPad or iPhone you can paste instead: copy the text in another app, tap the game's text box, hold
+two fingers still on it for a moment, and lift them. Tap **Paste** in the menu that opens. The same
+menu's **Copy** copies what's selected in the box.
+
 ### Closing the window
 
 The same goes for anything that takes the game off screen: taking off the headset, or another app in

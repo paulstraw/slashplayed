@@ -11,6 +11,9 @@ All notable changes to Slashplayed are documented here. The format is based on
 - Copy and paste in the game's chat and other text boxes: Cmd+V on a keyboard pastes your iPad's,
   iPhone's, or Vision Pro's clipboard, and what you copy in the game lands on it. Pasting from another
   app asks first, unless Paste from Other Apps is set to Allow in Settings > Slashplayed.
+- Copy and paste by touch on an iPad or iPhone: hold two fingers still on the game's text box for a
+  moment and lift them, and a menu offers Copy and Paste. Pasting from another app this way doesn't ask
+  first.
 - Swiping on a DualSense or DualShock 4 touchpad presses F16 (up), F17 (down), F18 (left), or F19
   (right), so you can bind them in addons that take key bindings.
 
