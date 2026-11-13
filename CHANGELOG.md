@@ -6,6 +6,8 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-12
+
 ### Fixed
 
 - A game installed on an iPad or iPhone for Europe in English, or in a language the game doesn't have,
