@@ -3,10 +3,10 @@
 
     scripts/crate-notices.py --toolchain <ver> --manifest-dir <crate> --features "<f...>" \
         --target <triple> [--target <triple>...] --title <text> --out <notices.txt> \
-        [--own <crate>] [--deny-copyleft]
+        [--own <crate>...] [--deny-copyleft]
 
---own names the crate being built when it's this repository's own (apps/companion-rs's slashplayed-companion,
-apps/client/spapple): it's MIT under the repository's LICENSE, which is its text. --deny-copyleft fails when a
+--own names a crate of this repository's own that the build links (apps/companion-rs's slashplayed-companion and
+spzsign, apps/client/spapple), once per crate: it's MIT under the repository's LICENSE, which is its text. --deny-copyleft fails when a
 linked crate can only be had under a GPL-family license (GPL, LGPL, AGPL): the host tool links statically,
 so one would bind the whole binary (apps/companion-rs/vendor/isideload/VENDORED.md says why its signer is left out).
 
@@ -82,7 +82,7 @@ def main():
     ap.add_argument("--target", action="append", required=True)
     ap.add_argument("--title", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--own")
+    ap.add_argument("--own", action="append", default=[])
     ap.add_argument("--deny-copyleft", action="store_true")
     a = ap.parse_args()
     flags = ["--locked", "--no-default-features", "--features", a.features]
@@ -113,7 +113,7 @@ def main():
             die(f"cargo tree lists {name} {version}, which cargo metadata doesn't have")
         if a.deny_copyleft and copyleft_only(p.get("license") or ""):
             copyleft.append(f"{name} {version} ({p.get('license')})")
-        if a.own and name == a.own and p["source"] is None:
+        if name in a.own and p["source"] is None:
             crates.append((f"{name} {version}", "MIT (this repository's LICENSE)", "https://github.com/paulstraw/slashplayed"))
             # Its text too, so every crate listed has one (AcknowledgementsTests checks that).
             with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "LICENSE"), encoding="utf-8") as fh:

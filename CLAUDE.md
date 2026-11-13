@@ -64,7 +64,7 @@ the owner asks for it.
   `scripts/release/device-kit.sh` makes at release), `device.rs` (usbmuxd, trust, Developer Mode, install,
   house_arrest, the RemotePairing record), `account.rs` (the Apple ID sign-in, memory only), `provision.rs`
   (device, App IDs, capabilities, certificate, profiles), `keystore.rs` (the signing key, in the OS's
-  credential store), `sign.rs` with `build.rs` and `zsign/` (zsign compiled in), `ddi.rs` (the pinned
+  credential store), `sign.rs` with `zsign/` (spzsign, its own crate: zsign and OpenSSL compiled in), `ddi.rs` (the pinned
   mirror DDI). `vendor/isideload/` is isideload with its LGPL signer made optional (`VENDORED.md`).
   `package.sh` packs a release build with its notices. Vision Pro stays Mac-only.
 - `shims/`: hand-written shims (`appkit/`, `audio/`, `coregraphics/`, `ident/`, `security/`, `system/`)
@@ -79,7 +79,7 @@ the owner asks for it.
   pinned commit and checked SHA-256, into `work/fonts/`: its license forbids changing the file, so it's never
   committed), `site-preview.sh` (`site/` staged as Pages deploys it, font included, served on 127.0.0.1),
   `build-zsign.sh source` (zsign's source at a pinned commit with `zsign.patch`, into `work/zsign/src/zsign`, for
-  slashplayed-companion's `build.rs`; git only, nothing built), `crate-notices.py`
+  slashplayed-companion's `zsign/build.rs`; git only, nothing built), `crate-notices.py`
   (build-idevice.sh's license texts of every linked crate, failing on one with none; `crate-licenses/` holds
   the texts of crates that ship none), `check-tree.sh` (scrub and
   no-hardcoding greps), `config.sh` (loads `config/local.env`),

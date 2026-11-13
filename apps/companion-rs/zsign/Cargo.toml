@@ -1,0 +1,23 @@
+# spzsign: zsign's bundle signer and OpenSSL's libcrypto, compiled in by build.rs, behind the one call
+# slashplayed-companion makes (lib.rs; src/sign.rs is its caller). It's a crate of its own, at a version
+# that never moves, so that building it stays apart from slashplayed-companion's: cargo fingerprints a build
+# script by its package's version, and while this lived in slashplayed-companion's build.rs every release
+# bump rebuilt OpenSSL, as did every CI run after one (its cache matched, so it never saved again): twenty
+# minutes on Windows. A path crate inside the tool's directory, so a member of its workspace.
+[package]
+name = "spzsign"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "MIT"
+links = "spzsign"
+build = "build.rs"
+
+[lib]
+path = "lib.rs"
+
+[build-dependencies]
+cc = "1.2"
+# zsign's OpenSSL, built from source and linked statically: openssl-src's 3.5 line, OpenSSL's
+# long-term-support series (docs/architecture.md, "The host tool").
+openssl-src = "=300.5.5"

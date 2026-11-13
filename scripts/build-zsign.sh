@@ -1,8 +1,8 @@
 #!/bin/bash
 # The source of slashplayed-companion's app signer: zsign (https://github.com/zhlynn/zsign, MIT) at a
 # pinned commit with our patch (scripts/zsign.patch), into work/zsign/src/zsign (gitignored, never
-# committed). Nothing is built here: apps/companion-rs/build.rs compiles it, on Windows, Linux, and macOS,
-# with OpenSSL from openssl-src (Cargo.toml pins it), so this needs only git.
+# committed). Nothing is built here: apps/companion-rs/zsign/build.rs compiles it, on Windows, Linux, and
+# macOS, with OpenSSL from openssl-src (zsign/Cargo.toml pins it), so this needs only git.
 #
 #   scripts/build-zsign.sh source
 #

@@ -17,7 +17,7 @@
 #   licenses/NOTICES.txt      every Rust crate either program links (scripts/crate-notices.py, which also
 #                             fails on a GPL-family crate: the binaries are static)
 #   licenses/rust-std.html    the Rust standard library's notices
-#   licenses/zsign.txt, openssl.txt, zlib.txt   the C code build.rs compiles in: zsign (MIT), OpenSSL
+#   licenses/zsign.txt, openssl.txt, zlib.txt   the C code spzsign compiles in: zsign (MIT), OpenSSL
 #                             (Apache-2.0), and the zlib and minizip zsign carries (zlib license)
 #   licenses/goodmountain.txt the font's license (its LICENSE.md)
 #   licenses/slashplayed.txt  this repository's LICENSE
@@ -78,14 +78,14 @@ cp "$FONT/LICENSE.md" "$PKG/licenses/goodmountain.txt"
 # cargo tree lists the package's dependencies, not one binary's, so this is the union of both programs'
 # crates (slashplayed-cli links a subset of the window's).
 "${PYTHON:-python3}" -I "$ROOT/scripts/crate-notices.py" --toolchain "$TOOLCHAIN" --manifest-dir "$CRATE" --features "" \
-  --target "$TARGET" --own slashplayed-companion --deny-copyleft --out "$PKG/licenses/NOTICES.txt" \
+  --target "$TARGET" --own slashplayed-companion --own spzsign --deny-copyleft --out "$PKG/licenses/NOTICES.txt" \
   --title "Slashplayed Companion and slashplayed-cli, and the Rust crates they're built with, as the $TARGET build links them" ||
   die "couldn't write the crate notices (see above)"
 SYSROOT=$(rustup run "$TOOLCHAIN" rustc --print sysroot)
 [ -s "$SYSROOT/share/doc/rust/COPYRIGHT-library.html" ] || die "Rust $TOOLCHAIN has no COPYRIGHT-library.html"
 cp "$SYSROOT/share/doc/rust/COPYRIGHT-library.html" "$PKG/licenses/rust-std.html"
 cp "$ZSIGN/LICENSE" "$PKG/licenses/zsign.txt"
-# OpenSSL's license, from the very openssl-src source build.rs compiled.
+# OpenSSL's license, from the very openssl-src source spzsign (zsign/build.rs) compiled.
 OPENSSL=$(cd "$CRATE" && rustup run "$TOOLCHAIN" cargo metadata --locked --format-version 1 | "${PYTHON:-python3}" -I -c '
 import json, os, sys
 m = json.load(sys.stdin)
