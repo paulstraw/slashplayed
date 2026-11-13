@@ -91,6 +91,7 @@ static NSUInteger sp_mouse_buttons;    // bit per button number, like +pressedMo
 static SPEvent *sp_current_event;
 static NSMutableArray *sp_local_monitors;  // [mask, handler] pairs
 static int sp_logged_events;
+static void sp_touchpad_poll(void);  // sptouchpad.m: touchpad swipes as F16-F19
 
 // UIKit points in the scene window <-> AppKit points in the client's window. A point in the strip beside
 // the game converts to one outside the window (x < 0 or past its width), as on a Mac.
@@ -1374,6 +1375,7 @@ static char sp_app_delegate_key;
     if (!sp_events.count) sp_uikit_pump(NO);
     sp_window_track_scene();
     sp_key_repeats();
+    sp_touchpad_poll();
     for (NSUInteger i = 0; i < sp_events.count; i++) {
         SPEvent *e = sp_events[i];
         if (!(mask & (1ull << e->type))) continue;

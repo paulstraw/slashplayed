@@ -775,7 +775,7 @@ The hand-written families:
 |---|---|---|
 | `shims/system/` | libSystem | The JIT prepare and alias (above). Sandbox fixes: path redirection, shared memory, `SIGPIPE`. Tracing (`SP_SYSTEM_TRACE=1`). The device console log. |
 | `shims/appkit/` | AppKit | `spuikit.m` (the event loop coroutine), `spwindow.m` (screen, window, view geometry), `spevent.m` (input), `spimage.m` (bitmaps, images, cursors), `sphover.m` (look highlights), `spstats.m` (play-session stats), `sploading.m` (the loading screen
-until the client's first frame), `spclipboard.m` (the clipboard). `spnotice.m`, built into the CoreFoundation shim: the client's data setup dialog (below). |
+until the client's first frame), `spclipboard.m` (the clipboard), `sptouchpad.m` (touchpad swipes). `spnotice.m`, built into the CoreFoundation shim: the client's data setup dialog (below). |
 | `shims/coregraphics/` | CoreGraphics | `spdisplay.m`: one display matching NSScreen; cursor association and warping for mouselook. |
 | `shims/audio/` | CoreAudio, AudioToolbox | A fake HAL device, the macOS HAL output unit mapped to RemoteIO, and no microphone. |
 | `shims/security/` | Security | The client's legacy CSSM crypto calls over CommonCrypto; Secure Transport logging; the bundled root certificates for the client's certificate query. |
@@ -948,6 +948,11 @@ and scroll events and `NSTextInputClient`), with no event taps. `spevent.m`:
   from addons that call `C_GamePad.SetVibration`, such as Deadly Boss Mods, GTFO, and SilverDragon (Classic
   Era also needs the gamepad on, `GamePadEnable`).
   Checked on an iPhone with a DualShock 4 in Forever and Classic Era (#19); not yet on a Vision Pro.
+- **Touchpad swipes.** A one-finger swipe of two-fifths of a DualSense's or DualShock 4's touchpad
+  within 0.6 s, with no click, presses F16 (up), F17 (down), F18 (left), or F19 (right), for addon key
+  bindings (`sptouchpad.m`). The game's own touchpad cursor still moves. Controllers are polled from the
+  event pump rather than given handlers, since an element has one handler slot and the client's own
+  would be replaced.
 - **Clipboard.** `NSPasteboard` is the general pasteboard over `UIPasteboard`, text only
   (`spclipboard.m`); `NSPasteboardTypeString` and `NSPasteboardTypeFileURL` have macOS's values, so a
   file check answers no. Pasting another app's text shows iOS's Allow Paste prompt, once per copy,
