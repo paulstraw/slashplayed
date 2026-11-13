@@ -42,6 +42,11 @@ DATA_OVERRIDES = {
     "_NSAppKitVersionNumber": "const double NAME = 2487.3;",
     # Set by the AppKit shim's NSApplication once it exists.
     "_NSApp": "id NAME = nil;",
+    # macOS's values. The names end in String and FileURL, not Type, so STRING_CONSTANT misses them, and
+    # a zeroed blob reads as nil: a client comparing -types against them would never find text, and
+    # spclipboard.m's NSPasteboard couldn't tell a file check from a text one.
+    "_NSPasteboardTypeString": 'NSString *const NAME = @"public.utf8-plain-text";',
+    "_NSPasteboardTypeFileURL": 'NSString *const NAME = @"public.file-url";',
 }
 
 # Function stubs with real bodies: symbol -> C definition (NAME = the asm-labelled identifier).
@@ -315,10 +320,11 @@ int32_t sp_UCKeyTranslate(const void *layout, uint16_t key, uint16_t action, uin
 EXTRA_INCLUDES = {
     # UIKit app and scene, sharing the main thread with the client's loop; window geometry over it;
     # bitmap/image/cursor objects for the client's cursor images; input events from UIKit; play-session
-    # stats; the loading screen until the client's first frame; look highlights.
+    # stats; the loading screen until the client's first frame; look highlights; the clipboard; touchpad
+    # swipes as F16-F19.
     "AppKit": ["shims/appkit/spuikit.m", "shims/appkit/spwindow.m", "shims/appkit/spimage.m",
                "shims/appkit/spevent.m", "shims/appkit/spstats.m", "shims/appkit/sploading.m",
-               "shims/appkit/sphover.m"],
+               "shims/appkit/sphover.m", "shims/appkit/spclipboard.m", "shims/appkit/sptouchpad.m"],
     # Audio: the client's HAL and AudioUnit calls, logged on their way to the real libraries.
     "CoreAudio": ["shims/audio/spcoreaudio.m"],
     "AudioToolbox": ["shims/audio/spaudiotoolbox.m"],
