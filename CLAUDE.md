@@ -262,6 +262,11 @@ again (over an hour for Retail on the headset). Don't change it casually.
   `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`, `ASC_API_KEY_P8_BASE64`, `ASC_API_KEY_ID`,
   `ASC_API_ISSUER_ID`, `SPARKLE_ED_PRIVATE_KEY`. A re-run after the Release exists fails on purpose;
   delete the Release first.
+- **The site without a release** (`.github/workflows/pages.yml`, run by hand from main): stages `site/` the
+  same way and redeploys it in the `github-pages` environment (main only, no secrets), carrying the live
+  appcast over byte for byte. It stops before deploying when that feed doesn't parse or lacks the latest
+  release, checks afterwards that the site serves the same feed, and shares `release.yml`'s concurrency
+  group so the two never race on it.
 - **The Windows and Linux companion** (`apps/companion-rs`, labeled experimental) rides every `v*` release.
   `release.sh` makes the device kit (`scripts/release/device-kit.sh`, attached as `slashplayed-device-kit.zip`),
   then `release.yml` builds the window and `slashplayed-cli` against its hash (`companion-rs-build.yml`) and

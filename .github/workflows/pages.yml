@@ -1,0 +1,147 @@
+# Redeploys the Pages site (site/) from main without a release, so a site change merged to main goes live
+# on its own: Actions > Pages > Run workflow. Manual only; release.yml still deploys at every release.
+#
+# The live appcast is Sparkle's update feed and the only record of past releases (site/appcast.xml is just
+# the empty seed), so it's carried over byte for byte from the live site, never rebuilt: a feed that can't
+# be fetched, doesn't parse, or lacks the latest release fails the run before anything is deployed, and
+# the run checks afterwards that the site serves the same bytes.
+#
+# The job runs in the github-pages environment, whose deployment policy admits main only, so a run
+# started from another branch is refused at the gate. It holds no secrets and needs no approval: the
+# only thing it can publish is main's site/, the font, and the feed already live. Never add a
+# pull_request(_target) trigger.
+name: Pages
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+# Shared with release.yml: a redeploy that read the feed just before a release deployed its new item
+# would then deploy the feed without it. In one group, a redeploy started during a release waits for it
+# and then carries its item over. GitHub keeps one pending run per group, so a run queued while another
+# is already pending cancels that pending one; re-run whichever it was.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  APPCAST_URL: https://slashplayed.strawdynamics.com/appcast.xml
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    timeout-minutes: 15
+    permissions:
+      contents: read  # checkout, gh release list
+      pages: write    # deploy-pages
+      id-token: write # deploy-pages' OIDC check
+    steps:
+      # The environment already admits main only; this says so plainly instead of the gate's error.
+      - name: Check the branch
+        run: |
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "::error::The Pages site deploys from main only; this run is on $GITHUB_REF."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The query string sidesteps Pages' CDN cache, as in release.yml. A 404 is only acceptable before
+      # the first release, when the seed is the feed; once a release exists, the feed must be there, must
+      # parse as a Sparkle feed, and must list the latest release, or the run stops here rather than
+      # publishing a feed that has lost releases.
+      - name: Fetch and check the live appcast
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          latest="$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+            --limit 1 --json tagName -q '.[0].tagName // ""')"
+          latest="${latest#v}"
+          live="$RUNNER_TEMP/live-appcast.xml"
+          status="$(curl -sS -L -o "$live" -w '%{http_code}' "$APPCAST_URL?run=$GITHUB_RUN_ID")"
+          case "$status" in
+            200) ;;
+            404)
+              if [[ -n "$latest" ]]; then
+                echo "::error::$APPCAST_URL returned 404, but release $latest exists; its feed would be lost. Nothing was deployed."
+                exit 1
+              fi
+              echo "No live appcast and no release yet; deploying the seed site/appcast.xml"
+              cp site/appcast.xml "$live" ;;
+            *) echo "::error::Fetching $APPCAST_URL returned HTTP $status. Nothing was deployed."; exit 1 ;;
+          esac
+          python3 - "$live" "$latest" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          SP = "{http://www.andymatuschak.org/xml-namespaces/sparkle}"
+          path, latest = sys.argv[1], sys.argv[2]
+
+          def fail(why):
+              print(f"::error::The live appcast {why}. Nothing was deployed.")
+              sys.exit(1)
+
+          try:
+              root = ET.parse(path).getroot()
+          except ET.ParseError as e:
+              fail(f"isn't well-formed XML ({e})")
+          channel = root.find("channel")
+          if root.tag != "rss" or channel is None:
+              fail("isn't an RSS feed with a <channel>")
+          versions = []
+          for item in channel.findall("item"):
+              enclosure = item.find("enclosure")
+              if item.findtext(SP + "version") is None or enclosure is None or not enclosure.get(SP + "edSignature"):
+                  fail(f"has an item ({item.findtext('title')}) without a sparkle:version or a signed enclosure")
+              versions.append(item.findtext(SP + "shortVersionString"))
+          if latest and latest not in versions:
+              fail(f"has no item for the latest release, {latest} (it lists {', '.join(versions) or 'none'})")
+          print(f"Appcast items: {len(versions)} ({', '.join(versions) or 'none'})")
+          PY
+
+      # Laid out as release.yml's deploy and scripts/site-preview.sh lay it out: site/, with the display
+      # face (never committed; its license forbids re-hosting it in the repo) and its license next to the
+      # page, and the live feed in place of the seed.
+      - name: Stage the site
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/pages"
+          cp -R site "$RUNNER_TEMP/pages"
+          scripts/fetch-font.sh
+          cp work/fonts/Goodmountain-Regular.woff2 "$RUNNER_TEMP/pages/"
+          cp work/fonts/LICENSE.md "$RUNNER_TEMP/pages/goodmountain-license.txt"
+          cp "$RUNNER_TEMP/live-appcast.xml" "$RUNNER_TEMP/pages/appcast.xml"
+          ls -l "$RUNNER_TEMP/pages"
+
+      - name: Upload the Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/pages
+
+      - name: Deploy the Pages site
+        id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+      # The deploy can't be undone from here, but a feed that came out different should be loud. The CDN
+      # can take a moment to serve the new deployment, hence the retries.
+      - name: Check the live appcast is unchanged
+        run: |
+          set -euo pipefail
+          want="$(sha256sum "$RUNNER_TEMP/pages/appcast.xml" | cut -d' ' -f1)"
+          for attempt in 1 2 3 4 5 6; do
+            got="$(curl -fsS -L "$APPCAST_URL?run=$GITHUB_RUN_ID-check-$attempt" | sha256sum | cut -d' ' -f1)" || got=""
+            if [[ "$got" == "$want" ]]; then
+              echo "The live appcast matches what was deployed ($want)."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::The live appcast doesn't match what was deployed (sha256 $want, live ${got:-unreachable}). Check $APPCAST_URL now."
+          exit 1
