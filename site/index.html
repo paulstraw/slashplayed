@@ -110,7 +110,7 @@
     .medal { position: relative; display: block; width: 100%; height: auto; }
     .medal .sq, .medal .s { fill: var(--gold); }
     .medal .disc { fill: #243b34; stroke: var(--gold); stroke-width: 47; }
-    .eyebrow, .soon-h {
+    .eyebrow {
       font-family: Georgia, "Times New Roman", serif;
       font-weight: 700;
       font-size: .8125rem;
@@ -255,13 +255,6 @@
     .tile-forever .side { background: #c9b8f0; }
     .tile-eyebrow { font-family: var(--body); font-size: .75rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: #c9b8f0; }
     .tile-note { margin: 12px 4px 0; font-size: .9375rem; line-height: 1.5; color: var(--text-2); text-align: center; }
-    .soon { max-width: 40rem; margin: 56px auto 0; }
-    .soon-h { display: flex; align-items: center; gap: 16px; margin: 0 0 20px; white-space: nowrap; }
-    .soon-rule { flex: 1; height: 1px; background: var(--gold-faint); }
-    .soon-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 20px; }
-    .tile-soon { min-height: 68px; font-size: 1.5rem; color: var(--text-2); }
-    .tile-soon::before { background: var(--gold-faint); }
-    .tile-soon .side { background: var(--gold-line); }
 
     /* Requirements */
     .reqs { list-style: none; margin: 0 0 40px; padding: 0; display: flex; flex-direction: column; gap: 16px; }
@@ -387,12 +380,6 @@
           <li><div class="tile">MoP Classic<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div></li>
           <li><div class="tile">Retail<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div></li>
         </ul>
-        <div class="soon">
-          <h3 class="soon-h"><span class="soon-rule" aria-hidden="true"></span>Coming soon<span class="soon-rule" aria-hidden="true"></span></h3>
-          <ul class="soon-list">
-            <li><div class="tile tile-soon">Gamepad support<i class="side l" aria-hidden="true"></i><i class="side r" aria-hidden="true"></i></div></li>
-          </ul>
-        </div>
       </div>
     </section>
 
@@ -405,7 +392,7 @@
             <li><strong>A Mac with Apple Silicon,</strong> macOS 15 or later, and Xcode.</li>
             <li><strong>An Apple ID in Xcode.</strong><span class="sub">A free Apple ID works: the app is signed again every 7 days. A paid Apple Developer Program membership signs it for a year.</span></li>
             <li><strong>A supported device, paired with your Mac, with Developer Mode on:</strong><span class="sub">an iPad with M1 or later or the A17 Pro iPad mini (iPadOS 26; M1 and the mini untested), an iPhone 15 Pro or later (iOS 26), or Apple Vision Pro (visionOS 27).</span></li>
-            <li><strong>A hardware keyboard</strong> for typing in the game.<span class="sub">The game shows no on-screen keyboard. On an iPhone, turn on AssistiveTouch to use a mouse.</span></li>
+            <li><strong>[Recommended] A keyboard and mouse, or game controller:</strong><span class="sub">With a controller only, an on-screen keyboard comes up for chat on an iPad or iPhone. A Vision Pro needs a hardware keyboard to type in the game. On an iPhone, turn on AssistiveTouch to use a mouse.</span></li>
             <li><strong>A Battle.net account</strong> with an active World of Warcraft subscription.<span class="sub">You sign in on the device. The game doesn’t need to be installed on the Mac.</span></li>
             <li><strong><a href="https://apps.apple.com/app/id6755608044">LocalDevVPN</a>,</strong> free on the App Store.<span class="sub">It must be on when the game starts. The Mac isn’t needed then.</span></li>
             <li><strong>Free space on the device</strong>, as below.</li>
