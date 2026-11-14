@@ -122,16 +122,34 @@ static void sp_post_quiet(SPEvent *e) {
     [sp_events addObject:e];
 }
 
+static unichar sp_function_char(unsigned short mac);
+
+// Setting SP_INPUT_LOG_MAX at all (run.sh passes it through devicectl; a player's launch never has it)
+// opts a diagnosis run in to logging what's typed. Without it, nothing typed reaches the log.
+static BOOL sp_input_log_text(void) {
+    static int on = -1;
+    if (on < 0) on = getenv("SP_INPUT_LOG_MAX") != NULL;
+    return on;
+}
+
 static void sp_post(SPEvent *e) {
     sp_post_quiet(e);
     // Only the first events are logged, so a session's log stays small; a diagnosis that happens later
     // in a session (a key that stops working after login) needs more: SP_INPUT_LOG_MAX raises the cap,
-    // 0 for none. The lines carry typed characters, chat included, so keep it to diagnosis runs.
+    // 0 for none. A hardware keyboard types the Battle.net password into the game's login form, so by
+    // default a key that types text (one with no AppKit function character: letters, digits, space,
+    // punctuation, the keypad's digits) isn't logged at all: its key code and Shift give the text away as
+    // surely as its characters, and its line, how much was typed. Modifiers, Return, Tab, Escape, Delete,
+    // arrows, and function keys still are, with their codes, and so are clicks.
     static int max = -1;
     if (max < 0) max = getenv("SP_INPUT_LOG_MAX") ? atoi(getenv("SP_INPUT_LOG_MAX")) : 60;
     if (max < 0) max = 60;
-    if ((max == 0 || sp_logged_events < max) && e->type != SPMouseMoved && e->type != SPLeftMouseDragged &&
-        e->type != SPRightMouseDragged && e->type != SPScrollWheel) {
+    if (e->type == SPMouseMoved || e->type == SPLeftMouseDragged || e->type == SPRightMouseDragged ||
+        e->type == SPScrollWheel)
+        return;
+    if ((e->type == SPKeyDown || e->type == SPKeyUp) && !sp_function_char(e->keyCode) && !sp_input_log_text())
+        return;
+    if (max == 0 || sp_logged_events < max) {
         sp_logged_events++;
         sp_stub_log([NSString stringWithFormat:@"input: %@", e].UTF8String);
     }
@@ -251,7 +269,9 @@ static void sp_key(UIKey *key, BOOL down) {
     unsigned usage = (unsigned)key.keyCode;
     unsigned short mac = usage < 256 ? sp_hid_to_mac[usage] : 0;
     if (!mac && usage != 0x04) {  // 0x04 (a) is the one key whose code is 0
-        sp_stub_log([NSString stringWithFormat:@"input: unmapped HID usage 0x%x '%@'", usage, key.characters].UTF8String);
+        // The usage only: its characters are typed text, and are logged only on a run that opts in.
+        NSString *chars = sp_input_log_text() ? [NSString stringWithFormat:@" '%@'", key.characters] : @"";
+        sp_stub_log([NSString stringWithFormat:@"input: unmapped HID usage 0x%x%@", usage, chars].UTF8String);
         return;
     }
     NSUInteger flag, dev;

@@ -12,7 +12,8 @@
 # flavor's Battle.net ones (SP_ARGS; grab-token.sh prints the ones Battle.net used).
 # SP_SCALE=1 or 2 sets the AppKit shim's backing scale, over the device's Settings > Display (a dev
 # override; unset, the setting decides: Automatic is 2 on an iPhone, 1 elsewhere). SP_INPUT_LOG_MAX sets
-# how many input events the AppKit shim logs (default 60, 0 for no cap; the lines include typed text).
+# how many input events the AppKit shim logs (default 60, 0 for no cap), and setting it at all logs every
+# key with what it types, which the default leaves out: use made-up text on such a run, never a password.
 # SP_PATCH_SERVICE replaces the patch check's service (sppatch.m) for tests: a base URL, or a path in the
 # app's home directory holding <product>/versions files (copy one in with devicectl; a <product>/cdns there
 # is optional). SP_PATCH_CELLULAR=1 has it treat the network as cellular (it asks before its download), and
