@@ -40,8 +40,10 @@ NSString *sp_apple_token_forget(void);
 BOOL sp_profiles_need_signin(void);
 UIViewController *sp_apple_signin(void (^done)(BOOL signedIn));
 
-// spjit.m: "iPad", "iPhone", or "Vision Pro".
+// spjit.m: "iPad", "iPhone", or "Vision Pro"; and the relaunch to the start screen (Settings' `relaunch` drill
+// runs it as a game's Exit Game does), which returns only when it couldn't.
 NSString *sp_device_noun(void);
+void sp_relaunch(void);
 
 // splogin.m. The email is the one sign-in value that leaves it, for Show Email: never logged.
 BOOL sp_login_saved(void);

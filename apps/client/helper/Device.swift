@@ -441,4 +441,21 @@ private func prepare(_ debugger: Debugger, address: UInt64, length: UInt64, firs
         firsts != 0 ? "own first-byte" : "0x69", ok ? "ok" : "WRONG"))
     return (addresses.count, failed)
 }
+
+// CoreDevice's app service through the tunnel's RSD (com.apple.coredevice.appservice): `bundle` launched
+// with no arguments and no environment (so the launcher shows the start screen), killing the running copy
+// first. The device's own service does both, so the launch outlives the kill, which ends the app and with it
+// this helper (checked on the iPhone, iOS 27). A reply means it didn't happen.
+func relaunch(_ tunnel: Tunnel, bundle: String, log: (String) -> Void) throws -> String {
+    guard !bundle.isEmpty else { throw HelperError("relaunch: no bundle ID") }
+    var client: OpaquePointer?
+    try check("app service", app_service_connect_rsd(tunnel.adapter, tunnel.handshake, &client))
+    defer { app_service_free(client) }
+    let t = now()
+    var response: UnsafeMutablePointer<LaunchResponseC>?
+    try check("launch", app_service_launch_app(client, bundle, nil, 0, 1, 0, nil, &response))
+    defer { app_service_free_launch_response(response) }
+    log(String(format: "relaunch: launched as pid %d after %.2f s", response?.pointee.pid ?? 0, now() - t))
+    return "relaunched"
+}
 #endif

@@ -25,7 +25,8 @@
 # - Only the features each use needs. The helper: tunnel_tcp_stack (RemotePairing tunnel, RSD, the
 #   userspace TCP stack), debug_proxy (debugserver), cryptexd (the DDI cryptex install and its TSS
 #   personalization), mobile_image_mounter (checking for an image mounted the pre-26.4 way) and
-#   misagent (installing the app's renewed provisioning profiles, so the device keeps itself signed).
+#   misagent (installing the app's renewed provisioning profiles, so the device keeps itself signed),
+#   and core_device (CoreDevice's app service: the relaunch to the start screen when a game exits).
 #   The companion: usbmuxd (the device and its lockdown pair record, held in memory, never logged) and
 #   remote_pairing (pairing through remotepairingdeviced's lockdown service).
 # - rustls with the pure-Rust rustcrypto provider, not the crate's default aws-lc: nothing on the
@@ -45,7 +46,7 @@ COMMIT=d32c8189c51c2789496b0768039419c3705498c3
 REPO=https://github.com/jkcoxson/idevice
 TOOLCHAIN=1.99.0
 TLS=${SP_IDEVICE_TLS:-rustcrypto}
-DEVICE_FEATURES="tunnel_tcp_stack debug_proxy cryptexd mobile_image_mounter misagent $TLS"
+DEVICE_FEATURES="tunnel_tcp_stack debug_proxy cryptexd mobile_image_mounter misagent core_device $TLS"
 MAC_FEATURES="usbmuxd remote_pairing $TLS"
 OUT=$ROOT/work/idevice
 PLATFORMS=${*:-ios xros macos}

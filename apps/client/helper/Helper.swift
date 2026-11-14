@@ -22,6 +22,10 @@
 //            application-identifier, team prefix included), and "expires". How the app renews its own
 //            signing with no host (spjit.m's sp_jit_profiles): iOS opens an app on any valid installed
 //            profile for its App ID, not only the one it embeds (research/isideload, step 4; jittest h5).
+//   "relaunch" launches the app "bundle" with no arguments through CoreDevice's app service, killing the
+//            running one first (devicectl's --terminate-existing): how a game's Exit Game gets back to
+//            the start screen (spjit.m's sp_relaunch). The kill takes this helper with it, so the reply
+//            only comes when the launch failed.
 //   "pair"   the headset only: pair-setup with visionOS's manual pairing service at "endpoints", the code
 //            from the app over loopback ("pinPort", "pinToken"); the new record is the reply's "pairing"
 //            (Pair.swift).
@@ -91,6 +95,8 @@ final class SPHelper: NSObject, NSExtensionRequestHandling {
             let (summary, list) = try profiles(tunnel, install: request["install"] as? [Data] ?? [], log: log)
             reply["profiles"] = list
             return summary
+        case "relaunch":
+            return try relaunch(tunnel, bundle: request["bundle"] as? String ?? "", log: log)
         default:
             throw HelperError("unknown op \(op)")
         }

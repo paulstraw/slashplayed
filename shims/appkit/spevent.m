@@ -1559,9 +1559,22 @@ static void sp_send_to_tracking_areas(id view, NSEvent *e, NSUInteger option, SE
 
 static char sp_app_delegate_key;
 
+// The quit drill ($SP_QUIT_DRILL=<seconds>, run.sh): terminate: from the client's own event pump, as its Exit
+// Game and Quit do, that many seconds after the pump's first call, so the way back to the start screen
+// (spuikit.m's sp_terminate_now, the launcher's sp_relaunch) is tested without a tap. Once.
+static void sp_quit_drill(NSApplication *app) {
+    static double at = -1;
+    if (at < 0) at = getenv("SP_QUIT_DRILL") ? CFAbsoluteTimeGetCurrent() + atof(getenv("SP_QUIT_DRILL")) : 0;
+    if (!at || CFAbsoluteTimeGetCurrent() < at) return;
+    at = 0;
+    sp_stub_log("quit drill: -[NSApplication terminate:]");
+    [app terminate:nil];
+}
+
 @implementation NSApplication (SPEvent)
 - (id)nextEventMatchingMask:(uint64_t)mask untilDate:(id)date inMode:(id)mode dequeue:(BOOL)dequeue {
     SP_LOG_ONCE("-[NSApplication nextEventMatchingMask:untilDate:inMode:dequeue:] (pumps UIKit)");
+    sp_quit_drill(self);
     // Pump UIKit only when nothing is queued, so a burst of input drains before more is collected.
     if (!sp_events.count) sp_uikit_pump(NO);
     sp_window_track_scene();

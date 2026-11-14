@@ -18,6 +18,8 @@ All notable changes to Slashplayed are documented here. The format is based on
   focus, such as chat after you choose Say, and goes away when you send the line. On an iPhone the game
   zooms onto the box so you can see what you type. The same two-finger menu's Keyboard opens chat, or
   brings up the keyboard on the login and character screens. Its microphone key dictates.
+- Quitting a game (Exit Game or Quit) brings back Slashplayed's start screen, so you can switch games or
+  change addons without closing the app from the app switcher.
 - Swiping on a DualSense or DualShock 4 touchpad presses F16 (up), F17 (down), F18 (left), or F19
   (right), so you can bind them in addons that take key bindings.
 

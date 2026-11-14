@@ -25,6 +25,8 @@
 # preferred languages, which decide a game the device installs (launcher.m's sp_game_region_now).
 # SP_LOADING_DRILL=loading or a percent 0-100 keeps the loading screen up over the game (the AppKit shim's
 # sploading.m), showing "Loading…" or the data setup's progress at that percent, for screenshots.
+# SP_QUIT_DRILL=<seconds> has the client quit that long after its event loop starts, as Exit Game does (the AppKit
+# shim's spevent.m): the app should open again on the start screen (spjit.m's sp_relaunch).
 # SP_SCENE_CONNECT_LATE=1 holds the scene's connect until the client has set its layer (the AppKit shim's
 # spwindow.m), as a launch held until the headset is put on can do; the game must still come on screen.
 # SP_PROFILES_DRILL=1 has the launcher install every Documents/spprofiles/*.mobileprovision through the JIT
@@ -71,6 +73,7 @@ fi
 [ -n "$SP_RENEW" ] && export DEVICECTL_CHILD_SP_RENEW=$SP_RENEW
 [ -n "$SP_SKIP_INTRO" ] && export DEVICECTL_CHILD_SP_SKIP_INTRO=$SP_SKIP_INTRO
 [ -n "$SP_SCENE_CONNECT_LATE" ] && export DEVICECTL_CHILD_SP_SCENE_CONNECT_LATE=$SP_SCENE_CONNECT_LATE
+[ -n "$SP_QUIT_DRILL" ] && export DEVICECTL_CHILD_SP_QUIT_DRILL=$SP_QUIT_DRILL
 if [ -n "$SP_START_DRILL" ]; then
   xcrun devicectl device process launch --device "$SP_DEVICE" --terminate-existing -- $BUNDLE_ID "$@"
   echo "start screen drill $SP_START_DRILL launched: screenshot with xcrun devicectl device capture screenshot --device $SP_DEVICE"

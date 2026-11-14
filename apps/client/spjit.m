@@ -383,3 +383,26 @@ NSString *sp_jit_attach(void (^pump)(double)) {
     return [NSString stringWithFormat:@"Slashplayed's helper couldn't attach to the game.\n\n(%@)",
             early ? summary(early) : @"it didn't attach within 30 s"];
 }
+
+void sp_login_clear(NSArray<NSString *> *flavors);  // splogin.m
+
+// Back to the start screen when a game quits (launcher.m's exit handler, after the client's own): the game
+// can't be unloaded from this process (its threads, Metal, and classes stay), so the helper asks CoreDevice to
+// launch this app again with no game named, killing this one (its "relaunch"). A kill skips whatever exit
+// handlers are left, so a login.txt still there is deleted first (the libSystem shim's delete is one, run by
+// now unless the exit didn't go through it). Returns only when the relaunch didn't happen within a few seconds
+// (no pairing record, LocalDevVPN off, a helper that didn't answer): the exit goes on, and the next open from the
+// home screen shows the start screen. The wait doesn't run the main thread; the helper's reply comes on the
+// extension's own queue.
+void sp_relaunch(void) {
+    double t = now();
+    NSString *flavor = NSProcessInfo.processInfo.environment[@"SP_SYSTEM_FLAVOR"];
+    if (flavor.length > 2) sp_login_clear(@[[flavor substringWithRange:NSMakeRange(1, flavor.length - 2)]]);
+    NSString *record = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/sppairing.plist"];
+    NSData *pairing = [NSData dataWithContentsOfFile:record];
+    NSString *bundle = NSBundle.mainBundle.bundleIdentifier;
+    if (!pairing.length || !bundle) { say(@"relaunch: no pairing record; exiting"); return; }
+    NSDictionary *reply = sp_jit_request(@{@"op": @"relaunch", @"bundle": bundle, @"pairing": pairing, @"endpoints": ENDPOINTS},
+                                         8, ^(double s) { usleep((useconds_t)(s * 1e6)); });
+    say([NSString stringWithFormat:@"relaunch: %@ after %.2f s; exiting", reply ? summary(reply) : @"no reply", now() - t]);
+}

@@ -636,6 +636,20 @@ static void launch_arguments(NSString *flavor, int *argc, char ***argv) {
                                    (unsigned long)args.count]);
 }
 
+// Back to the start screen when the game quits: its Exit Game and Quit end with its main returning 0 (a
+// terminate: request it answers Cancel to, then its own shutdown: the iPhone, 2026-11-14), and a terminate: the
+// AppKit shim finishes itself calls exit(0) (spuikit.m's sp_terminate_now). Either marks the quit as wanted; a
+// failure (the client's own exit(1), a crash) doesn't, and just ends the app. The relaunch itself (spjit.m's
+// sp_relaunch: the helper launches the app again, killing this process) waits for the exit handlers: this one,
+// registered before the client loads, runs after every one the client registered (atexit runs them last in,
+// first out), so its shutdown is done, and the libSystem shim's login.txt delete has run.
+void sp_relaunch(void);  // spjit.m
+static BOOL relaunch_wanted;
+void sp_relaunch_wanted(void) { relaunch_wanted = YES; }  // also spuikit.m's
+static void relaunch_at_exit(void) {
+    if (relaunch_wanted) sp_relaunch();
+}
+
 // Why the client can't be loaded, on the scene (the AppKit shim's sp_uikit_fail, which starts UIKit for it
 // on visionOS and doesn't return), and the launch ends there.
 __attribute__((noreturn)) static void fail_launch(NSString *problem) {
@@ -805,9 +819,11 @@ int main(int argc, char **argv) {
     // Returns only if the client couldn't be loaded (or once its main returns): the reason is spguest's (an
     // unresolved import, a bad opcode, a refused hook), and a file that turned out bad is deleted with its
     // stamp, so the next Play or start gets it again.
+    atexit(relaunch_at_exit);
     int status = sp_guest_main(library, argc, argv, &problem);
     if (problem)
         fail_launch([NSString stringWithFormat:@"%@ %@ couldn't be loaded on this %@: %@.", sp_flavor_name(flavor), stamp[@"Version"],
                                                sp_device_noun(), problem]);
+    if (status == 0) sp_relaunch_wanted();
     return status;
 }

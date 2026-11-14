@@ -348,6 +348,9 @@ __attribute__((visibility("default"), noreturn)) void sp_uikit_fail(const char *
 // then pump until replyToApplicationShouldTerminate:), then post NSApplicationWillTerminateNotification,
 // which AppKit delivers to the delegate as applicationWillTerminate:, then exit(0). The client
 // implements both; its shutdown work happens there, before exit runs static destructors.
+// Before the exit, the launcher's sp_relaunch_wanted marks this as a quit to go back to the start screen from
+// (launcher.m: its exit handler opens the app again there, since the game can't be unloaded from this process).
+// Looked up in the main executable, which a dev harness without it doesn't have.
 static int sp_terminate_reply = -1;  // -1 while no Later reply is pending
 static void sp_terminate_now(NSApplication *app, id delegate) {
     NSNotification *n = [NSNotification notificationWithName:@"NSApplicationWillTerminateNotification" object:app];
@@ -357,6 +360,8 @@ static void sp_terminate_now(NSApplication *app, id delegate) {
         ((void (*)(id, SEL, id))objc_msgSend)(delegate, will, n);
     }
     [NSNotificationCenter.defaultCenter postNotification:n];
+    void (*relaunch)(void) = (void (*)(void))dlsym(RTLD_DEFAULT, "sp_relaunch_wanted");
+    if (relaunch) relaunch();
     sp_stub_log("-[NSApplication terminate:] -> exit(0)");
     exit(0);
 }

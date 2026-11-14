@@ -216,7 +216,8 @@ final class Settings: ObservableObject {
     // no alert, so a test can check what it deletes and the next start's seeding. `scale-<0|1|2>` picks that
     // Display > Scale (0 is Automatic), so a test can set it without taps; it's saved, as a tap's is.
     // `files-<flavor>` is that game's Open in Files tapped. `region-<flavor>-<us|eu|kr|tw>` picks that game's
-    // Region, saved as a pick is (one the Mac decides logs that it can't). Once, when the sheet has appeared.
+    // Region, saved as a pick is (one the Mac decides logs that it can't). `relaunch` is a game's Exit Game:
+    // the app opens again on the start screen (sp_relaunch), else it exits. Once, when the sheet has appeared.
     private func presentDrill(_ screen: UIViewController) {
         screen.modalPresentationStyle = .fullScreen
         host?.present(screen, animated: false)
@@ -260,6 +261,7 @@ final class Settings: ObservableObject {
             "alert-forget-signin": { self.confirmation = .forgetSignIn },
             "alert-forget-apple-token": { self.confirmation = .forgetAppleToken },
             "alert-reset": { if let f = self.flavors.first { self.confirmation = .reset(f) } },
+            "relaunch": { sp_relaunch(); exit(0) },
         ]
         var open = states[state]
         let suffix = { (prefix: String) -> String? in state.hasPrefix(prefix) ? String(state.dropFirst(prefix.count)) : nil }

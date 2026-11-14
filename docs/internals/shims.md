@@ -113,7 +113,8 @@ starts a background task, so the client keeps running and answering the server u
 suspends it (~26 s seen). Nothing public gets a game more: after a longer stretch away the server
 connection can drop (README's known issues). `terminate:` follows AppKit's
 sequence (`applicationShouldTerminate:`, `applicationWillTerminate:`), and the client shuts down on
-its own.
+its own: it answers Cancel and returns from its `main`, and the app opens again on its start screen
+(the JIT helper's [relaunch](loading.md#the-on-device-jit-helper)).
 
 ## Window, screen and scene tracking
 
