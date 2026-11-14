@@ -336,9 +336,15 @@ static const char *agent_redirect(const char *p) {
 // relative open after chdir counts too. Its contents are never read here, and nothing about them (not even
 // the size) is logged. A signal or SIGKILL ends the process with no exit to hook: the launcher deletes any
 // leftover, every game's, at its next start (sp_login_clear).
+//
+// Once deleted, each time the client looks for it again is logged too (opens, failed ones included, and
+// stat and access, with their *at forms): the client was seen to open it once per launch, but only on
+// logins without a captcha, and a captcha that fails even when answered right (BLZ51914400) is what an
+// emptied file gave (docs/research.md). Only the call, how long after the delete, and its result.
 static char login_txt[PATH_MAX];  // the real path of <install root>/login.txt, once redirecting
 static _Atomic int login_fd = -1;
 static FILE *_Atomic login_file;
+static _Atomic uint64_t login_deleted_at;  // CLOCK_UPTIME_RAW ns of the shim's delete; 0 before it
 // Set while a delete is under way or done, so the close and the exits after it don't zero or unlink twice
 // (and log once). Cleared again when a delete fails, so a later exit tries again.
 static atomic_flag login_done = ATOMIC_FLAG_INIT;
@@ -350,6 +356,7 @@ static int (*login_open)(const char *, int, ...);
 static ssize_t (*login_write)(int, const void *, size_t);
 static int (*login_close)(int);
 static int (*login_unlink)(const char *);
+static char *(*login_realpath)(const char *, char *);
 
 static void login_at_exit(void);
 
@@ -361,7 +368,8 @@ static void login_at_exit(void);
 // of the client's C++ destructors crashing at exit can't skip it.
 static void login_setup(void) {
     char root[PATH_MAX];
-    if (!((char *(*)(const char *, char *))real("realpath$DARWIN_EXTSN"))(to, root)) return;
+    login_realpath = real("realpath$DARWIN_EXTSN");
+    if (!login_realpath(to, root)) return;
     login_open = real("open");
     login_write = real("write");
     login_close = real("close");
@@ -386,7 +394,10 @@ static int login_scrub(void) {
         }
         login_close(fd);
     }
-    if (login_unlink(login_txt) == 0) return 0;
+    if (login_unlink(login_txt) == 0) {
+        login_deleted_at = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);  // a commpage read: fine in crash_end
+        return 0;
+    }
     int e = errno;
     if (e != ENOENT) atomic_flag_clear(&login_done);
     return e;
@@ -400,7 +411,55 @@ static int is_login(const char *path, int fd) {
     return ((int (*)(int, int, ...))real("fcntl"))(fd, F_GETPATH, p) == 0 && !strcmp(p, login_txt);
 }
 
-static void login_opened(const char *how) { vlog("login.txt: the client opened it (%s)\n", how); }
+static double login_since_delete(void) {
+    return (double)(clock_gettime_nsec_np(CLOCK_UPTIME_RAW) - login_deleted_at) / 1e9;
+}
+
+static void login_opened(const char *how) {
+    if (login_deleted_at) vlog("login.txt: the client opened it again (%s), %.1f s after the delete\n", how, login_since_delete());
+    else vlog("login.txt: the client opened it (%s)\n", how);
+}
+
+// Whether `path`, relative to `dirfd` as the *at calls take it, names the install root's login.txt. The
+// file is gone, so there's no F_GETPATH of it (is_login): its folder is resolved instead, which a relative
+// path after chdir needs too.
+static int login_names(int dirfd, const char *path) {
+    const char *base = strrchr(path, '/');
+    if (strcmp(base ? base + 1 : path, "login.txt")) return 0;
+    char dir[PATH_MAX], real_dir[PATH_MAX], p[PATH_MAX];
+    size_t len = 0, n = base ? (size_t)(base - path) : 0;
+    if (path[0] != '/' && dirfd != AT_FDCWD) {
+        if (((int (*)(int, int, ...))real("fcntl"))(dirfd, F_GETPATH, dir)) return 0;
+        len = strlen(dir);
+        dir[len++] = '/';
+    }
+    if (len + n + 2 > sizeof dir) return 0;
+    memcpy(dir + len, path, n);
+    len += n;
+    if (!n) dir[len++] = base ? '/' : '.';  // "/login.txt" or "login.txt"
+    dir[len] = 0;
+    return login_realpath(dir, real_dir) && snprintf(p, sizeof p, "%s/login.txt", real_dir) > 0 && !strcmp(p, login_txt);
+}
+
+// After the delete, each time the client looks for the file again: a failed open or fopen (a successful
+// one is login_opened's), and stat, access, fstatat, and faccessat whatever they answer, so a repro with
+// none of these lines shows the client never looked. `found`: the call succeeded; `e`: its errno, which
+// the caller has again afterwards. The first 20 only, should the client poll for it.
+static void login_again(int dirfd, const char *path, const char *how, int found, int e) {
+    if (login_deleted_at && path && login_names(dirfd, path)) {
+        static _Atomic int logged;
+        int k = logged++;
+        if (k < 20 && found)
+            vlog("login.txt: the client looked for it again (%s), %.1f s after the delete: there\n", how,
+                 login_since_delete());
+        else if (k < 20)
+            vlog("login.txt: the client looked for it again (%s), %.1f s after the delete: %s (errno %d)\n", how,
+                 login_since_delete(), strerror(e), e);
+        else if (k == 20)
+            vlog("login.txt: the client keeps looking for it; no more of those logged\n");
+    }
+    errno = e;
+}
 
 static void login_closed(void) {
     int e = login_scrub();
@@ -438,6 +497,8 @@ int sp_open(const char *path, int flags, ...) {
     if (is_login(path, r)) {
         login_fd = r;
         login_opened("open");
+    } else if (r < 0) {
+        login_again(AT_FDCWD, path, "open", 0, errno);
     }
     return r;
 }
@@ -453,6 +514,8 @@ int sp_open(const char *path, int flags, ...) {
         if (r && is_login(path, fileno(r))) { \
             login_file = r; \
             login_opened("fopen"); \
+        } else if (!r) { \
+            login_again(AT_FDCWD, path, "fopen", 0, errno); \
         } \
         return r; \
     }
@@ -469,8 +532,9 @@ int sp_fclose(FILE *f) {
     return r;
 }
 
-// Calls taking one path and returning int. ARGS: the parameters after the path; CALL: those names.
-#define PATH_CALL(name, ARGS, CALL, fmt, ...) \
+// Calls taking one path and returning int. LOOKS: 1 for a call that looks for a file (login_again); ARGS:
+// the parameters after the path; CALL: those names.
+#define PATH_CALL(name, LOOKS, ARGS, CALL, fmt, ...) \
     int sp_##name(const char *p ARGS) __asm__("_" #name); \
     int sp_##name(const char *p ARGS) { \
         REAL(int (*)(const char *p ARGS), #name); \
@@ -478,15 +542,34 @@ int sp_fclose(FILE *f) {
         p = redirect(p, b); \
         int r = fn(p CALL); \
         TRACE(#name "(\"%s\"" fmt ") = %d %s", p, ##__VA_ARGS__, r, ERR(r < 0)); \
+        if (LOOKS) login_again(AT_FDCWD, p, #name, r == 0, errno); \
         return r; \
     }
 #define COMMA ,
-PATH_CALL(mkdir, COMMA mode_t m, COMMA m, ", 0%o", m)
-PATH_CALL(stat, COMMA struct stat *st, COMMA st, "")
-PATH_CALL(access, COMMA int m, COMMA m, ", %d", m)
-PATH_CALL(chdir, , , "")
-PATH_CALL(unlink, , , "")
-PATH_CALL(rmdir, , , "")
+PATH_CALL(mkdir, 0, COMMA mode_t m, COMMA m, ", 0%o", m)
+PATH_CALL(stat, 1, COMMA struct stat *st, COMMA st, "")
+PATH_CALL(access, 1, COMMA int m, COMMA m, ", %d", m)
+PATH_CALL(chdir, 0, , , "")
+PATH_CALL(unlink, 0, , , "")
+PATH_CALL(rmdir, 0, , , "")
+
+// fstatat and faccessat only pass through, unredirected, as they did when the re-export answered them:
+// they're here for login_again alone. The redirect is for the comparison, and only once the file is
+// deleted, so these never set up the redirect before the client's first redirected call does.
+#define AT_CALL(name, ARGS, CALL) \
+    int sp_##name(int fd, const char *p ARGS, int flag) __asm__("_" #name); \
+    int sp_##name(int fd, const char *p ARGS, int flag) { \
+        REAL(int (*)(int, const char *p ARGS, int), #name); \
+        int r = fn(fd, p CALL, flag); \
+        if (login_deleted_at && p) { \
+            int e = errno; \
+            char b[PATH_MAX]; \
+            login_again(fd, redirect(p, b), #name, r == 0, e); \
+        } \
+        return r; \
+    }
+AT_CALL(fstatat, COMMA struct stat *st, COMMA st)
+AT_CALL(faccessat, COMMA int m, COMMA m)
 
 int sp_rename(const char *a, const char *b) __asm__("_rename");
 int sp_rename(const char *a, const char *b) {
