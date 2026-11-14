@@ -916,8 +916,13 @@ and scroll events and `NSTextInputClient`), with no event taps. `spevent.m`:
 - **Events.** `SPEvent`, an NSEvent subclass with real state, is queued for
   `nextEventMatchingMask:`. `sendEvent:` delivers keys to the first responder, mouse and scroll events
   to the content view, and mouse moves to tracking-area owners, as AppKit does. The first 60 key,
-  click, and modifier events go to the device log as `input:` lines; `SP_INPUT_LOG_MAX` changes that
-  (0 for no cap). They include typed text, chat too, so a raised cap is for diagnosis runs only.
+  click, and modifier events go to the device log as `input:` lines, with their key codes, modifier
+  flags, and locations. Keys that type text (letters, digits, space, punctuation) are left out
+  entirely, since a hardware keyboard types the Battle.net password into the game's login form, and a
+  key code gives the text away as surely as its characters: what's logged is modifiers, Return, Tab,
+  Escape, Delete, arrows, function keys, and clicks. Setting `SP_INPUT_LOG_MAX` (`run.sh` passes it;
+  0 for no cap) opts a diagnosis run in to every key with its characters, so never type a real
+  password on one.
 - **Keyboard.** The scene's root view is UIKit's first responder. Presses become key events (HID usage
   to Mac key code, AppKit function-key characters, device-dependent modifier bits; modifier keys
   become `flagsChanged`). Key repeat is synthesized, since UIKit doesn't repeat. `interpretKeyEvents:`

@@ -28,6 +28,9 @@ All notable changes to Slashplayed are documented here. The format is based on
   so an account that plays in Europe, Korea, or Taiwan could be told it has no active account. A game
   already copied that way moves to the Mac's region and languages the next time it starts, with nothing to
   copy again.
+- What you type on a hardware keyboard, such as a password or authenticator code in the game's own
+  login screen, no longer goes into the device log that Pull Device Logs fetches. The log still notes
+  keys that don't type text, such as Shift, Return, and the arrows, and clicks.
 
 ### Known issues
 
