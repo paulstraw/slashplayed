@@ -46,6 +46,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #import <Security/Security.h>
+#import "spaddons.h"  // sp_addons_background, sp_addons_hold
 #import "spcdn.h"  // sp_table_row, sp_build_info_for_image, sp_flavor_info, sp_slice_retire
 
 static void say(NSString *s) {
@@ -710,6 +711,9 @@ int main(int argc, char **argv) {
     // load that would fail anyway: a new OS that took one away says so now.
     NSString *hooks = sp_guest_hooks_problem();
     if (hooks) fail_launch(hooks);
+    // The addons' check (spaddons.m), in the background while the start screen waits: a launch that names a
+    // game has no start screen to wait on, so it doesn't run then.
+    if (!NSProcessInfo.processInfo.environment[@"SP_LAUNCH_FLAVOR"].length) sp_addons_background(flavors);
     NSString *saved = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/splaunch-flavor"];
     NSString *flavor, *library;
     NSDictionary<NSString *, NSString *> *stamp;
@@ -743,6 +747,9 @@ int main(int argc, char **argv) {
         if (!picked) fail_launch(problem);
         say(@"install: back to the start screen");
     }
+    // The game reads its AddOns from here on: an addon install or update still under way (Settings', or the
+    // check's) puts nothing more there.
+    sp_addons_hold();
     [flavor writeToFile:saved atomically:YES encoding:NSUTF8StringEncoding error:nil];
     retire_caught_up(flavor, stamp);
     // The game's region, once, for the rest of the start (an install just now wrote its region file).

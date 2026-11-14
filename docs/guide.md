@@ -74,9 +74,31 @@ Each game's folder is in the Files app, under On My iPad, On My iPhone, or On My
 Slashplayed. A game's **Open in Files** in Slashplayed's Settings opens it.
 
 - **Settings:** edit `WTF/Config.wtf`.
-- **Addons:** put an addon's folder in `Interface/AddOns/`, making the folders if they aren't there.
+- **Addons:** put an addon's folder in `Interface/AddOns/`, making the folders if they aren't there. Or let
+  Slashplayed install and update them (below).
 - **Leave `Data/` and `.build.info` alone.** Deleting files there makes the game quit with
   ["installation is damaged"](troubleshooting.md#your-world-of-warcraft-installation-is-damaged).
+
+## Addons
+
+Each game's **Addons** in Slashplayed's Settings (the gear on the start screen) lists the addons in its
+`Interface/AddOns/` folder:
+
+- **Browse the Catalog** installs addons from [Slashplayed's catalog](https://github.com/paulstraw/slashplayed-addons),
+  filtered to the game. Each one downloads from where its author publishes it (GitHub, WoWInterface, or
+  Tukui) and is checked against the catalog before it's installed. When an addon needs another one the
+  catalog has, Slashplayed offers to install both.
+- **Add from GitHub** installs the latest release of a repository that isn't in the catalog, entered as
+  `owner/repo` (`Stanzilla/AdvancedInterfaceOptions`) or its link, and updates it with each new release.
+- **Update**, **Update All**, and **Remove** work on what Slashplayed installed. With **Update
+  Automatically** on, Slashplayed updates those addons itself when it opens, at most every few hours.
+- Addons you added in Files are listed as updated by hand. One the catalog has (matched by its folder
+  names) can be updated from it: its Update replaces your copy with the catalog's.
+- **Open AddOns Folder** opens the folder in Files.
+
+Changes apply the next time the game starts. Addons only on CurseForge or Wago aren't in the catalog; add
+those in Files. When you quit a game (Exit Game or Quit), Slashplayed opens again on its start screen, so
+you can change addons and play again without closing the app. That needs LocalDevVPN on, as playing does.
 
 ## Copying game files from the Mac
 
@@ -112,7 +134,8 @@ A paid **Apple Developer Program** membership signs for a year, with none of tho
   the game install, and update checks. Changing the team or bundle ID
   prefix makes a new app on each device, with no game files: they're fetched or copied again.
 - **The device** (the gear on Slashplayed's start screen): the saved sign-in, each game's build and
-  where it came from, its region, Open in Files, Reset Game Settings, and Display (the render scale).
+  where it came from, its region, its addons, Open in Files, Reset Game Settings, and Display (the render
+  scale).
 
 ## Updates
 

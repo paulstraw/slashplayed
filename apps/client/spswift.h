@@ -40,6 +40,18 @@ NSString *sp_apple_token_forget(void);
 BOOL sp_profiles_need_signin(void);
 UIViewController *sp_apple_signin(void (^done)(BOOL signedIn));
 
+// spaddons.m (spaddons.h says more): Settings' Addons pages. Each game's rows and the catalog's addons for it
+// (dictionaries: sp_addons_list's and sp_addons_offered's), its AddOns folder, the catalog's refresh, an
+// action ("install", "update", "remove", "link", "update-all") on the addons' queue, and the "Update Automatically"
+// switch. `done` comes on the main queue, with what went wrong, if anything.
+NSArray<NSDictionary *> *sp_addons_rows(NSString *flavor);
+NSArray<NSDictionary *> *sp_addons_browse(NSString *flavor);
+NSString *sp_addons_folder(NSString *flavor);
+void sp_addons_refresh(NSString *flavor, void (^done)(NSString *_Nullable problem));
+void sp_addons_run(NSString *flavor, NSString *action, NSString *argument, void (^done)(NSString *_Nullable problem));
+BOOL sp_addons_auto(void);
+void sp_addons_set_auto(BOOL on);
+
 // spjit.m: "iPad", "iPhone", or "Vision Pro"; and the relaunch to the start screen (Settings' `relaunch` drill
 // runs it as a game's Exit Game does), which returns only when it couldn't.
 NSString *sp_device_noun(void);

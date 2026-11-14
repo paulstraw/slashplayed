@@ -37,7 +37,10 @@ the owner asks for it.
   `spstart.m` (the start screen, every launch that doesn't name a game: the wait for a tap, `SP_START_TEXT_SIZE`, Goodmountain's
   registration, `sp_face`; its screen is `spstartscreen.swift`; its logo is the icon's own vectors, `splogo.h`, and its face
   Goodmountain, never committed: `scripts/fetch-font.sh`), `spsettings.swift` (the start screen's Settings sheet: the sign-in's forget,
-  each game's build and where it came from (`spsource-<flavor>`), Open in Files, and Reset Game Settings, Acknowledgements, and the `SP_START_DRILL` states), `sppatch.m` (the check for a newer build; its screen is `sppatchscreen.swift`; it fetches the new client with
+  each game's build and where it came from (`spsource-<flavor>`), Open in Files, and Reset Game Settings, Acknowledgements, and the `SP_START_DRILL` states), `spaddons.m` (each
+  game's addons: the catalog, `paulstraw/slashplayed-addons`, GitHub links, a zip reader over zlib, and the record of what it
+  installed, `Library/spaddons-<flavor>.json`; Foundation only, tested in the companion's `AddonsTests`; its Settings pages are
+  `spaddonsscreen.swift`), `sppatch.m` (the check for a newer build; its screen is `sppatchscreen.swift`; it fetches the new client with
   `spcdn.m`, the port of `BlizzardCDN.swift`, and checks its imports with `spbind.m`; both Foundation only,
   tested in the companion's tests; an Update or an install puts that slice in place, signing nothing), `spapple.m` (the
   Apple token: the one file that holds it, and the app's renewed profiles from Apple through `spapple/`, a Rust

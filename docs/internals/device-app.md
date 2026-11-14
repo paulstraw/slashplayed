@@ -289,3 +289,21 @@ headset only (the iPad and iPhone have a real pointer), SPKeyboard on the iPad a
 on-screen keyboard), each file written when the game's copy is missing or its bytes differ. Each TOC
 lists every flavor's Interface number, so one copy suits each game. A changed addon reaches a device with
 the rebuild the companion's resources digest asks for (`ClientBuild`).
+
+**Addons people install** (`spaddons.m`, Foundation only and tested in the companion's `AddonsTests`; its
+Settings pages are `spaddonsscreen.swift`). There's no key and no partner: the catalog,
+[paulstraw/slashplayed-addons](https://github.com/paulstraw/slashplayed-addons), is a JSON index rebuilt
+hourly on Pages that names each addon's file where its author publishes it (a GitHub release, Tukui,
+WoWInterface), its size, SHA-256, games, folders (zip path prefixes to `AddOns/<name>`), and requirements.
+The device downloads the author's file and checks it against the index before unpacking anything. A GitHub
+link not in the catalog installs the repo's latest release: the zip `release.json` (the BigWigs packager's)
+names for the game, else its one zip, checked against the asset's digest and the catalog's Interface range
+for the game. The zip reader is our own over zlib: it refuses absolute paths, `..`, backslashes, symlinks,
+zip64, encryption, and other compression methods, and checks each entry's size and CRC. Each folder is
+unpacked under `Library/spaddons-staging/` and swapped into `AddOns/` in one `renamex_np(RENAME_SWAP)`.
+`Library/spaddons-<flavor>.json` records what Slashplayed installed (id, version, source, file, SHA-256,
+folders, requirements); only those folders are ever updated or removed, never SPMovie, SPHover, or
+SPKeyboard, and a folder added by hand only when the person taps Update on a catalog addon that has it.
+Every operation runs on one serial queue. The start screen starts a check in the background (at most every
+3 hours: the catalog, GitHub links' latest releases, and with Update Automatically on, the updates),
+and once a game is picked `sp_addons_hold` stops any swap, since the game reads `AddOns/` from then on.

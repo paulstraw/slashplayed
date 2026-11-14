@@ -13,7 +13,8 @@
 // forget acts at the tap, after an alert whose default is Cancel. Display: the backing scale (sp_scale). Then a
 // section per game (the start screen's, in its order): the build it starts with and where its client came
 // from (spsource-<flavor>: from the Mac, or updated or installed on this device), its region (a picker for a game the device decides it for, sp_game_set_region; the Mac's, named,
-// for a game the companion installed), Open in Files, and Reset Game Settings (after its alert). About: the app's version and
+// for a game the companion installed), Addons (spaddonsscreen.swift's pages, for an installed game), Open in Files,
+// and Reset Game Settings (after its alert). About: the app's version and
 // Acknowledgements, the licenses of what the app ships.
 import SwiftUI
 import UIKit
@@ -62,7 +63,8 @@ struct License: Hashable {
 }
 
 // What the sheet's pages are: the list of licenses, or one license's text.
-enum Page: Hashable { case acknowledgements, license(License) }
+// A game's Addons page and its catalog (spaddonsscreen.swift) are pages too, by flavor.
+enum Page: Hashable { case acknowledgements, license(License), addons(String), browse(String) }
 
 // The confirmations, each with Cancel as its default.
 enum Confirmation: Identifiable {
@@ -104,6 +106,8 @@ final class Settings: ObservableObject {
     weak var host: UIViewController?
     var scrollTo: ((String) -> Void)?  // set by the list once it's up
     var drill: String?
+    // Each game's Addons pages' state, made when one first opens and kept while the sheet's up.
+    private var addonsByFlavor: [String: Addons] = [:]
 
     // The sheet that's up, for sp_settings_hide_email.
     static weak var shown: Settings?
@@ -154,6 +158,13 @@ final class Settings: ObservableObject {
     @objc func hideEmail() { if email != nil { email = nil } }
 
     func close() { host?.presentingViewController?.dismiss(animated: true) }
+
+    func addons(_ flavor: String) -> Addons {
+        if let a = addonsByFlavor[flavor] { return a }
+        let a = Addons(flavor: flavor)
+        addonsByFlavor[flavor] = a
+        return a
+    }
 
     func signIn() {
         host?.present(sp_login_screen { [weak self] _ in self?.reload() }, animated: true)
@@ -216,7 +227,11 @@ final class Settings: ObservableObject {
     // no alert, so a test can check what it deletes and the next start's seeding. `scale-<0|1|2>` picks that
     // Display > Scale (0 is Automatic), so a test can set it without taps; it's saved, as a tap's is.
     // `files-<flavor>` is that game's Open in Files tapped. `region-<flavor>-<us|eu|kr|tw>` picks that game's
-    // Region, saved as a pick is (one the Mac decides logs that it can't). `relaunch` is a game's Exit Game:
+    // Region, saved as a pick is (one the Mac decides logs that it can't). `addons-<flavor>` is that game's Addons
+    // page, `addons-browse-<flavor>` its catalog, and `addons-link-<flavor>` Add from GitHub's field;
+    // `addon-install-<flavor>-<catalog id>`, `addon-update-` and `addon-remove-<flavor>-<id>`, and `addon-link-<flavor>-<owner/repo>`
+    // are those taps (a real install or removal, as a tap's is), the install with its dependency ask, the
+    // removal with no confirmation. `relaunch` is a game's Exit Game:
     // the app opens again on the start screen (sp_relaunch), else it exits. Once, when the sheet has appeared.
     private func presentDrill(_ screen: UIViewController) {
         screen.modalPresentationStyle = .fullScreen
@@ -269,6 +284,17 @@ final class Settings: ObservableObject {
             open = { say(sp_game_reset(f)); self.reload(); self.scrollTo?("game-" + f) }
         }
         if open == nil, let f = suffix("files-"), flavors.contains(f) { open = { self.openInFiles(f) } }
+        if open == nil, let f = suffix("addons-"), flavors.contains(f) { open = { self.push([.addons(f)]) } }
+        if open == nil, let f = suffix("addons-browse-"), flavors.contains(f) { open = { self.push([.addons(f), .browse(f)]) } }
+        if open == nil, let f = suffix("addons-link-"), flavors.contains(f) {
+            open = { self.push([.addons(f)]); self.addons(f).linkShown = true }
+        }
+        // addon-<install|update|remove|link>-<flavor>-<id or link>: that tap, on the game's Addons page.
+        for action in ["install", "update", "remove", "link"] where open == nil {
+            guard let rest = suffix("addon-\(action)-"), let f = flavors.first(where: { rest.hasPrefix($0 + "-") }) else { continue }
+            let id = String(rest.dropFirst(f.count + 1))
+            open = { self.push([.addons(f)]); self.addons(f).drill(action, id) }
+        }
         if open == nil, let rest = suffix("region-"), let dash = rest.lastIndex(of: "-"), flavors.contains(String(rest[..<dash])) {
             let f = String(rest[..<dash]), r = String(rest[rest.index(after: dash)...])
             open = { self.setRegion(f, r); self.scrollTo?("game-" + f) }
@@ -293,7 +319,7 @@ final class Settings: ObservableObject {
 
 // ---- the views
 
-private struct DoneButton: ToolbarContent {
+struct DoneButton: ToolbarContent {
     let settings: Settings
     var body: some ToolbarContent {
         // .confirm: the system's Done, a checkmark, as UIKit's UIBarButtonSystemItemDone draws it.
@@ -327,6 +353,8 @@ struct SettingsView: View {
                 switch page {
                 case .acknowledgements: AcknowledgementsView(settings: settings)
                 case .license(let l): LicenseView(license: l).navigationTitle(l.name).toolbar { DoneButton(settings: settings) }
+                case .addons(let f): AddonsView(addons: settings.addons(f), settings: settings)
+                case .browse(let f): AddonBrowseView(addons: settings.addons(f), settings: settings)
                 }
             }
         }
@@ -481,6 +509,7 @@ struct SettingsView: View {
             } else {
                 LabeledContent("Region", value: sp_region_name(g.region))
             }
+            if g.installed { NavigationLink("Addons", value: Page.addons(g.flavor)) }
             Button("Open in Files") { settings.openInFiles(g.flavor) }
             Button("Reset Game Settings", role: .destructive) { settings.confirmation = .reset(g.flavor) }
         } header: {
