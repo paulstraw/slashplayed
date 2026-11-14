@@ -197,11 +197,13 @@ and scroll events and `NSTextInputClient`), with no event taps. `spevent.m`:
   pressing a Liquid Glass bar button moves UIKit's touch delivery onto its frame-paced update cycle,
   which under the shared main thread held every touch, app-wide, until a backup timer fired about 20 s
   later (iOS 27.2.1). The keyboard belongs to a hidden `UITextInput` view
-  over a buffer of what was typed; after each change the game gets Backspaces back to where the buffer
-  and what it was sent differ, then the rest as key presses (unlogged), so autocorrect and dictation end
-  with the box holding the same text. Its beginning sorts before the buffer's first character, since
-  the box may hold text from before the buffer: UIKit stops a held Delete's repeat once the caret is at
-  the beginning. A full `UITextInput` gets the keyboard's mic key; the app itself
+  over a buffer of what was typed; after each run-loop turn's changes the game gets Backspaces back to
+  where the buffer and what it was sent differ, then the rest as key presses (unlogged), so autocorrect
+  and dictation end with the box holding the same text. The presses go out 30 ms apart, so the game lags
+  a dictated phrase; when dictation revises it, the presses not yet sent are taken back and the diff is
+  against what the game will hold, so it isn't typed only to be deleted. Its beginning sorts before the
+  buffer's first character, since the box may hold text from before the buffer: UIKit stops a held
+  Delete's repeat once the caret is at the beginning. A full `UITextInput` gets the keyboard's mic key; the app itself
   never asks for the microphone. On an iPhone the input view's transform magnifies the box (2x, or less
   to fit its width) above the keyboard, and UIKit maps touches through it. The menu's Keyboard brings the
   keyboard up for the focused box, presses Return when none has focus (opening chat), and with no strip

@@ -78,8 +78,34 @@ static unsigned short sp_kb_code(NSString *ch) {
 // a fast typist's would: a down and its up in the same pump could reach a game that reads key state once
 // a frame as nothing (sptouchpad.m), and keys that overlap could read as a key held. A dictated phrase is
 // typed at about 33 characters a second.
+//
+// So the game lags what's typed, and a lot when dictation types a phrase and then revises it. The presses
+// the buffer's text made (sp_sync's) can be taken back until they go out: the next sync drops them and
+// works from sp_kb_sent, what the game holds once what's already gone out lands, rather than typing
+// letters only to delete them. A press of the keyboard's own (Return, a Backspace into the game's text
+// before the buffer) can't be: it, and every press before it, will go out.
 static NSMutableArray<SPEvent *> *sp_kb_pending;  // key downs waiting
+static NSUInteger sp_kb_revocable;                // how many at the end of sp_kb_pending are sp_sync's
+static NSString *sp_kb_sent = @"";                // the buffer's text as the game holds it once the rest of
+                                                  // sp_kb_pending (not sp_kb_revocable's) goes out
 static SPEvent *sp_kb_down;                       // the key down now; its up is the next tick's
+
+// s after a press of sp_sync's: Backspace takes off the last Unicode scalar, as the game's box deletes.
+static NSString *sp_kb_after(NSString *s, SPEvent *e) {
+    if (e->keyCode != 0x33) return [s stringByAppendingString:e->characters];
+    NSUInteger n = s.length;
+    if (!n) return s;
+    BOOL pair = n >= 2 && CFStringIsSurrogateLowCharacter([s characterAtIndex:n - 1]) &&
+                CFStringIsSurrogateHighCharacter([s characterAtIndex:n - 2]);
+    return [s substringToIndex:n - (pair ? 2 : 1)];
+}
+
+// The presses still waiting can't be taken back: they'll go out, and sp_kb_sent is what they leave.
+static void sp_kb_keep(void) {
+    for (NSUInteger i = sp_kb_pending.count - sp_kb_revocable; i < sp_kb_pending.count; i++)
+        sp_kb_sent = sp_kb_after(sp_kb_sent, sp_kb_pending[i]);
+    sp_kb_revocable = 0;
+}
 
 static void sp_kb_tick(void) {
     if (sp_kb_down) {
@@ -93,6 +119,10 @@ static void sp_kb_tick(void) {
     }
     if (!sp_kb_pending.count) return;
     SPEvent *down = sp_kb_pending.firstObject;
+    if (sp_kb_revocable == sp_kb_pending.count) {  // one of sp_sync's, going out for good
+        sp_kb_sent = sp_kb_after(sp_kb_sent, down);
+        sp_kb_revocable--;
+    }
     [sp_kb_pending removeObjectAtIndex:0];
     down->timestamp = NSProcessInfo.processInfo.systemUptime;
     down->location = sp_mouse;
@@ -101,32 +131,41 @@ static void sp_kb_tick(void) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ sp_kb_tick(); });
 }
 
-static void sp_kb_press(unsigned short mac, NSString *chars) {
+// synced: one of sp_sync's, which the next sync can take back.
+static void sp_kb_press(unsigned short mac, NSString *chars, BOOL synced) {
     SPEvent *e = sp_event(SPKeyDown);
     e->modifierFlags &= ~(NSUInteger)(SPShift | SPControl | SPOption | SPCommand);
     e->keyCode = mac;
     e->characters = e->charactersIgnoringModifiers = chars;
     if (sp_function_char(mac) >= 0xF700) e->modifierFlags |= SPFunction;
     if (!sp_kb_pending) sp_kb_pending = [NSMutableArray array];
+    if (synced) sp_kb_revocable++;
+    else sp_kb_keep();
     [sp_kb_pending addObject:e];
     if (!sp_kb_down) sp_kb_tick();
 }
 
-static void sp_kb_backspace(void) {
+static void sp_kb_backspace(BOOL synced) {
     unichar c = 0x7F;
-    sp_kb_press(0x33, [NSString stringWithCharacters:&c length:1]);
+    sp_kb_press(0x33, [NSString stringWithCharacters:&c length:1], synced);
 }
 
 static void sp_kb_return(void) {
-    sp_kb_press(0x24, @"\r");
+    sp_kb_press(0x24, @"\r", NO);
 }
 
 // One press per character as the reader sees it (an emoji with its skin tone is one).
 static void sp_kb_type(NSString *s) {
     [s enumerateSubstringsInRange:NSMakeRange(0, s.length) options:NSStringEnumerationByComposedCharacterSequences
                        usingBlock:^(NSString *ch, NSRange r, NSRange er, BOOL *stop) {
-        sp_kb_press(sp_kb_code(ch), ch);
+        sp_kb_press(sp_kb_code(ch), ch, YES);
     }];
+}
+
+// sp_sync's presses not yet gone out, dropped: sp_kb_sent is then what the game will hold.
+static void sp_kb_take_back(void) {
+    [sp_kb_pending removeObjectsInRange:NSMakeRange(sp_kb_pending.count - sp_kb_revocable, sp_kb_revocable)];
+    sp_kb_revocable = 0;
 }
 
 // Backspaces for the end of what was sent: one per Unicode scalar, as the game's box deletes.
@@ -240,7 +279,7 @@ static SPKeyboardView *sp_kb_view;
     NSMutableString *_text;  // the buffer
     NSRange _sel;
     NSRange _marked;         // location NSNotFound when there's none
-    NSString *_sent;         // what the game was sent since the buffer was last emptied
+    BOOL _syncQueued;        // a sp_sync is coming this run-loop turn
     UIView *_bar;
     UITextInputStringTokenizer *_tokenizer;
 }
@@ -250,7 +289,6 @@ static SPKeyboardView *sp_kb_view;
     if (!(self = [super initWithFrame:frame])) return nil;
     _text = [NSMutableString string];
     _marked = NSMakeRange(NSNotFound, 0);
-    _sent = @"";
     [self sp_make_bar];
     [NSNotificationCenter.defaultCenter addObserverForName:UITextInputCurrentInputModeDidChangeNotification object:nil
                                                      queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) {
@@ -329,16 +367,15 @@ static SPKeyboardView *sp_kb_view;
 // Empties the buffer, telling the keyboard (its autocorrect and capitals read the text before the caret):
 // the game's box has changed under it, or what was typed is done with.
 - (void)sp_forget {
-    if (!_text.length && _marked.location == NSNotFound) {
-        _sent = @"";
-        return;
-    }
+    [self sp_flush];  // what was typed before reaches the game first
+    sp_kb_keep();
+    sp_kb_sent = @"";
+    if (!_text.length && _marked.location == NSNotFound) return;
     [self.inputDelegate selectionWillChange:self];
     [self.inputDelegate textWillChange:self];
     [_text setString:@""];
     _sel = NSMakeRange(0, 0);
     _marked = NSMakeRange(NSNotFound, 0);
-    _sent = @"";
     [self.inputDelegate textDidChange:self];
     [self.inputDelegate selectionDidChange:self];
 }
@@ -351,20 +388,23 @@ static SPKeyboardView *sp_kb_view;
     return s;
 }
 
-// Brings the game's box to the buffer: Backspaces back to where they first differ (at a character's start
-// in both), then the rest typed. A line break is a Return: what's before it is sent, then Return, and the
-// buffer starts again with what's after it.
+// Brings the game's box to the buffer: the last sync's presses still waiting taken back, then Backspaces
+// back to where the buffer and what the game holds first differ (at a character's start in both), then the
+// rest typed. A line break is a Return: what's before it is sent, then Return, and the buffer starts again
+// with what's after it.
 - (void)sp_sync {
+    _syncQueued = NO;
+    sp_kb_take_back();
+    NSString *sent = sp_kb_sent;
     NSString *now = [self sp_committed];
     NSRange nl = [now rangeOfCharacterFromSet:NSCharacterSet.newlineCharacterSet];
     NSString *line = nl.location == NSNotFound ? now : [now substringToIndex:nl.location];
-    NSUInteger p = 0, n = MIN(line.length, _sent.length);
-    while (p < n && [line characterAtIndex:p] == [_sent characterAtIndex:p]) p++;
-    if (p < _sent.length) p = MIN(p, [_sent rangeOfComposedCharacterSequenceAtIndex:p].location);
+    NSUInteger p = 0, n = MIN(line.length, sent.length);
+    while (p < n && [line characterAtIndex:p] == [sent characterAtIndex:p]) p++;
+    if (p < sent.length) p = MIN(p, [sent rangeOfComposedCharacterSequenceAtIndex:p].location);
     if (p < line.length) p = MIN(p, [line rangeOfComposedCharacterSequenceAtIndex:p].location);
-    for (NSUInteger i = sp_kb_scalars([_sent substringFromIndex:p]); i > 0; i--) sp_kb_backspace();
+    for (NSUInteger i = sp_kb_scalars([sent substringFromIndex:p]); i > 0; i--) sp_kb_backspace(YES);
     sp_kb_type([line substringFromIndex:p]);
-    _sent = line;
     if (nl.location == NSNotFound) return;
     sp_kb_return();
     NSString *rest = [now substringFromIndex:NSMaxRange(nl)];
@@ -375,6 +415,21 @@ static SPKeyboardView *sp_kb_view;
     _sel = NSMakeRange(rest.length, 0);
     [self.inputDelegate textDidChange:self];
     [self sp_sync];
+}
+
+// One sync for every edit in this run-loop turn: UIKit makes a revision as several calls (a delete, then
+// the insert), and each synced alone would send Backspaces for text the next one puts back.
+- (void)sp_sync_soon {
+    if (_syncQueued) return;
+    _syncQueued = YES;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->_syncQueued) [self sp_sync];
+    });
+}
+
+// The sync now, if one is coming: before a press that has to follow what was typed.
+- (void)sp_flush {
+    if (_syncQueued) [self sp_sync];
 }
 
 static NSRange sp_kb_clamp(NSRange r, NSUInteger len) {
@@ -406,14 +461,15 @@ static NSRange sp_kb_clamp(NSRange r, NSUInteger len) {
     NSRange r = _marked.location != NSNotFound ? _marked : _sel;
     _marked = NSMakeRange(NSNotFound, 0);
     [self sp_replace:r with:text];
-    [self sp_sync];
+    [self sp_sync_soon];
 }
 
 - (void)deleteBackward {
     NSRange r = _sel;
     if (!r.length) {
         if (!r.location) {
-            sp_kb_backspace();  // past the buffer's start: the game's own text
+            [self sp_flush];
+            sp_kb_backspace(NO);  // past the buffer's start: the game's own text
             return;
         }
         r = [_text rangeOfComposedCharacterSequenceAtIndex:r.location - 1];
@@ -427,7 +483,7 @@ static NSRange sp_kb_clamp(NSRange r, NSUInteger len) {
         return;
     }
     [self sp_replace:r with:@""];
-    [self sp_sync];
+    [self sp_sync_soon];
 }
 
 // ---- UITextInput
@@ -440,7 +496,7 @@ static NSRange sp_kb_clamp(NSRange r, NSUInteger len) {
 - (void)replaceRange:(UITextRange *)range withText:(NSString *)text {
     if (![range isKindOfClass:SPTextRange.class]) return;
     [self sp_replace:((SPTextRange *)range).range with:text];
-    [self sp_sync];
+    [self sp_sync_soon];
 }
 
 - (UITextRange *)selectedTextRange {
@@ -463,14 +519,14 @@ static NSRange sp_kb_clamp(NSRange r, NSUInteger len) {
     _marked = text.length ? NSMakeRange(r.location, text.length) : NSMakeRange(NSNotFound, 0);
     selected = sp_kb_clamp(selected, text.length);
     _sel = NSMakeRange(r.location + selected.location, selected.length);
-    [self sp_sync];  // the committed text didn't change unless the composition replaced some of it
+    [self sp_sync_soon];  // the committed text didn't change unless the composition replaced some of it
 }
 
 - (void)unmarkText {
     if (_marked.location == NSNotFound) return;
     _sel = NSMakeRange(NSMaxRange(_marked), 0);
     _marked = NSMakeRange(NSNotFound, 0);
-    [self sp_sync];
+    [self sp_sync_soon];
 }
 
 - (UITextPosition *)beginningOfDocument {
