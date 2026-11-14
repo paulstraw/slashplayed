@@ -36,7 +36,7 @@ final class FlavorTests: XCTestCase {
     /// Each addon's one TOC goes into every flavor's folder as it is, so its Interface line lists each
     /// flavor's number, in flavors.plist's order: a flavor left out flags the addon as out of date there.
     func testAddonsListEveryFlavorsInterface() throws {
-        for name in ["SPHover", "SPMovie"] {
+        for name in ["SPHover", "SPMovie", "SPKeyboard"] {
             let toc = try String(contentsOf: Self.repo.appending(path: "addon/\(name)/\(name).toc"), encoding: .utf8)
             let lines = toc.split(separator: "\n").filter { $0.hasPrefix("## Interface:") }
             XCTAssertEqual(lines.count, 1, name)

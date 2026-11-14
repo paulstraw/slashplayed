@@ -2,6 +2,10 @@
 -- frame: one line of SPH_BLOCKS digits (r << 2 | g << 1 | b per block), after a line "expect <n>"
 -- and n lines "x y w h" (screen fractions) for the rects it should carry. Lua 5.1 code; run with any
 -- Lua (test.sh). Usage: lua mockwow.lua <path to SPHover.lua> <frames>
+-- With a third argument, focus, it runs SPKeyboard.lua instead: no box has focus for the first half of
+-- the frames, then the mock UI's edit box does (SetFocus), and the rect expected is that box's; two frames
+-- before the end its SetFocus is called again, as choosing Say with chat open does, which has to send a
+-- new message with the same rect.
 
 local SCREEN_W, SCREEN_H = 1366, 768  -- UIParent units at effective scale 1 (16:9, 768 tall)
 
@@ -43,6 +47,11 @@ function Frame:EnableMouse(on) self.mouse = on end
 function Frame:SetPoint() end
 function Frame:SetHeight(h) self.height = h end
 function Frame:SetScript(name, fn) self.scripts[name] = fn end
+function Frame:SetFocus() end
+function hooksecurefunc(t, name, fn)
+    local orig = t[name]
+    t[name] = function(...) orig(...); fn(...) end
+end
 function Frame:CreateTexture()
     local t = { color = { 0, 0, 0 } }
     function t:SetColorTexture(r, g, b) self.color = { r, g, b } end
@@ -64,6 +73,9 @@ end
 
 function GetPhysicalScreenSize() return 2560, 1440 end
 
+local focus
+function GetCurrentKeyBoardFocus() return focus end
+
 function EnumerateFrames(after)
     if after == nil then return frames[1] end
     for i, f in ipairs(frames) do
@@ -83,6 +95,7 @@ for i = 0, 11 do
 end
 button("Button", UIParent, { 10, 700, 100, 24 }, { scale = 0.8 }, { 8, 560, 80, 19.2 })  -- scaled
 button("EditBox", UIParent, { 500, 400, 200, 20 }, nil, { 500, 400, 200, 20 })
+local editBox = frames[#frames]
 button("Slider", UIParent, { 500, 350, 200, 16 }, nil, { 500, 350, 200, 16 })
 button("Button", UIParent, { 50, 50, 30, 30 }, { shown = false })      -- hidden
 button("Button", UIParent, { 60, 60, 30, 30 }, { mouse = false })      -- not clickable
@@ -101,6 +114,14 @@ for i = 1, 60 do  -- enough rects for several chunks
     button("Button", UIParent, { 20 + i * 4, 100 + i * 5, 10, 10 }, nil, { 20 + i * 4, 100 + i * 5, 10, 10 })
 end
 
+local focusMode = arg[3] == "focus"
+if focusMode then
+    -- A box scaled down, so its rect has to come out times its effective scale.
+    editBox.scale = 0.5
+    ChatFrame1EditBox = editBox
+    expected = { { 250, 200, 100, 10 } }
+end
+
 dofile(arg[1])
 local strip
 for _, f in ipairs(frames) do
@@ -111,7 +132,11 @@ print("expect " .. #expected)
 for _, r in ipairs(expected) do
     print(string.format("%.6f %.6f %.6f %.6f", r[1] / SCREEN_W, r[2] / SCREEN_H, r[3] / SCREEN_W, r[4] / SCREEN_H))
 end
-for _ = 1, tonumber(arg[2]) do
+for frame = 1, tonumber(arg[2]) do
+    if focusMode and (frame == math.floor(tonumber(arg[2]) / 2) + 1 or frame == tonumber(arg[2]) - 1) then
+        focus = editBox
+        editBox:SetFocus()
+    end
     strip.scripts.OnUpdate(strip, 1 / 60)
     local line = {}
     for i, t in ipairs(strip.textures) do

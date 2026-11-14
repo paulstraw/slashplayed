@@ -4,6 +4,10 @@
 // the rects go to the hover overlay (sp_hover_set_rects in spevent.m). While a strip is showing, the
 // layer's contentsRect leaves it out. #included after spevent.m.
 //
+// On an iPhone or iPad the strip is the SPKeyboard addon's instead (addon/SPKeyboard), the same format
+// with frames of another kind: the text box with the keyboard's focus, which goes to the on-screen
+// keyboard (spkeyboard.m's sp_keyboard_focus).
+//
 // The blit goes into the client's own command buffer, in presentDrawable:, so it sees the finished
 // frame. The drawable has to be readable for that: framebufferOnly is turned off.
 
@@ -16,7 +20,7 @@ __asm__(".linker_option \"-framework\", \"Metal\"");
 #define SPH_BUFFERS 3    // frames in flight
 
 static CALayer *sp_hover_metal_layer;
-static sph_assembler sp_hover_asm;
+static sph_assembler sp_hover_asm, sp_hover_focus_asm;
 static int sp_hover_misses = 1000;  // frames since a valid strip
 static BOOL sp_hover_cropped, sp_hover_testing;
 
@@ -83,13 +87,17 @@ static void sp_hover_crop(BOOL crop, CGFloat height) {
 // Main thread: one presented frame's strip rows, SPH_ROWS x SPH_BLOCKS, bottom row first.
 static void sp_hover_frame(const uint8_t *rows, CGFloat height) {
     uint8_t frame[SPH_FRAME_BYTES];
-    int valid = 0;
-    for (int i = 0; i < SPH_ROWS && !valid; i++) valid = sph_frame_from_blocks(rows + i * SPH_BLOCKS, frame);
-    if (!valid) {
-        // Hidden UI, a loading screen, glue screens (no addons there): no highlights.
+    int kind = 0;
+    for (int i = 0; i < SPH_ROWS && !kind; i++) kind = sph_frame_from_blocks(rows + i * SPH_BLOCKS, frame);
+    if (!kind) {
+        // Hidden UI, a loading screen, glue screens (no addons there): no highlights, and no box has focus.
         if (++sp_hover_misses == 30) {
             sph_reset(&sp_hover_asm);
+            sph_reset(&sp_hover_focus_asm);
             if (!sp_hover_testing) sp_hover_set_rects(NULL, 0);
+#if !TARGET_OS_VISION
+            sp_keyboard_focus(NO, CGRectNull);
+#endif
             sp_hover_crop(NO, height);
             sp_stub_log("hover: strip gone");
         }
@@ -100,6 +108,14 @@ static void sp_hover_frame(const uint8_t *rows, CGFloat height) {
     sp_hover_crop(YES, height);
     static sph_rect rects[SPH_MAX_RECTS];
     int n;
+#if !TARGET_OS_VISION
+    if (kind == 'K') {
+        if (sph_feed(&sp_hover_focus_asm, frame, rects, &n) == SPH_MESSAGE)
+            sp_keyboard_focus(YES, n ? CGRectMake(rects[0].x, rects[0].y, rects[0].w, rects[0].h) : CGRectNull);
+        return;
+    }
+#endif
+    if (kind != 'W') return;
     if (sph_feed(&sp_hover_asm, frame, rects, &n) != SPH_MESSAGE || sp_hover_testing) return;
     static CGRect fractions[SPH_MAX_RECTS];
     for (int i = 0; i < n; i++) fractions[i] = CGRectMake(rects[i].x, rects[i].y, rects[i].w, rects[i].h);
@@ -189,6 +205,7 @@ static void sp_hover_attach(CALayer *layer) {
         sp_hover_metal_layer = layer;
         sp_hover_cropped = NO;  // the new layer shows the whole drawable until a strip is seen
         sph_reset(&sp_hover_asm);
+        sph_reset(&sp_hover_focus_asm);
         [layer setValue:@NO forKey:@"framebufferOnly"];
         sp_stub_log("hover: reading the strip from the client's new layer");
         return;
@@ -196,6 +213,7 @@ static void sp_hover_attach(CALayer *layer) {
     sp_hover_metal_layer = layer;
     sp_hover_testing = getenv("SP_HOVER_TEST") != NULL;
     sph_reset(&sp_hover_asm);
+    sph_reset(&sp_hover_focus_asm);
     [layer setValue:@NO forKey:@"framebufferOnly"];
     // The device's command buffer class: one made here is the same kind as the client's.
     id<MTLDevice> dev = [layer valueForKey:@"device"] ?: MTLCreateSystemDefaultDevice();

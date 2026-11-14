@@ -14,6 +14,10 @@ All notable changes to Slashplayed are documented here. The format is based on
 - Copy and paste by touch on an iPad or iPhone: hold two fingers still on the game's text box for a
   moment and lift them, and a menu offers Copy and Paste. Pasting from another app this way doesn't ask
   first.
+- An on-screen keyboard in the game on an iPad or iPhone. It comes up when a text box in the game takes
+  focus, such as chat after you choose Say, and goes away when you send the line. On an iPhone the game
+  zooms onto the box so you can see what you type. The same two-finger menu's Keyboard opens chat, or
+  brings up the keyboard on the login and character screens. Its microphone key dictates.
 - Swiping on a DualSense or DualShock 4 touchpad presses F16 (up), F17 (down), F18 (left), or F19
   (right), so you can bind them in addons that take key bindings.
 

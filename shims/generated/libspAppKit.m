@@ -279,3 +279,5 @@ SP_STUB_CLASS_BODY
 #include "../appkit/spclipboard.m"
 
 #include "../appkit/sptouchpad.m"
+
+#include "../appkit/spkeyboard.m"

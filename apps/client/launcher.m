@@ -737,7 +737,7 @@ int main(int argc, char **argv) {
     skip_intro(flavor);
     flavor_info(flavor);
     // The addons the app carries, into the game's folder before the client loads (sp_addons_place): SPMovie
-    // everywhere, SPHover on the headset. The device's own copy, so a game it installed has them too.
+    // everywhere, SPHover on the headset, SPKeyboard on the iPad and iPhone. The device's own copy, so a game it installed has them too.
     NSString *addons = nil;
     sp_addons_place([dir stringByAppendingPathComponent:@"addons"],
                     [NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Documents/_%@_", flavor]],

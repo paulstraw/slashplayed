@@ -559,11 +559,11 @@ region and languages in tests, and the Settings drill `region-<flavor>-<region>`
 
 ### The addons
 
-The device app carries the addons, `addons/SPMovie/` and `addons/SPHover/` (their `.toc` and `.lua` as
+The device app carries the addons, `addons/SPMovie/`, `addons/SPHover/`, and `addons/SPKeyboard/` (their `.toc` and `.lua` as
 `addon/` has them; `apps/client/build.sh` and the companion's `ClientAssembly` both bundle them, on both
 platforms). Before each start, once the game is picked, the launcher puts them in the game's
 `Interface/AddOns/` (`sp_addons_place` in `spcdn.m`): SPMovie on every device, SPHover on the headset only
-(the iPad and iPhone have a real pointer), each file written when the game's copy is missing or its bytes
+(the iPad and iPhone have a real pointer), SPKeyboard on the iPad and iPhone only (the on-screen keyboard), each file written when the game's copy is missing or its bytes
 differ (`addons: N up to date, wrote …`). Each TOC lists every flavor's Interface number, so one copy
 suits each game. The companion used to copy them with the game files; it doesn't any more, and a changed
 addon reaches a device with the rebuild the companion's resources digest asks for (`ClientBuild`).
@@ -929,10 +929,24 @@ and scroll events and `NSTextInputClient`), with no event taps. `spevent.m`:
   waits out the window. The press is at the leftmost finger, or the rightmost with Settings > Touch.
   With Accessibility Zoom on, iOS holds three-finger touches about half a second before the app gets them.
 - **Touch edit menu (iPhone and iPad).** Two fingers held still for half a second open iOS's edit menu
-  (`UIEditMenuInteraction`) as they lift, with Copy and Paste; the chord's right press is unchanged. The
-  game can't say when an edit box has focus, so the gesture is the only signal. Copy presses Cmd+C. Paste
-  is the system's own, so it reads the clipboard with no "Allow Paste" prompt; the shim keeps that text for
-  the game's read while the clipboard is unchanged, then presses Cmd+V, so the game's own paste runs.
+  (`UIEditMenuInteraction`) as they lift, with Copy, Paste, and Keyboard; the chord's right press is
+  unchanged. Copy presses Cmd+C. Paste is the system's own, so it reads the clipboard with no "Allow
+  Paste" prompt; the shim keeps that text for the game's read while the clipboard is unchanged, then
+  presses Cmd+V, so the game's own paste runs.
+- **On-screen keyboard (iPhone and iPad).** The game's view can't say when an edit box has focus (its
+  text-input answers are the same however its boxes are used), so the `SPKeyboard` addon says: each
+  frame it asks the game for the box with keyboard focus and sends that box's rect over the same pixel
+  strip SPHover uses (frames marked `K` rather than `W`), with a count of edit boxes' `SetFocus` calls,
+  so focusing the same box again (Say with chat open) is news too. `spkeyboard.m` brings the system
+  keyboard up when a box gains focus and closes it when no box has it, unless a hardware keyboard is
+  connected; Done on the bar above it closes it too. The keyboard belongs to a hidden `UITextInput` view
+  over a buffer of what was typed; after each change the game gets Backspaces back to where the buffer
+  and what it was sent differ, then the rest as key presses (unlogged), so autocorrect and dictation end
+  with the box holding the same text. A full `UITextInput` gets the keyboard's mic key; the app itself
+  never asks for the microphone. On an iPhone the input view's transform magnifies the box (2x, or less
+  to fit its width) above the keyboard, and UIKit maps touches through it. The menu's Keyboard brings the
+  keyboard up for the focused box, presses Return when none has focus (opening chat), and with no strip
+  (the login and character screens, where addons don't run) brings it up at the hold.
 - **Mouselook.** The client hides the cursor, dissociates it from the mouse and reads drag deltas. The
   CoreGraphics shim's cursor calls go to the AppKit shim; while dissociated, deltas come from
   `GCMouse`'s raw movement and the position stays put. iPadOS honours pointer lock, so it's on by
