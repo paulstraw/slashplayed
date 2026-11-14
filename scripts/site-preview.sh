@@ -1,7 +1,8 @@
 #!/bin/bash
-# Serves site/ as release.yml's Pages deploy lays it out: the page, plus Goodmountain's webfont and its
-# license (scripts/fetch-font.sh), which are never committed and so only exist next to the page once
-# staged. The staging copy lives in $TMPDIR, so nothing fetched lands in site/.
+# Serves site/ as the Pages deploys (release.yml, and pages.yml without a release) lay it out: the page,
+# plus Goodmountain's webfont and its license (scripts/fetch-font.sh), which are never committed and so
+# only exist next to the page once staged. The staging copy lives in $TMPDIR, so nothing fetched lands
+# in site/.
 #
 #   scripts/site-preview.sh [--port N] [--bind ADDR]
 #
