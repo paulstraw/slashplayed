@@ -214,7 +214,7 @@ Vision Pro (M2, visionOS 27.0) and iPad Pro 12.9" 6th gen (M2, iPadOS 26.6):
   24–35 s, `bulkz` 15.6–17.6 s, `bulkx` ~11 s. Over USB to the iPad, `e7` with `bulkz` took 8.3 s.
 - `e7` (2,887 pages): contents match, and the first and last pages execute after detach. Most of the
   stop's ~57 s on the headset was lldb's own overhead, not the prepare; the client launch avoids it by
-  attaching late (see [docs/architecture.md](../../docs/architecture.md#executable-memory-under-txm)).
+  attaching late (see [docs/internals/loading.md](../../docs/internals/loading.md#executable-memory-under-txm)).
 - `h5`, on an iPhone 16 Pro (iOS 27.0.1), 2026-11-02, with LocalDevVPN on: the helper's tunnel came up
   through 10.7.0.1:49152 in 0.15 s, misagent (`com.apple.misagent.shim.remote` over RSD) listed 32
   profiles, and installing a fresh free-team profile for another app took 0.08 s (33 after, the new UUID

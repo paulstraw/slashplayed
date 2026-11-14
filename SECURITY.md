@@ -68,7 +68,7 @@ Out of scope:
   ship an update.
 - That the device app is development-signed with `get-task-allow`, that the helper attaches a
   debugger at every launch, and that Developer Mode is on: the game can't run without them, as
-  [architecture.md](docs/architecture.md) explains. How the helper and its tunnel could be misused is
+  [How Slashplayed works](docs/architecture.md) explains. How the helper and its tunnel could be misused is
   in scope, above.
 - Attacks that need an attacker who already has admin rights on your Mac, or physical access to it or
   the device while unlocked.

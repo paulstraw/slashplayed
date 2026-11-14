@@ -44,6 +44,27 @@ Blizzard's CDN: `TEST_RUNNER_SP_CHECK_INSTALLED=1`, `TEST_RUNNER_SP_COMPARE_STOR
 environment of `apps/companion/test.sh`. They read Blizzard files locally (the CDN one fetches into
 `$TMPDIR`) and must never write anything from them into the repo.
 
+## Test hooks on the device
+
+`apps/client/run.sh` passes these to the launcher; a launch from the home screen has no environment, so
+none of them ever reaches a player. Its header says what each does in full.
+
+| Variable | What it does |
+|---|---|
+| `SP_START=1` | Shows the start screen, as a home-screen launch does, instead of naming a game. |
+| `SP_START_DRILL=<state>` | Opens the start screen with Settings in one state, for screenshots with no taps (the states are listed in `spsettings.swift`). |
+| `SP_START_TEXT_SIZE=<XS…XXXL, AX1…AX5>` | The start screen's Dynamic Type size. |
+| `SP_PATCH_SERVICE=<url or path>` | Replaces Blizzard's patch service: a base URL, or a folder in the app's home holding `<product>/versions` (and optionally `cdns`). |
+| `SP_PATCH_CELLULAR=1` | The patch check treats the network as cellular, so it asks before downloading. |
+| `SP_PATCH_CHOOSE=<button title>` | Presses that button on the patch screen a second after it shows. |
+| `SP_PATCH_DRILL`, `SP_LOADING_DRILL` | Show the newer-build screen or the loading screen in a given state. |
+| `SP_REGION_COUNTRY`, `SP_REGION_LANGUAGES` | Stand in for the device's region and preferred languages, which decide an installed game's region. |
+| `SP_RENEW=now\|off` | Renews the app's profiles at once, or never. |
+| `SP_PROFILES_DRILL=1` | Installs `Documents/spprofiles/*.mobileprovision` through the JIT helper, or lists the app's profiles. |
+| `SP_SKIP_INTRO=1` | Skips the intro movie and Retail's Screen Narrator question, in the device's `Config.wtf`. |
+| `SP_SCALE=1\|2` | Overrides Settings > Display's scale. |
+| `SP_INPUT_LOG_MAX=<n>` | Logs `n` input events (0 for no cap) and every key with what it types: never type a real password on such a run. |
+
 ## After a game patch
 
 When a patch adds an import the shims don't cover, the companion's bind check says the version isn't

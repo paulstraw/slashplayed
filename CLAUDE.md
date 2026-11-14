@@ -1,7 +1,9 @@
 # CLAUDE.md
 
 Notes for agents working in this repo. Users' docs are in `README.md` and `docs/`; how everything
-works is `docs/architecture.md`. Read that before changing the pipeline, the shims or the launcher.
+works is `docs/architecture.md` (the overview) and `docs/internals/` (each part in detail; its
+`README.md` says which page covers what). Read the page that covers what you're changing before you
+change the pipeline, the shims, or the launcher, and put new detail on that page, not the overview.
 
 ## Where work happens
 

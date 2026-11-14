@@ -106,14 +106,6 @@ copying on, every game file is copied again. Only change them on purpose.
   and the 4th-generation iPad Air) and the iPhone 15 don't have. The device menus still list such a
   device, marked "not supported", but don't let you pick it, and Play stops before building anything
   for one picked earlier: choose another device.
-- **"Untested: Slashplayed hasn't been tried on an M1 iPad yet"**: M1 iPads (the 2021 iPad Pros and
-  the 5th-generation iPad Air) run the game's instructions, but they protect code differently from
-  the M2 and later, and Slashplayed has only been played on the newer chips. Nothing stops you: play
-  as usual, then please [report how it goes](https://github.com/paulstraw/slashplayed/issues/new/choose),
-  working or not, with the zip from **Help > Export Diagnostics…**.
-- **"Untested: Slashplayed hasn't been tried on the A17 Pro iPad mini yet"**: the iPad mini (A17 Pro)
-  has the iPhone 15 Pro's chip and 8 GB of memory, so it should run the game, but no one has played on
-  one yet. Nothing stops you: play as usual, then please report how it goes in the same way.
 - **"Developer Mode is off"**: on the device, Settings > Privacy & Security > Developer Mode (it only
   shows there once the device has been paired with Xcode), turn it on, restart when asked and confirm.
 - **"Xcode can't see the device"** (while making the provisioning profile): Xcode couldn't reach the
@@ -409,7 +401,7 @@ installs it again, and on an iPad or iPhone pairs it over USB as it does.
 ### "Preparing code pages failed"
 
 Every launch, Slashplayed's helper, an extension inside the app, attaches to the game once, at
-startup, to prepare its code (see [The on-device JIT helper](architecture.md#the-on-device-jit-helper)).
+startup, to prepare its code (see [The on-device JIT helper](internals/loading.md#the-on-device-jit-helper)).
 When it can't, Slashplayed shows why on the device instead of starting the game, and the companion
 shows the same message:
 
@@ -601,7 +593,7 @@ uncapped by default, at 120 fps, and long sessions get hot. Retail on an M2 iPad
   scale and graphics quality.
 - Take breaks; a cool-down of 15 minutes or more makes the next session last noticeably longer.
 
-Measurements are in [architecture.md, Heat](architecture.md#heat).
+Measurements are in [the internals, Heat](internals/shims.md#heat).
 
 ### Space does nothing (no jumping) with a hardware keyboard
 
@@ -721,4 +713,4 @@ IDs, team IDs and names, Apple IDs, device and Mac names, and your user folder i
 `summary.txt` says how many of each.
 Never paste Battle.net preference contents into an issue yourself.
 
-See [Logs and diagnostics](architecture.md#logs-and-diagnostics) for where each log comes from.
+See [Logs and diagnostics](internals/shims.md#logs-and-diagnostics) for where each log comes from.

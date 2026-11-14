@@ -1,5 +1,5 @@
 // slashplayed-cli: sets up Slashplayed on an iPad or iPhone from Windows, Linux, or a Mac, with no Xcode
-// and no Mac companion (docs/setup-without-a-mac.md; how it works: docs/architecture.md, "The host tool").
+// and no Mac companion (docs/setup-without-a-mac.md; how it works: docs/internals/host-tool.md).
 // Run it again to re-sign when the app can't renew its own profiles (its start screen says so). Each run:
 //
 //   1. the device kit (the device app, unsigned: kit.rs), downloaded and checked, before anything else;

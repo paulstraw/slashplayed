@@ -37,44 +37,37 @@ final class OnboardingTests: XCTestCase {
     func testSupportedIPads() {
         for model in ["iPad14,5", "iPad14,9", "iPad16,3", "iPad15,4", "iPad17,1"] {
             XCTAssertTrue(Device.isSupportedIPad(model: model), model)
-            XCTAssertFalse(Device.isUntestedIPad(model: model), model)
+            XCTAssertFalse(Device.isM1IPad(model: model), model)
         }
         // Under 8 GB: Air 4 and the 10th generation (A14), mini 6 (A15), the 11th generation (A16). And the
         // 2018 Pro (A12X), short of the M1's instruction set.
         for model in ["iPad13,1", "iPad13,2", "iPad13,18", "iPad13,19", "iPad14,1", "iPad14,2", "iPad15,7", "iPad15,8", "iPad8,1"] {
             XCTAssertFalse(Device.isSupportedIPad(model: model), model)
-            XCTAssertFalse(Device.isUntestedIPad(model: model), model)
+            XCTAssertFalse(Device.isM1IPad(model: model), model)
         }
         XCTAssertTrue(Device.isSupportedIPad(model: nil))
-        XCTAssertFalse(Device.isUntestedIPad(model: nil))
+        XCTAssertFalse(Device.isM1IPad(model: nil))
     }
 
-    func testM1IPadsAllowedButUntested() {
+    func testM1IPadsAndTheA17ProMiniAllowed() {
         // The 11-inch 3rd-generation Pro, the 12.9-inch 5th-generation Pro, and the 5th-generation Air.
         let m1 = ["iPad13,4", "iPad13,5", "iPad13,6", "iPad13,7", "iPad13,8", "iPad13,9", "iPad13,10", "iPad13,11",
                   "iPad13,16", "iPad13,17"]
         let iPad = Device(name: "", udid: "", kind: .iPad)
         for model in m1 {
             XCTAssertTrue(Device.isSupportedIPad(model: model), model)
-            XCTAssertTrue(Device.isUntestedIPad(model: model), model)
+            XCTAssertTrue(Device.isM1IPad(model: model), model)
             XCTAssertNil(iPad.unsupportedReason(model: model), model)
-            XCTAssertNotNil(iPad.untestedNote(model: model), model)
         }
         // The A14 iPads numbered among them stay refused.
         for model in ["iPad13,1", "iPad13,2", "iPad13,18", "iPad13,19"] {
             XCTAssertFalse(Device.isSupportedIPad(model: model), model)
         }
-        // The A17 Pro mini 7 (8 GB, the iPhone 15 Pro's chip) is allowed, untested, and named as itself.
+        // The A17 Pro mini 7 (8 GB, the iPhone 15 Pro's chip) is allowed.
         for model in ["iPad16,1", "iPad16,2"] {
             XCTAssertTrue(Device.isSupportedIPad(model: model), model)
-            XCTAssertTrue(Device.isUntestedIPad(model: model), model)
             XCTAssertNil(iPad.unsupportedReason(model: model), model)
-            XCTAssertEqual(iPad.untestedNote(model: model)?.contains("the A17 Pro iPad mini"), true, model)
         }
-        XCTAssertEqual(iPad.untestedNote(model: "iPad13,16")?.contains("an M1 iPad"), true)
-        XCTAssertNil(iPad.untestedNote(model: "iPad14,5"))
-        XCTAssertNil(iPad.untestedNote(model: nil))
-        XCTAssertNil(Device(name: "", udid: "", kind: .iPhone).untestedNote(model: "iPad13,16"))
     }
 
     func testSupportedIPhones() {

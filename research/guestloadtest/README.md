@@ -220,7 +220,7 @@ Anniversary's and MoP Classic's the way it took Retail's (above). Seconds on run
 Every run signed in from the saved sign-in (`login.txt` opened and deleted by the client), bound every import
 (none unresolved), and had one client image with no class loaded twice. The headset's numbers are the iPhone's:
 attached about 1.6 s after launch, `main` under 3.5 s, first frame 4.3 to 4.8 s. Uncapped, the headset's
-119 fps is what the dyld-loaded client renders there (docs/architecture.md, Heat).
+119 fps is what the dyld-loaded client renders there (docs/internals/shims.md, Heat).
 
 Anniversary on the iPhone stopped at the loading screen with the client's own "Invalid schema
 WOWSTATIC_5_5_4_67732 for Table StartupFiles", the same error and stack as a dyld-loaded run on 2026-10-31:

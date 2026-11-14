@@ -19,12 +19,8 @@ equivalents. Set up once using your Mac, then play untethered.
 
 Every World of Warcraft game Battle.net offers for the Mac: **Classic Era** (Hardcore and Season of
 Discovery included: switch the game mode in game), **TBC Anniversary**, **Mists of Pandaria
-Classic**, and **Retail**. They run on an **iPad** with M1 or later (or the A17 Pro iPad mini), an **iPhone 15 Pro** or later,
-and **Apple Vision Pro**. M1 iPads (the 2021 iPad Pros and the 5th-generation iPad Air) and the A17 Pro
-iPad mini are untested: Slashplayed has only been played on M2 and later iPads. If you try one, please
-[report how it goes](https://github.com/paulstraw/slashplayed/issues/new/choose), working or not,
-with the zip from the Mac companion's **Help > Export Diagnostics…** (or, from Windows or Linux, what
-the window's **Copy Details** copies).
+Classic**, and **Retail**. They run on an **iPad** with M1 or later (or the A17 Pro iPad mini), an
+**iPhone 15 Pro** or later, and **Apple Vision Pro**.
 In-game voice chat isn't supported on the device yet
 ([#12](https://github.com/paulstraw/slashplayed/issues/12)).
 
@@ -105,8 +101,8 @@ changed or signed: the companion downloads the Mac client from Blizzard and copi
 is, or the device downloads it itself, and Slashplayed loads it with a loader of its own. On the device,
 the shims stand in for AppKit, CoreAudio, and the other macOS frameworks, and a small helper prepares the
 client's executable memory under TXM at each launch (that's what LocalDevVPN is for).
-[architecture.md](docs/architecture.md) has the whole pipeline, and [research.md](docs/research.md)
-the experiments behind it.
+[How Slashplayed works](docs/architecture.md) is the overview, [the internals](docs/internals/README.md)
+have each part in detail, and [research.md](docs/research.md) the experiments behind it.
 
 ## Contributing
 

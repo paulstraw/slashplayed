@@ -57,15 +57,6 @@ struct Device: Identifiable, Hashable {
             : "Not supported: Slashplayed needs an iPad with an M1 chip or later, or the A17 Pro iPad mini."
     }
 
-    /// What onboarding and the companion's log say about a model that's allowed but has never been run
-    /// (Device.isUntestedIPad: the M1 iPads and the A17 Pro iPad mini); nil for every other model. It
-    /// doesn't stop anything.
-    func untestedNote(model: String?) -> String? {
-        guard kind == .iPad, let model, Self.isUntestedIPad(model: model) else { return nil }
-        let iPad = model.hasPrefix("iPad16,") ? "the A17 Pro iPad mini" : "an M1 iPad"
-        return "Untested: Slashplayed hasn't been tried on \(iPad) yet. Please tell us how it goes with Help > Report an Issue… and the zip from Help > Export Diagnostics…."
-    }
-
     /// The device an action works on: `target` (the one it was started for), else `pin` (the Device menu's
     /// UDID, "" for Automatic), whether or not either can run the client: they were picked by name, and the
     /// action then says why not. Automatic passes over a model known not to run it (`models`, by UDID): a
@@ -472,8 +463,8 @@ struct Device: Identifiable, Hashable {
     }
 
     /// Whether an iPad model (productType) can run the client: iPad14 and up (M2 or later, and the A17 Pro
-    /// iPad mini, iPad16,1 and 16,2, untested), less the A-chip iPads with under 8 GB numbered among them,
-    /// plus the M1 iPads (isUntestedIPad). Two limits, as isSupportedIPhone's: the Mac client is built for the M1's
+    /// iPad mini, iPad16,1 and 16,2), less the A-chip iPads with under 8 GB numbered among them, plus the
+    /// M1 iPads (isM1IPad). Two limits, as isSupportedIPhone's: the Mac client is built for the M1's
     /// instruction set, which the A12X/A12Z Pros lack (the client stopped at an undefined instruction on
     /// one), and it needs 8 GB, as the M2 iPads have, which the mini 6 (iPad14,1 and 14,2, A15, 4 GB), the
     /// 11th-generation iPad (iPad15,7 and 15,8, A16, 6 GB), and the A14 iPads numbered iPad13 (the
@@ -482,20 +473,18 @@ struct Device: Identifiable, Hashable {
     static func isSupportedIPad(model: String?) -> Bool {
         guard let model, let m = model.firstMatch(of: /^iPad(\d+),(\d+)$/), let major = Int(m.1) else { return true }
         let under8GB: Set<String> = ["iPad14,1", "iPad14,2", "iPad15,7", "iPad15,8"]
-        return (major >= 14 && !under8GB.contains(model)) || isUntestedIPad(model: model)
+        return (major >= 14 && !under8GB.contains(model)) || isM1IPad(model: model)
     }
 
     /// The M1 iPads: the 11-inch 3rd-generation Pro (iPad13,4 to 13,7), the 12.9-inch 5th-generation Pro
     /// (iPad13,8 to 13,11), and the 5th-generation Air (iPad13,16 and 13,17), as Xcode's simulator device
-    /// types list them. They're allowed but untested: the M1 predates TXM (it protects code with PPL), and
-    /// the JIT path (debugger-prepare plus the RW alias, docs/architecture.md) has only been run on TXM
-    /// devices (an M2 iPad, an iPhone 16 Pro, Vision Pro). All have 8 GB or more, as the M2 iPads do. And the
-    /// A17 Pro iPad mini (iPad16,1 and 16,2): a TXM device with 8 GB and the iPhone 15 Pro's chip, which no
-    /// iPad has been played on.
-    static func isUntestedIPad(model: String?) -> Bool {
+    /// types list them. They share iPad13 with A14 iPads that can't run the client, so they're listed. The M1
+    /// predates TXM (it protects code with PPL), and the JIT path (debugger-prepare plus the RW alias,
+    /// docs/internals/loading.md) runs there as on TXM devices. All have 8 GB or more, as the M2 iPads do.
+    static func isM1IPad(model: String?) -> Bool {
         guard let model else { return false }
         return ["iPad13,4", "iPad13,5", "iPad13,6", "iPad13,7", "iPad13,8", "iPad13,9", "iPad13,10", "iPad13,11",
-                "iPad13,16", "iPad13,17", "iPad16,1", "iPad16,2"].contains(model)
+                "iPad13,16", "iPad13,17"].contains(model)
     }
 
     /// Whether an iPhone model (productType) is an iPhone 15 Pro or later: iPhone16,1 and up (15 Pro and

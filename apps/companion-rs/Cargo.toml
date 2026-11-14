@@ -1,5 +1,5 @@
 # slashplayed-companion (the window) and slashplayed-cli (the command line): the host tool that sets up Slashplayed on an iPad or iPhone from Windows, Linux, or a
-# Mac without Xcode (docs/setup-without-a-mac.md; how it works: docs/architecture.md, "The host tool").
+# Mac without Xcode (docs/setup-without-a-mac.md; how it works: docs/internals/host-tool.md).
 # Built with the Rust that rust-toolchain.toml pins, and --locked: Cargo.lock is committed. spzsign
 # (zsign/) compiles zsign (scripts/build-zsign.sh source, with scripts/zsign.patch) into it.
 [package]
