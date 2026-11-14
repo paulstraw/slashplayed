@@ -558,6 +558,17 @@ jetsam reports). Export Diagnostics and file a bug if it repeats.
   or password Slashplayed saved. Open Slashplayed, tap the gear on its start screen, tap **Forget My
   Sign-In**, then **Sign In…**, and sign in again. (Typing them into the game's own login screen doesn't work: it fails
   with the same error even when they're right.)
+- **"You have been disconnected. (BLZ51914400)"** at sign-in, sometimes after the game asks for a
+  captcha and sometimes with none: Battle.net turned the sign-in down at its last step, after the email
+  and password were accepted, so this isn't a wrong password (that's BLZ51914500, above), and signing in
+  again with the same details doesn't help. What makes Battle.net do it isn't known yet
+  ([#76](https://github.com/paulstraw/slashplayed/issues/76)).
+  - Check your email for an "account locked" or suspicious-login message from Blizzard, and do what it
+    asks before trying again.
+  - Don't try again many times in a row.
+  - On a device set up from a Mac, **Play with My Mac's Battle.net** (below) signs in through the Mac's
+    Battle.net instead and gets past it.
+  - On a device set up from Windows or Linux, there's no workaround yet.
 - **Stuck at the authenticator prompt**: the game asks for the code in its own window. On an iPad or
   iPhone, hold two fingers still on the game for a moment, lift them, and tap **Keyboard**; on a Vision
   Pro, connect a hardware keyboard. Type the code and press Return.

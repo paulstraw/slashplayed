@@ -21,6 +21,15 @@ All notable changes to Slashplayed are documented here. The format is based on
 - Swiping on a DualSense or DualShock 4 touchpad presses F16 (up), F17 (down), F18 (left), or F19
   (right), so you can bind them in addons that take key bindings.
 
+### Known issues
+
+- Signing in on the device can fail with "You have been disconnected. (BLZ51914400)", sometimes after
+  a captcha, when Battle.net turns the sign-in down after accepting the email and password. Why it does
+  isn't known yet ([#76](https://github.com/paulstraw/slashplayed/issues/76)). Check your email for an
+  "account locked" or suspicious-login message from Blizzard, and don't try again many times in a row.
+  On a device set up from a Mac, Play with My Mac's Battle.net signs in; from Windows or Linux there's
+  no workaround yet.
+
 ## [1.5.1] - 2026-11-12
 
 ### Fixed
