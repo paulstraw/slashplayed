@@ -21,6 +21,11 @@ All notable changes to Slashplayed are documented here. The format is based on
 - Swiping on a DualSense or DualShock 4 touchpad presses F16 (up), F17 (down), F18 (left), or F19
   (right), so you can bind them in addons that take key bindings.
 
+### Changed
+
+- M1 iPads and the A17 Pro iPad mini are no longer marked untested: players have played on both. The
+  Mac companion no longer shows its "Untested" note for them.
+
 ### Fixed
 
 - A game copied from a Mac that plays outside the Americas now signs in to its own region on the iPad,

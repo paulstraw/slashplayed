@@ -106,14 +106,6 @@ copying on, every game file is copied again. Only change them on purpose.
   and the 4th-generation iPad Air) and the iPhone 15 don't have. The device menus still list such a
   device, marked "not supported", but don't let you pick it, and Play stops before building anything
   for one picked earlier: choose another device.
-- **"Untested: Slashplayed hasn't been tried on an M1 iPad yet"**: M1 iPads (the 2021 iPad Pros and
-  the 5th-generation iPad Air) run the game's instructions, but they protect code differently from
-  the M2 and later, and Slashplayed has only been played on the newer chips. Nothing stops you: play
-  as usual, then please [report how it goes](https://github.com/paulstraw/slashplayed/issues/new/choose),
-  working or not, with the zip from **Help > Export Diagnostics…**.
-- **"Untested: Slashplayed hasn't been tried on the A17 Pro iPad mini yet"**: the iPad mini (A17 Pro)
-  has the iPhone 15 Pro's chip and 8 GB of memory, so it should run the game, but no one has played on
-  one yet. Nothing stops you: play as usual, then please report how it goes in the same way.
 - **"Developer Mode is off"**: on the device, Settings > Privacy & Security > Developer Mode (it only
   shows there once the device has been paired with Xcode), turn it on, restart when asked and confirm.
 - **"Xcode can't see the device"** (while making the provisioning profile): Xcode couldn't reach the
