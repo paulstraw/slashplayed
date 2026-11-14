@@ -1318,9 +1318,31 @@ static void *console_tee(void *pipe_fd) {
     }
 }
 
+// Builds before this one had the AppKit shim log every key with what it typed (spevent.m's sp_post), so
+// their logs can hold a password typed into the game's login form. The first start of a build that
+// leaves typed text out deletes every one of them, once, before the rotation, so this launch's own log is
+// the only one left. Library/spconsole-cleared marks it done, created exclusively before anything is
+// deleted: a later start finds it and deletes nothing, and a start that can't create it deletes nothing
+// either, so this build's own logs are never deleted. The number deleted, or -1 when nothing was tried.
+static int console_clear_old(void) {
+    char path[PATH_MAX];
+    snprintf(path, sizeof path, "%s/Library/spconsole-cleared", getenv("HOME"));
+    int mark = ((int (*)(const char *, int, ...))real("open"))(path, O_WRONLY | O_CREAT | O_EXCL, 0644);
+    if (mark < 0) return -1;
+    close(mark);
+    int (*unlink_fn)(const char *) = real("unlink");
+    int n = 0;
+    for (int i = 0; i <= 5; i++) {
+        snprintf(path, sizeof path, i ? "%s/Documents/spconsole.%d.log" : "%s/Documents/spconsole.log", getenv("HOME"), i);
+        if (unlink_fn(path) == 0) n++;
+    }
+    return n;
+}
+
 static void console_tee_start(void) {
     char path[PATH_MAX];
     char from[PATH_MAX];
+    int cleared = console_clear_old();
     for (int i = 4; i >= 0; i--) {
         snprintf(from, sizeof from, i ? "%s/Documents/spconsole.%d.log" : "%s/Documents/spconsole.log", getenv("HOME"), i);
         snprintf(path, sizeof path, "%s/Documents/spconsole.%d.log", getenv("HOME"), i + 1);
@@ -1336,6 +1358,7 @@ static void console_tee_start(void) {
     pthread_t t;
     pthread_create(&t, NULL, console_tee, (void *)(intptr_t)fds[0]);
     pthread_detach(t);
+    if (cleared >= 0) vlog("console: deleted %d log(s) from before typed keys were left out\n", cleared);
 }
 
 // Logs the app's memory footprint (what jetsam counts) and what's left before its limit, every

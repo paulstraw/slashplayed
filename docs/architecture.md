@@ -1112,7 +1112,9 @@ Heat is the main limit on session length on the headset. Measured with the shim'
 
 On the device the libSystem shim copies stderr to `Documents/spconsole.log` (older launches rotate
 to `spconsole*.log`, five kept, with a clock time per line); devicectl's `--console` capture isn't reliable,
-and a launch from the home screen has none. The launcher loads that shim first thing, so the log covers
+and a launch from the home screen has none. Older builds logged every key with what it typed, so the
+first start of a build that doesn't deletes every log kept from before, once (`Library/spconsole-cleared`
+marks it done), before this launch's log is opened. The launcher loads that shim first thing, so the log covers
 the whole launch, the JIT helper and the pairing screen included, not only the client. The companion keeps its
 own logs in `~/Library/Logs/Slashplayed/`, pulls the device's logs and crash and jetsam reports, and
 Export Diagnostics zips them with launch credential values, device identifiers (UDIDs, serial numbers,

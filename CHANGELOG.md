@@ -30,7 +30,8 @@ All notable changes to Slashplayed are documented here. The format is based on
   copy again.
 - What you type on a hardware keyboard, such as a password or authenticator code in the game's own
   login screen, no longer goes into the device log that Pull Device Logs fetches. The log still notes
-  keys that don't type text, such as Shift, Return, and the arrows, and clicks.
+  keys that don't type text, such as Shift, Return, and the arrows, and clicks. The first start after
+  this update deletes the device logs kept from before it, which could hold what was typed then.
 
 ### Known issues
 
