@@ -928,6 +928,11 @@ and scroll events and `NSTextInputClient`), with no event taps. `spevent.m`:
   mouselook. No button goes down until the window closes (a press can't be taken back), so a left click
   waits out the window. The press is at the leftmost finger, or the rightmost with Settings > Touch.
   With Accessibility Zoom on, iOS holds three-finger touches about half a second before the app gets them.
+- **Touch edit menu (iPhone and iPad).** Two fingers held still for half a second open iOS's edit menu
+  (`UIEditMenuInteraction`) as they lift, with Copy and Paste; the chord's right press is unchanged. The
+  game can't say when an edit box has focus, so the gesture is the only signal. Copy presses Cmd+C. Paste
+  is the system's own, so it reads the clipboard with no "Allow Paste" prompt; the shim keeps that text for
+  the game's read while the clipboard is unchanged, then presses Cmd+V, so the game's own paste runs.
 - **Mouselook.** The client hides the cursor, dissociates it from the mouse and reads drag deltas. The
   CoreGraphics shim's cursor calls go to the AppKit shim; while dissociated, deltas come from
   `GCMouse`'s raw movement and the position stays put. iPadOS honours pointer lock, so it's on by

@@ -92,6 +92,7 @@ static SPEvent *sp_current_event;
 static NSMutableArray *sp_local_monitors;  // [mask, handler] pairs
 static int sp_logged_events;
 static void sp_touchpad_poll(void);  // sptouchpad.m: touchpad swipes as F16-F19
+static void sp_clipboard_keep_paste(void);  // spclipboard.m: the edit menu's Paste, read with no prompt
 
 // UIKit points in the scene window <-> AppKit points in the client's window. A point in the strip beside
 // the game converts to one outside the window (x < 0 or past its width), as on a Mac.
@@ -279,6 +280,35 @@ static void sp_key(UIKey *key, BOOL down) {
     } else if (sp_repeat_key && sp_repeat_key->keyCode == mac) {
         sp_repeat_key = nil;
     }
+}
+
+// Command+<key> pressed as a hardware keyboard presses it, so the game's own shortcut runs (the touch edit
+// menu's Paste is its Cmd+V). The key and Command come up a moment later, as a real press's do, so the
+// game sees them held whether it reads the events' flags or +[NSEvent modifierFlags] while it handles
+// them. A Command already held (a hardware keyboard's) is left as it is.
+static void sp_post_command_key(unsigned short mac, NSString *chars) {
+    BOOL held = sp_mod_flags & SPCommand;
+    if (!held) {
+        sp_set_modifier(SPCommand, SPDevLCmd, YES);
+        SPEvent *e = sp_event(SPFlagsChanged);
+        e->keyCode = 0x37;
+        sp_post(e);
+    }
+    SPEvent *down = sp_event(SPKeyDown);
+    down->keyCode = mac;
+    down->characters = down->charactersIgnoringModifiers = chars;
+    sp_post(down);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        SPEvent *up = sp_event(SPKeyUp);
+        up->keyCode = mac;
+        up->characters = up->charactersIgnoringModifiers = chars;
+        sp_post(up);
+        if (held) return;
+        sp_set_modifier(SPCommand, SPDevLCmd, NO);
+        SPEvent *flags = sp_event(SPFlagsChanged);
+        flags->keyCode = 0x37;
+        sp_post(flags);
+    });
 }
 
 static void sp_key_repeats(void) {
@@ -608,7 +638,7 @@ static void sp_pointer_lock_update(void) {
 
 // ---- the UIKit side: the scene's root view collects input
 
-@interface SPInputView : UIView <UIPointerInteractionDelegate>
+@interface SPInputView : UIView <UIPointerInteractionDelegate, UIEditMenuInteractionDelegate>
 @end
 
 // An iPhone's mouse goes through AssistiveTouch, and there neither UIKit nor GCMouse has every button
@@ -671,6 +701,23 @@ static double sp_chord_window(void) {
     if (w < 0) w = (getenv("SP_CHORD_MS") ? atof(getenv("SP_CHORD_MS")) : 50) / 1000;
     return w;
 }
+
+// ---- the touch edit menu (iPhone and iPad)
+//
+// With no hardware keyboard there's no Cmd+V or Cmd+C, so a gesture opens iOS's edit menu with Paste and
+// Copy. The game's view can't say when an edit box has focus (its selectedRange and
+// firstRectForCharacterRange: answer the same however its boxes are used, and it never asks for an input
+// context), so the gesture is the only signal. The menu's Paste is the system's, so its paste: reads the
+// clipboard with no "Allow Paste" prompt (spclipboard.m keeps the text), then presses Cmd+V for the game's
+// own paste; Copy presses Cmd+C, and the game writes the clipboard itself.
+//
+// The gesture is two fingers held still for half a second, the menu opening as they lift. It rides on the
+// chord rather than taking a finger count of its own, since each count already presses a button players
+// bind (a three-finger tap's middle click can be an autowalk toggle): the right button still goes down
+// at once and comes up at the lift, and a right press held that long without a move didn't interact
+// with an NPC under it (Anniversary, iPhone 16 Pro): only the menu came up.
+// The menu opens at the lift rather than during the hold, so a still moment in a two-finger mouselook
+// doesn't bring it up while the fingers are down, and any move past a tap's slop cancels it.
 #endif
 
 @implementation SPInputView {
@@ -683,6 +730,12 @@ static double sp_chord_window(void) {
     UIEventButtonMask _mask;              // the buttons reported down
     CGPoint _scroll_last;
     BOOL _hover_in_game;                  // the hover is over the game, and entered it
+    UIEditMenuInteraction *_edit_menu;
+    UITouch *_press;                      // the first finger of the fingers down, for the edit menu's gesture
+    NSTimeInterval _press_at;             // when it landed
+    CGPoint _press_start;                 // where (UIKit)
+    NSUInteger _press_fingers;            // fingers that landed while it was down, it included
+    BOOL _press_moved;                    // it moved past a tap's slop
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -731,6 +784,10 @@ static double sp_chord_window(void) {
     sp_cursor_view.layer.zPosition = 2000;
     [self addSubview:sp_cursor_view];
     if (!getenv("SP_CURSOR_SYSTEM")) [self addInteraction:[[UIPointerInteraction alloc] initWithDelegate:self]];
+#if !TARGET_OS_VISION
+    _edit_menu = [[UIEditMenuInteraction alloc] initWithDelegate:self];
+    [self addInteraction:_edit_menu];
+#endif
     [NSNotificationCenter.defaultCenter addObserverForName:UIPointerLockStateDidChangeNotification object:nil queue:nil
                                                 usingBlock:^(NSNotification *n) {
         UIScene *scene = n.userInfo[UIPointerLockStateSceneUserInfoKey];
@@ -758,6 +815,76 @@ static double sp_chord_window(void) {
 // behind the fingers. Nothing here can opt out of that; Settings > Touch says so.
 - (UIEditingInteractionConfiguration)editingInteractionConfiguration {
     return UIEditingInteractionConfigurationNone;
+}
+
+// p: UIKit, in this view.
+- (void)sp_show_edit_menu:(CGPoint)p {
+    static int logged;
+    if (logged++ < 20) sp_stub_log("input: edit menu shown");
+    [self becomeFirstResponder];
+    [_edit_menu presentEditMenuWithConfiguration:[UIEditMenuConfiguration configurationWithIdentifier:nil sourcePoint:p]];
+}
+
+// The system's own commands, whichever this view answers for: Copy, and Paste when the clipboard holds
+// text. Copy is always offered, since nothing says whether the game has a selection.
+- (UIMenu *)editMenuInteraction:(UIEditMenuInteraction *)interaction
+           menuForConfiguration:(UIEditMenuConfiguration *)configuration
+               suggestedActions:(NSArray<UIMenuElement *> *)suggested {
+    return [UIMenu menuWithChildren:suggested];
+}
+
+- (BOOL)canPerformAction:(SEL)action withSender:(id)sender {
+    if (action == @selector(paste:)) return UIPasteboard.generalPasteboard.hasStrings;  // asks nothing
+    if (action == @selector(copy:)) return YES;
+    return [super canPerformAction:action withSender:sender];
+}
+
+// A Command held is a hardware keyboard's Cmd+V or Cmd+C, should the system ever route one here: the game
+// has that press already, so Paste only keeps the text and Copy does nothing.
+- (void)paste:(id)sender {
+    sp_clipboard_keep_paste();
+    static int logged;
+    if (logged++ < 5) sp_stub_log(sp_mod_flags & SPCommand ? "input: paste: with Command held" : "input: paste: (Cmd+V)");
+    if (!(sp_mod_flags & SPCommand)) sp_post_command_key(0x09, @"v");
+}
+
+- (void)copy:(id)sender {
+    static int logged;
+    if (logged++ < 5) sp_stub_log("input: copy: (Cmd+C)");
+    if (!(sp_mod_flags & SPCommand)) sp_post_command_key(0x08, @"c");
+}
+
+// The edit menu's gesture: a finger that's the only touch starts it, fingers landing while it's down join
+// (a pointer's touch, a pencil, or an AssistiveTouch click ends it).
+// t: just added to _touches.
+- (void)sp_press_began:(UITouch *)t {
+    if (!sp_finger(t)) {
+        _press = nil;
+    } else if (_touches.count == 1) {
+        _press = t;
+        _press_at = t.timestamp;
+        _press_start = [t locationInView:self];
+        _press_fingers = 1;
+        _press_moved = NO;
+    } else if (_press) {
+        _press_fingers++;
+    }
+}
+
+- (void)sp_press_moved:(NSSet<UITouch *> *)touches {
+    if (!_press || ![touches containsObject:_press]) return;
+    CGPoint p = [_press locationInView:self];
+    if (hypot(p.x - _press_start.x, p.y - _press_start.y) > 10) _press_moved = YES;
+}
+
+// When the last finger lifts: two fingers, still, for 0.5 s or more.
+- (void)sp_press_ended:(NSSet<UITouch *> *)touches {
+    if (!_press || _touches.count) return;
+    NSTimeInterval held = touches.anyObject.timestamp - _press_at;
+    BOOL show = !_press_moved && _press_fingers == 2 && held >= 0.5;
+    CGPoint at = [_press locationInView:self];
+    _press = nil;
+    if (show) [self sp_show_edit_menu:at];
 }
 #endif
 
@@ -895,6 +1022,7 @@ static double sp_chord_window(void) {
         }
         [_touches addObject:t];
 #if !TARGET_OS_VISION
+        [self sp_press_began:t];
         // A chord starts with a finger that's the only touch, and takes fingers until it's resolved.
         if (sp_finger(t) && (_chord.count || _touches.count == 1)) {
             [_chord addObject:t];
@@ -989,6 +1117,9 @@ static double sp_chord_window(void) {
 
 - (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     if (!_touches.count || ![touches intersectsSet:[NSSet setWithArray:_touches]]) return;
+#if !TARGET_OS_VISION
+    [self sp_press_moved:touches];
+#endif
     if (_chord.count) return;  // the press, and the moves after it, wait for the chord (sp_chord_resolve)
     UITouch *mover = [self sp_mover:touches];
     CGPoint p = [touches containsObject:mover] ? [self sp_location:mover] : sp_pointer;
@@ -1004,6 +1135,9 @@ static double sp_chord_window(void) {
     CGPoint p = _touches.count > touches.count ? sp_pointer : [self sp_location:[self sp_mover:touches]];
     [self sp_remove:touches];
     [self sp_buttons:[self sp_mask:event touches:touches] at:p];
+#if !TARGET_OS_VISION
+    [self sp_press_ended:touches];
+#endif
 }
 
 // When the last touch is cancelled, buttons it had down stay down while GCMouse says they're held (it
@@ -1011,6 +1145,9 @@ static double sp_chord_window(void) {
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     CGPoint p = [self sp_location:[self sp_mover:touches]];
     [self sp_remove:touches];
+#if !TARGET_OS_VISION
+    _press = nil;
+#endif
     if (_touches.count) {
         [self sp_buttons:[self sp_mask:event touches:touches] at:sp_pointer];
         return;

@@ -13,8 +13,9 @@
 // drawing until it's given (its sound plays on). It asks once per copy: the same copy read again, and
 // text this app put there (the game's own copy), never ask; nor do hasStrings, types, and changeCount,
 // which the client polls about every frame once +generalPasteboard answers. A paste the person starts
-// through the system wouldn't ask, but on an iPhone (a 16 Pro, Nov 2026) the game view's paste: never
-// came for Cmd+V, from the system's shortcut or a UIKeyCommand of its own, while it takes the key presses.
+// through the system doesn't ask: the touch edit menu's Paste (spevent.m) is one. A hardware Cmd+V isn't,
+// here: on an iPhone (a 16 Pro, Nov 2026) the game view's paste: never came for it, from the system's
+// shortcut or a UIKeyCommand of its own, while it takes the key presses.
 //
 // Nothing here logs the clipboard's text or its length: chat, the authenticator code, and a password can
 // all go through it. Only that a read or write happened, once each.
@@ -29,8 +30,31 @@ static void sp_clipboard_say(const char *what) {
     if (!atomic_flag_test_and_set(&once)) sp_clipboard_say(what); \
 } while (0)
 
+// The touch edit menu's Paste (spevent.m's paste:) is a paste the person started through the system, so
+// its read doesn't prompt. The text is kept for the Cmd+V that paste: posts, which the game answers by
+// reading here, and for any later read of the same copy (changeCount unchanged), which would otherwise
+// prompt again; a new copy, the game's own included, changes the count and drops it.
+static NSString *sp_pb_kept;
+static NSInteger sp_pb_kept_count;
+
+static void sp_clipboard_keep_paste(void) {
+    UIPasteboard *pb = UIPasteboard.generalPasteboard;
+    sp_pb_kept = pb.string;
+    sp_pb_kept_count = pb.changeCount;
+    SP_CLIPBOARD_ONCE("the edit menu's Paste read the clipboard");
+}
+
+// Which way each read goes is logged (reads come once per paste, not per frame): the edit menu's text, or
+// the clipboard itself because nothing was kept or the copy changed since.
 static NSString *sp_pb_read(void) {
-    SP_CLIPBOARD_ONCE("the game read the clipboard");
+    static int logged;
+    BOOL kept = sp_pb_kept && UIPasteboard.generalPasteboard.changeCount == sp_pb_kept_count;
+    if (logged++ < 20)
+        sp_clipboard_say(kept ? "the game read the edit menu's paste"
+                         : sp_pb_kept ? "the game read the clipboard (a new copy since the edit menu's paste)"
+                                      : "the game read the clipboard");
+    if (kept) return sp_pb_kept;
+    sp_pb_kept = nil;
     return UIPasteboard.generalPasteboard.string;
 }
 
