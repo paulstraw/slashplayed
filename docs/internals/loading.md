@@ -9,8 +9,8 @@ The client rewrites its own code at startup: it makes regions of its own `__TEXT
 new code there, and makes them executable again. On macOS that's ordinary. On M2-era devices running
 visionOS 26+/iPadOS 26+, the Trusted Execution Monitor (TXM) decides what may execute, and no
 certificate a third party can get grants `MAP_JIT` there. The M1 iPads predate TXM (the Page
-Protection Layer, PPL, enforces code signing there instead), and the path below hasn't been run on
-one: it's expected to work, but M1 iPads are allowed as untested (`Device.isUntestedIPad`).
+Protection Layer, PPL, enforces code signing there instead), and the path below runs on them too, as
+players have found.
 
 What does work, on visionOS 27 and iPadOS 26 alike (measured in `research/jittest`):
 
