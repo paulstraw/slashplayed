@@ -198,7 +198,9 @@ and scroll events and `NSTextInputClient`), with no event taps. `spevent.m`:
   later (iOS 27.2.1). The keyboard belongs to a hidden `UITextInput` view
   over a buffer of what was typed; after each change the game gets Backspaces back to where the buffer
   and what it was sent differ, then the rest as key presses (unlogged), so autocorrect and dictation end
-  with the box holding the same text. A full `UITextInput` gets the keyboard's mic key; the app itself
+  with the box holding the same text. Its beginning sorts before the buffer's first character, since
+  the box may hold text from before the buffer: UIKit stops a held Delete's repeat once the caret is at
+  the beginning. A full `UITextInput` gets the keyboard's mic key; the app itself
   never asks for the microphone. On an iPhone the input view's transform magnifies the box (2x, or less
   to fit its width) above the keyboard, and UIKit maps touches through it. The menu's Keyboard brings the
   keyboard up for the focused box, presses Return when none has focus (opening chat), and with no strip

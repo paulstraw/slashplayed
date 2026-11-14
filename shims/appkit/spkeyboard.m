@@ -201,6 +201,7 @@ static void sp_keyboard_rotation(BOOL starting) {
 
 @interface SPTextPosition : UITextPosition
 @property (nonatomic) NSUInteger offset;
+@property (nonatomic) BOOL start;  // beginningOfDocument's: see comparePosition:
 @end
 @implementation SPTextPosition
 @end
@@ -475,6 +476,7 @@ static NSRange sp_kb_clamp(NSRange r, NSUInteger len) {
 - (UITextPosition *)beginningOfDocument {
     SPTextPosition *p = [[SPTextPosition alloc] init];
     p.offset = 0;
+    p.start = YES;
     return p;
 }
 
@@ -507,7 +509,13 @@ static NSRange sp_kb_clamp(NSRange r, NSUInteger len) {
     return position;
 }
 
+// The document's beginning comes before the buffer's offset 0: the game's box may hold text before the
+// buffer (the buffer starts empty at every Return and touch), so the caret is never at the start. A held
+// Delete's repeat stops once the caret compares the same as beginningOfDocument (UIKit's
+// _selectionAtDocumentStart, iOS 26.5's), which at offset 0 left a held Delete one Backspace.
 - (NSComparisonResult)comparePosition:(UITextPosition *)position toPosition:(UITextPosition *)other {
+    BOOL s = ((SPTextPosition *)position).start, t = ((SPTextPosition *)other).start;
+    if (s != t) return s ? NSOrderedAscending : NSOrderedDescending;
     NSUInteger a = ((SPTextPosition *)position).offset, b = ((SPTextPosition *)other).offset;
     return a < b ? NSOrderedAscending : a > b ? NSOrderedDescending : NSOrderedSame;
 }
