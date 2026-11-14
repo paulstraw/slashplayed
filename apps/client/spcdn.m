@@ -835,8 +835,10 @@ NSDictionary<NSString *, NSString *> *sp_game_region(NSString *product, BOOL dev
     NSString *infoBranch = info[@"Branch"].lowercaseString, *stampBranch = stamped[@"Branch"].lowercaseString;
     if (!device) {
         // The Mac's: its .build.info row (the companion sends it again at every sync), else the image's stamp.
+        // With neither, nothing says the region: "default", which Config.wtf doesn't follow (sp_config_with_region).
         if (is_region(infoBranch)) return from(infoBranch, info[@"Tags"], @"mac");
-        return from(is_region(stampBranch) ? stampBranch : @"us", nil, @"mac");
+        if (is_region(stampBranch)) return from(stampBranch, nil, @"mac");
+        return from(@"us", nil, @"default");
     }
     NSDictionary<NSString *, NSString *> *chosen = sp_table_row(regionFile, @"Product", product);
     if ([sp_regions() containsObject:chosen[@"Region"]] && chosen[@"Text"].length) {
@@ -882,8 +884,7 @@ NSString *sp_table_with(NSString *text, NSString *product, NSDictionary<NSString
     return changed ? [lines componentsJoinedByString:@"\n"] : nil;
 }
 
-NSString *sp_config_with_region(NSString *config, NSDictionary<NSString *, NSString *> *choice, BOOL follow,
-                                NSArray<NSString *> **set) {
+NSString *sp_config_with_region(NSString *config, NSDictionary<NSString *, NSString *> *choice, NSArray<NSString *> **set) {
     NSString *text = config ?: @"";
     NSArray<NSArray<NSString *> *> *cvars = @[@[@"portal", choice[@"Region"]], @[@"textLocale", choice[@"Text"]],
                                               @[@"audioLocale", choice[@"Speech"]]];
@@ -895,10 +896,12 @@ NSString *sp_config_with_region(NSString *config, NSDictionary<NSString *, NSStr
         NSTextCheckingResult *last = [re matchesInString:text options:0 range:NSMakeRange(0, text.length)].lastObject;
         return last ? [text substringWithRange:[last rangeAtIndex:1]] : nil;
     };
-    // The device's region moved (Settings) since the game last ran: the portal and both languages go with
-    // it, since the old languages are the old region's. Otherwise a value set stays (a language picked in
-    // the game's own options, or the Mac's), and only a missing or empty one is filled.
+    // The region moved since the game last ran (Settings, or Battle.net on the Mac), or the portal never was the
+    // region (an older companion's first Config.wtf said "us" whatever the Mac's region, issue #94): the portal
+    // and both languages go with it, since the old languages are the old portal's. Otherwise a value set stays
+    // (a language picked in the game's own options), and only a missing or empty one is filled.
     NSString *portal = value(@"portal");
+    BOOL follow = ![choice[@"Source"] isEqual:@"default"];
     BOOL moved = follow && portal.length && ![portal.lowercaseString isEqual:choice[@"Region"]];
     NSMutableArray<NSString *> *names = [NSMutableArray array];
     for (NSArray<NSString *> *cvar in cvars) {

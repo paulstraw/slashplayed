@@ -149,10 +149,12 @@ NSString *_Nullable sp_table_with(NSString *_Nullable text, NSString *product, N
 // Config.wtf with the game's region and languages (`choice`: sp_game_region) as portal, textLocale, and
 // audioLocale. Started by Battle.net the client takes them from its launch options, which nothing writes on
 // the device, and with neither it opens a region picker the device can't show and exits. A missing or empty
-// one is always set. With `follow` (the device decides the region) and a portal that isn't the region, the
-// region was changed in Settings: all three are replaced. Otherwise a value set stays (a language picked in
-// the game's options, or the Mac's). *set: the names set (empty for none).
-NSString *sp_config_with_region(NSString *_Nullable config, NSDictionary<NSString *, NSString *> *choice, BOOL follow,
+// one is always set. With a portal that isn't the region, the region moved (Settings, or Battle.net on the
+// Mac), or the portal was never the region (the first Config.wtf an older companion sent said "us" whatever the
+// Mac's region, issue #94): all three are replaced, unless nothing said the region (its Source "default", a Mac
+// game whose row and stamp have none). Otherwise a value set stays (a language picked in the game's options).
+// *set: the names set (empty for none).
+NSString *sp_config_with_region(NSString *_Nullable config, NSDictionary<NSString *, NSString *> *choice,
                                 NSArray<NSString *> *_Nullable *_Nonnull set);
 
 // ---- The game's client in Library/spgames (launcher.m, sppatch.m)

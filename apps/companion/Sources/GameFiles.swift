@@ -526,12 +526,30 @@ enum GameFiles {
         // The region and locale the Battle.net launcher would set, only if the device has no Config.wtf.
         if onDevice["\(folder)/WTF/Config.wtf"] == nil {
             let url = try staging("Config-\(flavor.rawValue).wtf")
-            try "SET portal \"us\"\nSET textLocale \"enUS\"\nSET audioLocale \"enUS\"\n".write(to: url, atomically: true, encoding: .utf8)
+            try firstConfig(region: flavor.region, tags: flavor.tags).write(to: url, atomically: true, encoding: .utf8)
             consider(url, "\(folder)/WTF/Config.wtf", false)
         }
         // Not the addons: the device app carries them (ClientAssembly.addonFiles), and its launcher puts them
         // in the game's folder before each start (apps/client/spcdn.m's sp_addons_place), so a game the
         // device installed itself has them too.
+    }
+
+    /// A game's first Config.wtf on the device: the Mac install's region (its row's Branch, Flavor.region) as the
+    /// portal, and its row's text and speech locales (Flavor.tags), as the launcher reads them for a game the Mac
+    /// copied (spcdn.m's sp_game_region). Without Battle.net the client signs in to the portal's account server,
+    /// so a fixed "us" sent a Mac in Europe's game to the Americas, where its account may have no game (issue #94).
+    /// Europe's English is enUS: the clients have no enGB (issue #88).
+    static func firstConfig(region: String, tags: String) -> String {
+        var locales: [String: String] = [:]
+        for group in tags.split(separator: ":") {
+            let words = group.split(separator: " ").map(String.init)
+            guard let kind = words.last(where: { $0 == "text?" || $0 == "speech?" }),
+                  let locale = words.first(where: { $0.wholeMatch(of: /[a-z]{2}[A-Z]{2}/) != nil }) else { continue }
+            locales[kind] = locale == "enGB" ? "enUS" : locale
+        }
+        let text = locales["text?"] ?? locales["speech?"] ?? ["kr": "koKR", "tw": "zhTW"][region] ?? "enUS"
+        let speech = locales["speech?"] ?? text
+        return "SET portal \"\(region)\"\nSET textLocale \"\(text)\"\nSET audioLocale \"\(speech)\"\n"
     }
 
     // MARK: Files

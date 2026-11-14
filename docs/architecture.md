@@ -297,8 +297,9 @@ dyld doesn't list it; the shims' own crash and stall stacks name it.
    (`apps/client/flavors.plist`, which `scripts/flavor.sh` and the companion read too). Every launch
    makes sure the game's `Config.wtf` has its region and languages (`portal`, `textLocale`,
    `audioLocale`), from the game's region ([below](#a-games-region)), adding missing ones and replacing
-   empty ones (and, for a game the device decides the region of, replacing all three once Settings has
-   moved it to another region): started by Battle.net, the client takes them from Battle.net's launch options, which
+   empty ones (and replacing all three when the portal isn't the game's region: Settings moved a game the
+   device decides, Battle.net on the Mac moved one it copied, or an older companion's first `Config.wtf`
+   said `us` whatever the Mac's region, issue #94): started by Battle.net, the client takes them from Battle.net's launch options, which
    nothing writes on the device, and with neither it opens a region picker the device can't show, exits,
    and saves the three empty, so every later launch would exit too. On a game's
    first launch on the device, it marks the intro movie as played in that game's `Config.wtf` (the
@@ -534,6 +535,8 @@ each start by `sp_game_region_now` in `launcher.m`). Who decides depends on wher
 - **A game the Mac copied** (`spsource` `mac`: the companion copied its client, and syncs the Mac's game
   data): the Mac does. Its `.build.info` row's Branch and Tags, which the companion sends again at every
   sync, else the client's stamp. Settings names the region and says to change it in Battle.net on the Mac.
+  The game's first `Config.wtf`, which the companion sends, says that row's region and languages
+  (`GameFiles.firstConfig`): without Battle.net the client signs in to its portal's account server.
 - **A game the device decides** (installed or updated here, so it has a region file, or with no game
   data yet, and not the Mac's): the device does,
   from `Library/spregion-<flavor>`, a one-row table of the region, its text and speech locales, and the
