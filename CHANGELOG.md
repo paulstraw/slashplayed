@@ -6,6 +6,8 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-14
+
 ### Added
 
 - Copy and paste in the game's chat and other text boxes: Cmd+V on a keyboard pastes your iPad's,
