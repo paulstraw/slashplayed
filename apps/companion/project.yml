@@ -146,7 +146,9 @@ targets:
       - Sources/TokenRelay.swift
       - Sources/UpdateGate.swift
       - Sources/USBLink.swift
-      # The launcher's CDN client and bind check (Foundation only), tested against BlizzardCDN and BindCheck.
+      # The launcher's CDN client and bind check (Foundation only), tested against BlizzardCDN and BindCheck,
+      # and its addon manager.
+      - ../client/spaddons.m
       - ../client/spbind.m
       - ../client/spcdn.m
       # spguest's own check of a client file, which spcdn.m's sp_slice_problem runs (the loader itself, and
