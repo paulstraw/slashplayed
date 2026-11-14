@@ -1,11 +1,12 @@
 # How Slashplayed works
 
 Slashplayed runs the unmodified Mac World of Warcraft clients on iPads with M1 or later and the A17 Pro
-iPad mini (iPadOS), the iPhone 15 Pro and later (iOS), and Apple Vision Pro (visionOS). It's a compatibility layer. The game's own arm64 code runs natively on the device, and a set
-of shim libraries stands in for the macOS frameworks it expects (AppKit, CoreGraphics, Carbon,
-CoreAudio, Security, and others), translating them to UIKit, RemoteIO, and friends. No game code is
-changed: the device loads Blizzard's arm64 client as it is, unsigned, with a loader of Slashplayed's
-own, and no game files ship with Slashplayed.
+iPad mini (iPadOS), the iPhone 15 Pro and later (iOS), and Apple Vision Pro (visionOS). It's a
+compatibility layer. The game's own arm64 code runs natively on the device, and a set of shim libraries
+stands in for the macOS frameworks it expects (AppKit, CoreGraphics, Carbon, CoreAudio, Security, and
+others), translating them to UIKit, RemoteIO, and friends. No game code is changed: the device loads
+Blizzard's arm64 client as it is, unsigned, with a loader of Slashplayed's own, and no game files ship
+with Slashplayed.
 
 This page is the overview. [The internals](internals/README.md) have each part in detail, and
 [research.md](research.md) has the experiments behind each technique.
