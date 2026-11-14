@@ -70,9 +70,10 @@ the owner asks for it.
 - `shims/`: hand-written shims (`appkit/`, `audio/`, `coregraphics/`, `ident/`, `security/`, `system/`)
   and `generated/` (`gen_stubs.py`'s output, committed, one set for both platforms; it `#include`s the
   hand-written files). `exports_manifest.py` writes `exports.json`, the bind check's manifest.
-- `addon/`: the in-game addons, `SPHover` (look highlights, headset only) and `SPMovie` (a tap opens a
-  cinematic's skip dialog, every device); `addon/test/test.sh` tests both (needs lua and cc; CI runs it
-  on Linux with Lua 5.1, the game's).
+- `addon/`: the in-game addons, `SPHover` (look highlights, headset only), `SPKeyboard` (the focused
+  text box, for the on-screen keyboard; iPad and iPhone only), and `SPMovie` (a tap opens a cinematic's
+  skip dialog, every device); `addon/test/test.sh` tests them (needs lua and cc; CI runs it on Linux with
+  Lua 5.1, the game's).
 - `scripts/`: `build-idevice.sh` (idevice from source at a pinned commit, Rust pinned: `macos` for the
   companion, `ios`/`xros` for the on-device JIT helper; into `work/idevice/`, with `<platform>/licenses/`),
   `fetch-font.sh` (Goodmountain, the start screen's and the site's face, OTF and woff2, and its license, at a
@@ -229,8 +230,9 @@ again (over an hour for Retail on the headset). Don't change it casually.
    PyYAML. Scratch goes to `work/regen/`.
 3. Review the `shims/generated/` diff. Generated stubs only log: an import the client really uses needs
    a hand-written implementation (`gen_stubs.py` `EXTRA_CODE` / `EXTRA_INCLUDES`).
-4. If the patch changed a game's version, set its `toc` in `flavors.plist` and in both addons' TOCs
-   (`addon/SPHover/SPHover.toc`, `addon/SPMovie/SPMovie.toc`), or the game flags them as out of date
+4. If the patch changed a game's version, set its `toc` in `flavors.plist` and in the addons' TOCs
+   (`addon/SPHover/SPHover.toc`, `addon/SPMovie/SPMovie.toc`, `addon/SPKeyboard/SPKeyboard.toc`), or the
+   game flags them as out of date
    (`TEST_RUNNER_SP_COMPARE_CDN=1` checks `flavors.plist` against the patch service; `FlavorTests`, the
    TOCs against it).
 5. Rebuild (`shims/build.sh`, `apps/companion/build.sh`), run the tests, try each affected flavor on a

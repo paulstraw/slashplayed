@@ -62,7 +62,7 @@ jobs:
       - name: Scrub and no-hardcoding checks
         run: scripts/check-tree.sh
 
-  # The addons against mock WoW APIs: SPHover through the shim's own pixel-strip decoder, SPMovie's
+  # The addons against mock WoW APIs: SPHover and SPKeyboard through the shim's own pixel-strip decoder, SPMovie's
   # tap (addon/test/test.sh). Lua 5.1, the version WoW embeds, so a 5.2+ idiom in an addon fails here
   # rather than in the game; the maintainer's Mac runs Homebrew's 5.4, so between them both are covered.
   # Not gated by changes: it takes seconds on Linux, and an ungated job never sits skipped.

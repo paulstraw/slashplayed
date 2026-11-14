@@ -1,11 +1,14 @@
 // Reads mockwow.lua's output on stdin, decodes the strip frames with the shim's decoder and checks
-// the rects against the expected ones. Exit 0 if the message decodes and matches.
+// the last message's rects against the expected ones. Exit 0 if it decodes and matches. argv[1]: the
+// frames' kind, W (SPHover's, the default) or K (SPKeyboard's); a frame of another kind fails. argv[2]:
+// how many messages there must be, if given.
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "../../shims/appkit/sphoverstrip.h"
 
-int main(void) {
+int main(int argc, char **argv) {
+    int kind = argc > 1 ? argv[1][0] : 'W';
     int want_n;
     if (scanf("expect %d\n", &want_n) != 1) return 2;
     sph_rect *want = calloc(want_n, sizeof *want);
@@ -14,17 +17,23 @@ int main(void) {
     static sph_assembler a;
     sph_reset(&a);
     static sph_rect got[SPH_MAX_RECTS];
-    int got_n = -1, frames = 0, valid = 0;
+    int got_n = -1, frames = 0, valid = 0, messages = 0;
     char line[SPH_BLOCKS + 8];
     while (fgets(line, sizeof line, stdin)) {
         uint8_t rgb[SPH_BLOCKS], frame[SPH_FRAME_BYTES];
         for (int i = 0; i < SPH_BLOCKS; i++) rgb[i] = line[i] - '0';
         frames++;
-        if (!sph_frame_from_blocks(rgb, frame)) continue;
+        int k = sph_frame_from_blocks(rgb, frame);
+        if (!k) continue;
+        if (k != kind) {
+            printf("FAIL: a frame of kind %c, expected %c\n", k, kind);
+            return 1;
+        }
         valid++;
         int n;
         if (sph_feed(&a, frame, got, &n) == SPH_MESSAGE) {
             got_n = n;
+            messages++;
             printf("message after %d frames: %d rects in %d chunks\n", frames, n, a.count);
         }
     }
@@ -45,6 +54,10 @@ int main(void) {
         }
     }
     if (bad) return 1;
+    if (argc > 2 && messages != atoi(argv[2])) {
+        printf("FAIL: %d messages, expected %s\n", messages, argv[2]);
+        return 1;
+    }
     printf("ok: %d rects match\n", want_n);
     return 0;
 }

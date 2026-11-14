@@ -64,7 +64,7 @@ for p in xros ios; do
     cp "$SRC"/icon/* "$APP/"
     sp_plist "$ROOT/apps/client/Info.plist" "$APP/Info.plist" @BUNDLE_ID@
     cp "$ROOT/apps/client/flavors.plist" "$APP/"
-    for a in SPMovie SPHover; do
+    for a in SPMovie SPHover SPKeyboard; do
       mkdir -p "$APP/addons/$a"
       cp "$ROOT/addon/$a/$a.toc" "$ROOT/addon/$a/$a.lua" "$APP/addons/$a/"
     done

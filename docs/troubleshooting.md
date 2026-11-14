@@ -558,8 +558,9 @@ jetsam reports). Export Diagnostics and file a bug if it repeats.
   or password Slashplayed saved. Open Slashplayed, tap the gear on its start screen, tap **Forget My
   Sign-In**, then **Sign In…**, and sign in again. (Typing them into the game's own login screen doesn't work: it fails
   with the same error even when they're right.)
-- **Stuck at the authenticator prompt**: the game asks for the code in its own window, and takes typing
-  only from a hardware keyboard. Connect one, type the code, and press Return.
+- **Stuck at the authenticator prompt**: the game asks for the code in its own window. On an iPad or
+  iPhone, hold two fingers still on the game for a moment, lift them, and tap **Keyboard**; on a Vision
+  Pro, connect a hardware keyboard. Type the code and press Return.
 - **"Unlock this iPad/iPhone, then open Slashplayed again"**: the saved sign-in is in the keychain,
   which can't be read while the device is locked (a launch from the companion with the device asleep).
 - **Using the Mac's Battle.net instead**: **Play with My Mac's Battle.net** in the menu by Play signs
@@ -612,16 +613,30 @@ To make it much less obtrusive, recolor it and turn off its border in
 Settings > Accessibility > Accessories > **Pointer Control**, which is listed only while the mouse is
 connected. Touch and a hardware keyboard work without AssistiveTouch.
 
-### No on-screen keyboard
+### The on-screen keyboard
 
-Tapping the chat box (or any text field) brings up no on-screen keyboard: the game takes typing only
-from a hardware keyboard, so chat, and an authenticator's code at sign-in, need one. Tested on the
-iPhone; a Bluetooth keyboard works, chat included. (Slashplayed's own screens, such as the sign-in
-screen, do get the on-screen keyboard.)
+On an iPad or iPhone with no hardware keyboard connected, the on-screen keyboard comes up when one of
+the game's text boxes takes focus: tap chat's speech bubble and choose **Say** (or another channel), or
+open any box the game puts up. It goes away when the box closes, such as when Return sends a chat line,
+and **Done** above it closes it any time. On an iPhone the game zooms onto the box while you type and
+goes back when the keyboard closes; taps land on what you see. The keyboard's microphone key dictates.
 
-On an iPad or iPhone you can paste instead: copy the text in another app, tap the game's text box, hold
-two fingers still on it for a moment, and lift them. Tap **Paste** in the menu that opens. The same
-menu's **Copy** copies what's selected in the box.
+To open chat without the speech bubble, or to bring the keyboard back after **Done**, hold two fingers
+still on the game for a moment and lift them, then tap **Keyboard** in the menu that opens. With no box
+open, that presses Return, which opens chat. On the login and character screens (an authenticator
+code), where the game says nothing about its boxes, **Keyboard** brings the keyboard up at the spot you
+held, and only **Done** closes it.
+
+Typing goes to the game as key presses, so the caret stays at the end of the box, an autocorrection is
+retyped there, and languages that compose their characters (Japanese, Chinese, Korean) reach the game
+only once each word is chosen.
+
+The same menu has **Paste**: copy the text in another app, open the game's text box, hold two fingers
+still on it for a moment, lift them, and tap **Paste**. **Copy** copies what's selected in the box.
+
+A Vision Pro has no on-screen keyboard in the game: chat, and an authenticator's code at sign-in, need a
+hardware keyboard there. (Slashplayed's own screens, such as the sign-in screen, do get the on-screen
+keyboard everywhere.)
 
 ### Closing the window
 

@@ -93,6 +93,7 @@ static NSMutableArray *sp_local_monitors;  // [mask, handler] pairs
 static int sp_logged_events;
 static void sp_touchpad_poll(void);  // sptouchpad.m: touchpad swipes as F16-F19
 static void sp_clipboard_keep_paste(void);  // spclipboard.m: the edit menu's Paste, read with no prompt
+static void sp_keyboard_rotation(BOOL starting);  // spkeyboard.m: the iPhone's zoom comes off for a turn
 
 // UIKit points in the scene window <-> AppKit points in the client's window. A point in the strip beside
 // the game converts to one outside the window (x < 0 or past its width), as on a Mac.
@@ -115,9 +116,14 @@ static SPEvent *sp_event(NSUInteger type) {
     return e;
 }
 
-static void sp_post(SPEvent *e) {
+// Unlogged: the on-screen keyboard's presses (spkeyboard.m), which are what was typed.
+static void sp_post_quiet(SPEvent *e) {
     if (!sp_events) sp_events = [NSMutableArray array];
     [sp_events addObject:e];
+}
+
+static void sp_post(SPEvent *e) {
+    sp_post_quiet(e);
     // Only the first events are logged, so a session's log stays small; a diagnosis that happens later
     // in a session (a key that stops working after login) needs more: SP_INPUT_LOG_MAX raises the cap,
     // 0 for none. The lines carry typed characters, chat included, so keep it to diagnosis runs.
@@ -633,6 +639,13 @@ static void sp_pointer_lock_update(void) {
 - (UIRectEdge)preferredScreenEdgesDeferringSystemGestures {
     return UIRectEdgeAll;
 }
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)c {
+    sp_keyboard_rotation(YES);
+    [super viewWillTransitionToSize:size withTransitionCoordinator:c];
+    [c animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> ctx) {
+        sp_keyboard_rotation(NO);
+    }];
+}
 #endif
 @end
 
@@ -640,6 +653,14 @@ static void sp_pointer_lock_update(void) {
 
 @interface SPInputView : UIView <UIPointerInteractionDelegate, UIEditMenuInteractionDelegate>
 @end
+
+#if !TARGET_OS_VISION
+// spkeyboard.m: the on-screen keyboard, for the focused box or the edit menu's Keyboard.
+static void sp_keyboard_menu(CGPoint at);
+static void sp_keyboard_focus(BOOL known, CGRect box);  // sphover.m: from the SPKeyboard addon's strip
+static BOOL sp_keyboard_up(void);
+static void sp_keyboard_forget(void);
+#endif
 
 // An iPhone's mouse goes through AssistiveTouch, and there neither UIKit nor GCMouse has every button
 // right. A left click is a touch of its own, a finger's type, and those are right; GCMouse learns of
@@ -707,9 +728,12 @@ static double sp_chord_window(void) {
 // With no hardware keyboard there's no Cmd+V or Cmd+C, so a gesture opens iOS's edit menu with Paste and
 // Copy. The game's view can't say when an edit box has focus (its selectedRange and
 // firstRectForCharacterRange: answer the same however its boxes are used, and it never asks for an input
-// context), so the gesture is the only signal. The menu's Paste is the system's, so its paste: reads the
-// clipboard with no "Allow Paste" prompt (spclipboard.m keeps the text), then presses Cmd+V for the game's
-// own paste; Copy presses Cmd+C, and the game writes the clipboard itself.
+// context), so the gesture is the signal (and in game, for the keyboard, the SPKeyboard addon's strip:
+// spkeyboard.m). The menu's Paste is the system's, so its paste: reads the clipboard with no "Allow
+// Paste" prompt (spclipboard.m keeps the text), then presses Cmd+V for the game's own paste; Copy presses
+// Cmd+C, and the game writes the clipboard itself. Keyboard brings up the system keyboard, which types
+// into the game (spkeyboard.m); with a hardware keyboard connected, or the keyboard already up, it's left
+// out.
 //
 // The gesture is two fingers held still for half a second, the menu opening as they lift. It rides on the
 // chord rather than taking a finger count of its own, since each count already presses a button players
@@ -821,16 +845,21 @@ static double sp_chord_window(void) {
 - (void)sp_show_edit_menu:(CGPoint)p {
     static int logged;
     if (logged++ < 20) sp_stub_log("input: edit menu shown");
-    [self becomeFirstResponder];
+    if (!sp_keyboard_up()) [self becomeFirstResponder];  // the keyboard's view would close it
     [_edit_menu presentEditMenuWithConfiguration:[UIEditMenuConfiguration configurationWithIdentifier:nil sourcePoint:p]];
 }
 
 // The system's own commands, whichever this view answers for: Copy, and Paste when the clipboard holds
-// text. Copy is always offered, since nothing says whether the game has a selection.
+// text. Copy is always offered, since nothing says whether the game has a selection. Then Keyboard, with
+// the menu's point, where the iPhone's zoom centers when no box's focus is known.
 - (UIMenu *)editMenuInteraction:(UIEditMenuInteraction *)interaction
            menuForConfiguration:(UIEditMenuConfiguration *)configuration
                suggestedActions:(NSArray<UIMenuElement *> *)suggested {
-    return [UIMenu menuWithChildren:suggested];
+    if (sp_keyboard_up() || GCKeyboard.coalescedKeyboard) return [UIMenu menuWithChildren:suggested];
+    CGPoint at = configuration.sourcePoint;
+    UIAction *keyboard = [UIAction actionWithTitle:@"Keyboard" image:[UIImage systemImageNamed:@"keyboard"]
+                                        identifier:nil handler:^(UIAction *a) { sp_keyboard_menu(at); }];
+    return [UIMenu menuWithChildren:[suggested arrayByAddingObject:keyboard]];
 }
 
 - (BOOL)canPerformAction:(SEL)action withSender:(id)sender {
@@ -843,6 +872,7 @@ static double sp_chord_window(void) {
 // has that press already, so Paste only keeps the text and Copy does nothing.
 - (void)paste:(id)sender {
     sp_clipboard_keep_paste();
+    sp_keyboard_forget();  // the box gains text the keyboard's buffer doesn't hold
     static int logged;
     if (logged++ < 5) sp_stub_log(sp_mod_flags & SPCommand ? "input: paste: with Command held" : "input: paste: (Cmd+V)");
     if (!(sp_mod_flags & SPCommand)) sp_post_command_key(0x09, @"v");
@@ -1022,6 +1052,7 @@ static double sp_chord_window(void) {
         }
         [_touches addObject:t];
 #if !TARGET_OS_VISION
+        sp_keyboard_forget();  // the box typed in may have lost focus, or another have it
         [self sp_press_began:t];
         // A chord starts with a finger that's the only touch, and takes fingers until it's resolved.
         if (sp_finger(t) && (_chord.count || _touches.count == 1)) {

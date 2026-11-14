@@ -41,7 +41,9 @@ each zone needs while the game is on screen.
 
 The first time, Slashplayed asks for your **Battle.net email and password**. It keeps them in the
 device's keychain (that device only, never synced) and signs the game in with them at every start.
-If your account has an authenticator, type its code on the hardware keyboard. To sign in with another
+If your account has an authenticator, type its code on a hardware keyboard, or on an iPad or iPhone,
+the on-screen keyboard: hold two fingers still on the game for a moment, lift them, and tap
+**Keyboard**. To sign in with another
 account, tap **Forget My Sign-In** in Settings on Slashplayed's start screen (the gear).
 
 If the device's sign-in stops working and the game is installed on the Mac, **Play with My Mac's
@@ -128,9 +130,9 @@ update". If no update is out, the companion's **Report It…** opens a pre-fille
 - **LocalDevVPN has to be on at every start.** Slashplayed's helper attaches to the game for a second
   or two to prepare its code, and reaches the device's developer services through LocalDevVPN. If
   it's off, Slashplayed opens LocalDevVPN and starts the game once it's on.
-- **No on-screen keyboard in the game.** Chat and authenticator codes need a hardware keyboard, or on an
-  iPad or iPhone, Paste from a two-finger hold.
-  [Details](troubleshooting.md#no-on-screen-keyboard).
+- **The game's on-screen keyboard is on an iPad or iPhone only.** On a Vision Pro, chat and
+  authenticator codes need a hardware keyboard.
+  [Details](troubleshooting.md#the-on-screen-keyboard).
 - **A mouse on an iPhone needs AssistiveTouch** for its cursor.
   [Details](troubleshooting.md#no-cursor-with-a-mouse-on-an-iphone).
 - **No intro movie on a game's first launch.** On an empty device the intro never plays, so

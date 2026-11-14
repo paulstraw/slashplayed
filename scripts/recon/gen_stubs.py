@@ -321,10 +321,11 @@ EXTRA_INCLUDES = {
     # UIKit app and scene, sharing the main thread with the client's loop; window geometry over it;
     # bitmap/image/cursor objects for the client's cursor images; input events from UIKit; play-session
     # stats; the loading screen until the client's first frame; look highlights; the clipboard; touchpad
-    # swipes as F16-F19.
+    # swipes as F16-F19; the on-screen keyboard.
     "AppKit": ["shims/appkit/spuikit.m", "shims/appkit/spwindow.m", "shims/appkit/spimage.m",
                "shims/appkit/spevent.m", "shims/appkit/spstats.m", "shims/appkit/sploading.m",
-               "shims/appkit/sphover.m", "shims/appkit/spclipboard.m", "shims/appkit/sptouchpad.m"],
+               "shims/appkit/sphover.m", "shims/appkit/spclipboard.m", "shims/appkit/sptouchpad.m",
+               "shims/appkit/spkeyboard.m"],
     # Audio: the client's HAL and AudioUnit calls, logged on their way to the real libraries.
     "CoreAudio": ["shims/audio/spcoreaudio.m"],
     "AudioToolbox": ["shims/audio/spaudiotoolbox.m"],

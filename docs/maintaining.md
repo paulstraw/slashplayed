@@ -56,8 +56,9 @@ supported yet. `scripts/recon/check-patch.sh` gives the same answer. To fix it:
 3. Review the `shims/generated/` diff like any other source change. Generated stubs only log: an import
    the client really uses needs a hand-written implementation (`EXTRA_CODE` or `EXTRA_INCLUDES` in
    `scripts/recon/gen_stubs.py`).
-4. If the patch changed a game's version, set its `toc` in `apps/client/flavors.plist` and in both
-   addons' TOCs (`addon/SPHover/SPHover.toc`, `addon/SPMovie/SPMovie.toc`), or the game flags the
+4. If the patch changed a game's version, set its `toc` in `apps/client/flavors.plist` and in the
+   addons' TOCs (`addon/SPHover/SPHover.toc`, `addon/SPMovie/SPMovie.toc`,
+   `addon/SPKeyboard/SPKeyboard.toc`), or the game flags the
    addons as out of date. `FlavorTests` checks the TOCs against `flavors.plist`.
 5. Rebuild (`shims/build.sh`, `apps/companion/build.sh`), run the tests, and try each affected game on
    a device.

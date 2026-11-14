@@ -94,7 +94,7 @@ final class DeviceInstallTests: XCTestCase {
     }
 
     /// The addons the launcher puts in a game's folder (sp_addons_place): SPMovie everywhere, SPHover only on
-    /// the headset, as the companion copied them; a file written only when it's missing or its bytes differ.
+    /// the headset, SPKeyboard only on the iPad and iPhone; a file written only when it's missing or its bytes differ.
     func testAddonsArePlaced() throws {
         let repo = ClientAssemblyTests.repo, addons = repo.appending(path: "addon")
         let game = FileManager.default.temporaryDirectory.appending(path: "sp-addons-\(UUID().uuidString)")
@@ -107,12 +107,12 @@ final class DeviceInstallTests: XCTestCase {
         let movie = game.appending(path: "Interface/AddOns/SPMovie/SPMovie.lua")
         var r = place(hover: false)
         XCTAssertTrue(r.ok, r.line)
-        XCTAssertEqual(r.line, "addons: 0 up to date, wrote SPMovie/SPMovie.toc SPMovie/SPMovie.lua")
+        XCTAssertEqual(r.line, "addons: 0 up to date, wrote SPMovie/SPMovie.toc SPMovie/SPMovie.lua SPKeyboard/SPKeyboard.toc SPKeyboard/SPKeyboard.lua")
         XCTAssertEqual(try Data(contentsOf: movie), try Data(contentsOf: addons.appending(path: "SPMovie/SPMovie.lua")))
         XCTAssertFalse(FileManager.default.fileExists(atPath: game.appending(path: "Interface/AddOns/SPHover").path))
         // The same bytes: nothing written (the date stays).
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1)], ofItemAtPath: movie.path)
-        XCTAssertEqual(place(hover: false).line, "addons: 2 up to date")
+        XCTAssertEqual(place(hover: false).line, "addons: 4 up to date")
         XCTAssertEqual(try movie.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
                        Date(timeIntervalSince1970: 1))
         // Another copy (an older addon) is replaced; on the headset SPHover comes too.

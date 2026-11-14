@@ -1,0 +1,4 @@
+## Interface: 11509, 20506, 50504, 120105, 16001
+## Title: SPKeyboard
+## Notes: Tells the iPhone and iPad shim which text box has focus, so the on-screen keyboard comes up for it.
+SPKeyboard.lua

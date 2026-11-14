@@ -1,4 +1,5 @@
-// Decoder for the SPHover addon's pixel strip (addon/SPHover/SPHover.lua has the format).
+// Decoder for the SPHover and SPKeyboard addons' pixel strip (addon/SPHover/SPHover.lua has the format;
+// SPKeyboard's frames are 'V' 'K', and its message holds at most one rect, then a byte the decoder skips).
 // Plain C, so addon/test can run it on the Mac against the addon's own output.
 
 #include <stdint.h>
@@ -26,18 +27,18 @@ static void sph_reset(sph_assembler *a) {
 }
 
 // One frame from the sampled blocks: rgb[i] is block i's color bits (r << 2 | g << 1 | b).
-// Returns 0 unless it's a valid strip frame.
+// Returns its kind, 'W' (SPHover's) or 'K' (SPKeyboard's), or 0 unless it's a valid strip frame.
 static int sph_frame_from_blocks(const uint8_t rgb[SPH_BLOCKS], uint8_t frame[SPH_FRAME_BYTES]) {
     memset(frame, 0, SPH_FRAME_BYTES);
     for (int i = 0; i < SPH_BLOCKS * 3; i++)
         if (rgb[i / 3] >> (2 - i % 3) & 1) frame[i / 8] |= 0x80 >> (i % 8);
-    if (frame[0] != 'V' || frame[1] != 'W') return 0;
+    if (frame[0] != 'V' || (frame[1] != 'W' && frame[1] != 'K')) return 0;
     unsigned s1 = 0, s2 = 0;
     for (int i = 0; i < SPH_FRAME_BYTES - 2; i++) {
         s1 = (s1 + frame[i]) % 255;
         s2 = (s2 + s1) % 255;
     }
-    return frame[SPH_FRAME_BYTES - 2] == s2 && frame[SPH_FRAME_BYTES - 1] == s1;
+    return frame[SPH_FRAME_BYTES - 2] == s2 && frame[SPH_FRAME_BYTES - 1] == s1 ? frame[1] : 0;
 }
 
 // Feeds one valid frame. On SPH_MESSAGE, rects/n hold the complete message's rects (each message is

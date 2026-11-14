@@ -190,7 +190,8 @@ final class ClientAssemblyTests: XCTestCase {
                               "PlugIns/SPJitHelper.appex/Info.plist", "flavors.plist", "wow.icns",
                               "exports.json", "rewrite-map.txt", "licenses",
                               "licenses/idevice.txt", "licenses/rust-std.html", "licenses/spapple.txt", "licenses/goodmountain.txt",
-                              "Goodmountain-Regular.otf", "addons", "addons/SPMovie", "addons/SPHover"])
+                              "Goodmountain-Regular.otf", "addons", "addons/SPMovie", "addons/SPHover",
+                              "addons/SPKeyboard"])
                        .union(ClientAssembly.addonFiles.map { "addons/" + $0 }))
         // The addons the launcher places (sp_addons_place), byte for byte as addon/ has them.
         for file in ClientAssembly.addonFiles {

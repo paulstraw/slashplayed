@@ -977,7 +977,7 @@ BOOL sp_addons_place(NSString *addons, NSString *game, BOOL hover, NSString **li
     NSFileManager *fm = NSFileManager.defaultManager;
     NSMutableArray<NSString *> *written = [NSMutableArray array], *failed = [NSMutableArray array];
     NSUInteger same = 0;
-    for (NSString *name in hover ? @[@"SPMovie", @"SPHover"] : @[@"SPMovie"])
+    for (NSString *name in hover ? @[@"SPMovie", @"SPHover"] : @[@"SPMovie", @"SPKeyboard"])
         for (NSString *ext in @[@"toc", @"lua"]) {
             NSString *file = [NSString stringWithFormat:@"%@/%@.%@", name, name, ext];
             NSData *bytes = [NSData dataWithContentsOfFile:[addons stringByAppendingPathComponent:file]];
