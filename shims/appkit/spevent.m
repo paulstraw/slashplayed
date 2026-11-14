@@ -869,9 +869,9 @@ static double sp_chord_window(void) {
     [_edit_menu presentEditMenuWithConfiguration:[UIEditMenuConfiguration configurationWithIdentifier:nil sourcePoint:p]];
 }
 
-// The system's own commands, whichever this view answers for: Copy, and Paste when the clipboard holds
-// text. Copy is always offered, since nothing says whether the game has a selection. Then Keyboard, with
-// the menu's point, where the iPhone's zoom centers when no box's focus is known.
+// The system's own commands this view answers for (canPerformAction:): Copy, and Paste when the clipboard
+// holds text. Copy is always offered, since nothing says whether the game has a selection. Then Keyboard,
+// with the menu's point, where the iPhone's zoom centers when no box's focus is known.
 - (UIMenu *)editMenuInteraction:(UIEditMenuInteraction *)interaction
            menuForConfiguration:(UIEditMenuConfiguration *)configuration
                suggestedActions:(NSArray<UIMenuElement *> *)suggested {
@@ -885,7 +885,10 @@ static double sp_chord_window(void) {
 - (BOOL)canPerformAction:(SEL)action withSender:(id)sender {
     if (action == @selector(paste:)) return UIPasteboard.generalPasteboard.hasStrings;  // asks nothing
     if (action == @selector(copy:)) return YES;
-    return [super canPerformAction:action withSender:sender];
+    // Nothing else, and not asked of UIKit: with Speak Selection on, UIKit's answer for the menu's Speak
+    // runs Accessibility's QuickSpeak, which fetches the selection by calling copy: here, and that pressed
+    // Cmd+C as the menu opened (a "c" typed into the login screen's password box; iPhone 16 Pro, iOS 27.2).
+    return NO;
 }
 
 // A Command held is a hardware keyboard's Cmd+V or Cmd+C, should the system ever route one here: the game
