@@ -105,8 +105,8 @@ changed or signed: the companion downloads the Mac client from Blizzard and copi
 is, or the device downloads it itself, and Slashplayed loads it with a loader of its own. On the device,
 the shims stand in for AppKit, CoreAudio, and the other macOS frameworks, and a small helper prepares the
 client's executable memory under TXM at each launch (that's what LocalDevVPN is for).
-[architecture.md](docs/architecture.md) has the whole pipeline, and [research.md](docs/research.md)
-the experiments behind it.
+[How Slashplayed works](docs/architecture.md) is the overview, [the internals](docs/internals/README.md)
+have each part in detail, and [research.md](docs/research.md) the experiments behind it.
 
 ## Contributing
 

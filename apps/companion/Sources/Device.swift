@@ -488,7 +488,7 @@ struct Device: Identifiable, Hashable {
     /// The M1 iPads: the 11-inch 3rd-generation Pro (iPad13,4 to 13,7), the 12.9-inch 5th-generation Pro
     /// (iPad13,8 to 13,11), and the 5th-generation Air (iPad13,16 and 13,17), as Xcode's simulator device
     /// types list them. They're allowed but untested: the M1 predates TXM (it protects code with PPL), and
-    /// the JIT path (debugger-prepare plus the RW alias, docs/architecture.md) has only been run on TXM
+    /// the JIT path (debugger-prepare plus the RW alias, docs/internals/loading.md) has only been run on TXM
     /// devices (an M2 iPad, an iPhone 16 Pro, Vision Pro). All have 8 GB or more, as the M2 iPads do. And the
     /// A17 Pro iPad mini (iPad16,1 and 16,2): a TXM device with 8 GB and the iPhone 15 Pro's chip, which no
     /// iPad has been played on.

@@ -1,8 +1,9 @@
 # Research
 
-The experiments behind [architecture.md](architecture.md). Each harness in `research/` is a small
-app built from our own code only; none of them contains or reads game files, except `loadertest`,
-which reads the list of import names from the user's own installed client to build its toy. Every
+The experiments behind [How Slashplayed works](architecture.md) and [the internals](internals/README.md).
+Each harness in `research/` is a small app built from our own code only; none of them contains or reads
+game files, except `loadertest`, which reads the list of import names from the user's own installed
+client to build its toy. Every
 device harness runs on visionOS (`SP_PLATFORM=xros`, the default) and iOS/iPadOS (`SP_PLATFORM=ios`);
 `isideload` is a Mac command-line tool, tested with an iPhone.
 
@@ -55,7 +56,7 @@ needs (its code is position-dependent and rewrites itself in place). The experim
 
 Rules learned: a page made writable in place can never execute again; a debugger-prepared page stays
 `r-x` with max `rwx`, and code written through a separate alias runs at any address, after detach
-too. The shim design in [architecture.md](architecture.md#executable-memory-under-txm) follows
+too. The shim design in [the internals](internals/loading.md#executable-memory-under-txm) follows
 directly.
 
 Prepare cost is the debugger link. Over the headset's Wi-Fi a round trip is ~11–12 ms and bulk
@@ -210,7 +211,7 @@ Metal shim's one-bit retag they render correctly.
 ## Platform findings from the client itself
 
 Not every finding came from a harness. These came from running the client on the devices, and each
-is described in [architecture.md](architecture.md):
+is described in [the shims page](internals/shims.md):
 
 - The sandbox redirects (install root, shared memory, root certificates, `SIGPIPE`).
 - The RemoteIO sample-rate bug that garbled the headset's audio, and the session restart after an
@@ -230,7 +231,7 @@ once the launcher loaded the client with spguest, whose loader prepares `__TEXT`
 ## iPhone, update checks and login without Battle.net (2026-10-21)
 
 **iPhone.** An iPhone 16 Pro (A18 Pro, 8 GB, iOS 27.0.1) behaves like the M2 iPad for everything in
-[architecture.md](architecture.md#ipad): the same SDK, shims, rewrite map and debugger prepare. The
+[the shims page](internals/shims.md#ipad): the same SDK, shims, rewrite map and debugger prepare. The
 app only needs device family 1 (iPhone) next to 2. Classic Era, run with the script tools over USB:
 
 | | 1x render scale | 2x render scale |
@@ -280,7 +281,7 @@ chat) and backgrounding to Settings and back all work. Found along the way:
 equals the `Build Key` that `.build.info` holds for the installed build (checked for Classic Era,
 Anniversary, and Retail), so the companion or the device's launcher can tell when a new build is out.
 Rebuilding the client image for it needed the Mac then; the device now does it itself
-([Updating on the device](architecture.md#updating-on-the-device)).
+([Updating on the device](internals/device-app.md#updating-on-the-device)).
 
 **Login without Battle.net.** The unmodified client logs in by itself, with no Battle.net launch
 and no launch credentials, when its game folder holds a `login.txt` with the account's email and
@@ -307,7 +308,7 @@ even when answered right, BLZ51914400). On the iPhone the client opens the file 
 of loading, closes it, and never opens it again: the libSystem shim deleting it on that close leaves
 the login (and the authenticator step) working. So the launcher writes it just before the client
 loads, from a sign-in it keeps in the keychain, and the shim deletes it on the close (see
-`docs/architecture.md`). The Android launcher instead deletes it once `Logs/Hotfix.log` passes
+`docs/internals/shims.md`, "Sandbox redirects"). The Android launcher instead deletes it once `Logs/Hotfix.log` passes
 50 kB, or after 180 s.
 
 **It needs `-launcherlogin`.** On the iPhone (2026-10-22, Classic Era, saved sign-in, no relayed
@@ -336,7 +337,7 @@ shims: its connections and the sandbox redirects need nothing more. The tests:
   `CFUserNotification` and waits for it. iOS has no alert server for apps, so the real call answers
   at once with Cancel and the client quits; its icon comes from the bundle's `wow.icns`. The
   CoreFoundation shim keeps the notification itself and never answers it, and the app carries an
-  empty `wow.icns` (see [architecture.md](architecture.md)). The screen is black for the 13–15 s the
+  empty `wow.icns` (see [the data setup dialog](internals/shims.md#the-data-setup-dialog)). The screen is black for the 13–15 s the
   dialog would be up, then the window stays black for about 90 s while startup content streams.
 - **Foreground only.** iOS suspends the app about 12 s after it leaves the screen, and the store stops
   growing. Back after 3 minutes, the game was alive but the server had dropped it. Pre-fetching in the
@@ -446,7 +447,7 @@ Can the launcher run the client as Blizzard ships it, unsigned, instead of rewri
 signing it for dyld? [research/guestloadtest](../research/guestloadtest/README.md) answered that with
 spguest, a loader of our own modelled on Tolkara's (MIT), and the client's own on-device JIT helper for the
 prepare. It's the launcher's loader now
-([architecture.md](architecture.md#loading-the-client-spguest)).
+([Loading the client](internals/loading.md#loading-the-client-spguest)).
 
 - **A toy first**, a program of our own built like the client (`MH_EXECUTE`, dyld-info opcode fixups),
   with constructors, `+load`, categories, C++ exceptions and NSExceptions across its frames,

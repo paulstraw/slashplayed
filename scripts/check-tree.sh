@@ -3,7 +3,7 @@
 # cheap enough to run before any commit.
 #   scripts/check-tree.sh
 # Two families of check, each a grep over `git ls-files` (so work/ and build/ never count):
-#   - The scrub line (CLAUDE.md, docs/architecture.md): no offsets into the client, no word or path
+#   - The scrub line (CLAUDE.md, docs/internals/): no offsets into the client, no word or path
 #     that points at the dropped research notes or the client's startup-code internals.
 #   - No hardcoding: no device UDIDs, team IDs, signing identity hashes or home-directory paths, and no
 #     signing material or config/local.env tracked by mistake. The owner's real values can't be listed

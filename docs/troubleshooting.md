@@ -409,7 +409,7 @@ installs it again, and on an iPad or iPhone pairs it over USB as it does.
 ### "Preparing code pages failed"
 
 Every launch, Slashplayed's helper, an extension inside the app, attaches to the game once, at
-startup, to prepare its code (see [The on-device JIT helper](architecture.md#the-on-device-jit-helper)).
+startup, to prepare its code (see [The on-device JIT helper](internals/loading.md#the-on-device-jit-helper)).
 When it can't, Slashplayed shows why on the device instead of starting the game, and the companion
 shows the same message:
 
@@ -601,7 +601,7 @@ uncapped by default, at 120 fps, and long sessions get hot. Retail on an M2 iPad
   scale and graphics quality.
 - Take breaks; a cool-down of 15 minutes or more makes the next session last noticeably longer.
 
-Measurements are in [architecture.md, Heat](architecture.md#heat).
+Measurements are in [the internals, Heat](internals/shims.md#heat).
 
 ### Space does nothing (no jumping) with a hardware keyboard
 
@@ -721,4 +721,4 @@ IDs, team IDs and names, Apple IDs, device and Mac names, and your user folder i
 `summary.txt` says how many of each.
 Never paste Battle.net preference contents into an issue yourself.
 
-See [Logs and diagnostics](architecture.md#logs-and-diagnostics) for where each log comes from.
+See [Logs and diagnostics](internals/shims.md#logs-and-diagnostics) for where each log comes from.

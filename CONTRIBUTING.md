@@ -2,8 +2,9 @@
 
 Thanks for helping out. Slashplayed has three parts: the Mac companion app (`apps/companion`), the
 device app (`apps/client`), and the shim libraries the device app loads (`shims/`).
-[docs/architecture.md](docs/architecture.md) explains how they fit together. Read it before you change
-the pipeline, the shims, or the launcher.
+[docs/architecture.md](docs/architecture.md) explains how they fit together, and
+[docs/internals/](docs/internals/README.md) has each part in detail. Before you change the pipeline, the
+shims, or the launcher, read the internals page that covers it.
 
 ## Setup
 
@@ -83,9 +84,9 @@ client from Blizzard's CDN. It needs no configuration and no game install on the
   sign-in, `apps/client/splogin.m`, handles them), signing identities (`.p12` files and their
   passwords), and pairing records. Files that hold them are 0600 and deleted once copied.
 - **The scrub line.** Apple-platform findings are welcome in full (the ones in
-  [docs/architecture.md](docs/architecture.md)). Client internals are not: no offsets into the client,
+  [docs/internals/](docs/internals/README.md)). Client internals are not: no offsets into the client,
   no addresses of its functions, and nothing about credential formats. Describe the client at the level
-  architecture.md does, for example "the client rewrites its own code at startup; the shim services that
+  the docs do, for example "the client rewrites its own code at startup; the shim services that
   through an alias mapping".
 
 [CLAUDE.md](CLAUDE.md) has the full rules.

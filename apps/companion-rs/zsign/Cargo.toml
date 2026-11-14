@@ -19,5 +19,5 @@ path = "lib.rs"
 [build-dependencies]
 cc = "1.2"
 # zsign's OpenSSL, built from source and linked statically: openssl-src's 3.5 line, OpenSSL's
-# long-term-support series (docs/architecture.md, "The host tool").
+# long-term-support series (docs/internals/host-tool.md).
 openssl-src = "=300.5.5"

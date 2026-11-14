@@ -349,7 +349,7 @@ private func parseStop(_ reply: String) -> (signal: Int, fields: [String: String
 // Attaches to `pid` and services its requests until it asks to detach or exits.
 //
 // A prepare (x16 = 1) writes one byte to every 16 KB page of x0..x0+x1: a debugger's write is what makes
-// a page executable after the app writes code to it through an alias (docs/architecture.md, "Executable
+// a page executable after the app writes code to it through an alias (docs/internals/loading.md, "Executable
 // memory under TXM"). The byte written is the page's own first byte when the app passes them (x2: one per
 // page), so the contents don't change; otherwise 0x69, as StikDebug writes, and the app restores the
 // contents itself. Addresses are full 64-bit (StikJIT formats 9 hex digits and silently skips regions at
