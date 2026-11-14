@@ -240,7 +240,7 @@ static SPKeyboardView *sp_kb_view;
     NSRange _sel;
     NSRange _marked;         // location NSNotFound when there's none
     NSString *_sent;         // what the game was sent since the buffer was last emptied
-    UIToolbar *_bar;
+    UIView *_bar;
     UITextInputStringTokenizer *_tokenizer;
 }
 @synthesize inputDelegate, markedTextStyle;
@@ -280,13 +280,31 @@ static SPKeyboardView *sp_kb_view;
     return _bar;
 }
 
-// The bar over the keyboard: Done, the one way to close it.
+// The bar over the keyboard: Done, the one way to close it. A plain button on a plain view, not a
+// toolbar's Done: pressing a Liquid Glass bar button (its flex interaction) switches UIKit's touch
+// delivery to the frame-paced update cycle (UpdateCycle's driver, the scheduler's "waiting main inputs"
+// step), and under the shared main thread (spuikit.m) that step waits out a backup timer, ~20 s on iOS
+// 27.2.1, before it dispatches anything: the press's lift and every touch after it, app-wide. A plain
+// UIButton's touches take the ordinary path (iPhone 16 Pro: each Done in under 30 ms).
 - (void)sp_make_bar {
-    _bar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, 320, 44)];
+    _bar = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 44)];
     _bar.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-    UIBarButtonItem *done = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self
-                                                                          action:@selector(sp_done)];
-    _bar.items = @[ [UIBarButtonItem flexibleSpaceItem], done ];
+    _bar.backgroundColor = UIColor.secondarySystemBackgroundColor;
+    UIButtonConfiguration *c = [UIButtonConfiguration plainButtonConfiguration];
+    c.title = @"Done";
+    c.titleTextAttributesTransformer = ^NSDictionary *(NSDictionary *a) {
+        NSMutableDictionary *m = [a mutableCopy];
+        m[NSFontAttributeName] = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
+        return m;
+    };
+    UIButton *done = [UIButton buttonWithConfiguration:c primaryAction:nil];
+    [done addTarget:self action:@selector(sp_done) forControlEvents:UIControlEventPrimaryActionTriggered];
+    done.translatesAutoresizingMaskIntoConstraints = NO;
+    [_bar addSubview:done];
+    [NSLayoutConstraint activateConstraints:@[
+        [done.trailingAnchor constraintEqualToAnchor:_bar.layoutMarginsGuide.trailingAnchor],
+        [done.centerYAnchor constraintEqualToAnchor:_bar.centerYAnchor],
+    ]];
 }
 
 - (void)sp_done {

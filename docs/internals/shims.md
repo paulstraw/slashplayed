@@ -192,7 +192,10 @@ and scroll events and `NSTextInputClient`), with no event taps. `spevent.m`:
   strip SPHover uses (frames marked `K` rather than `W`), with a count of edit boxes' `SetFocus` calls,
   so focusing the same box again (Say with chat open) is news too. `spkeyboard.m` brings the system
   keyboard up when a box gains focus and closes it when no box has it, unless a hardware keyboard is
-  connected; Done on the bar above it closes it too. The keyboard belongs to a hidden `UITextInput` view
+  connected; Done on the bar above it closes it too. That Done is a plain `UIButton`, not a toolbar's:
+  pressing a Liquid Glass bar button moves UIKit's touch delivery onto its frame-paced update cycle,
+  which under the shared main thread held every touch, app-wide, until a backup timer fired about 20 s
+  later (iOS 27.2.1). The keyboard belongs to a hidden `UITextInput` view
   over a buffer of what was typed; after each change the game gets Backspaces back to where the buffer
   and what it was sent differ, then the rest as key presses (unlogged), so autocorrect and dictation end
   with the box holding the same text. A full `UITextInput` gets the keyboard's mic key; the app itself
