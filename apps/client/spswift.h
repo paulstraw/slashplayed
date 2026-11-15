@@ -53,7 +53,7 @@ BOOL sp_addons_auto(void);
 void sp_addons_set_auto(BOOL on);
 
 // spjit.m: "iPad", "iPhone", or "Vision Pro"; and the relaunch to the start screen (Settings' `relaunch` drill
-// runs it as a game's Exit Game does), which returns only when it couldn't.
+// runs it as a game's Exit Game does), which hands it to the JIT helper and returns: the caller then exits.
 NSString *sp_device_noun(void);
 void sp_relaunch(void);
 

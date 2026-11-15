@@ -8,6 +8,8 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ### Fixed
 
+- Exit Game and Quit in a game bring back Slashplayed's start screen again, instead of leaving you on
+  the Home Screen.
 - On cellular data, an iPhone or iPad no longer sits on "Turn on LocalDevVPN" while LocalDevVPN is
   already on. LocalDevVPN works only on Wi-Fi, so Slashplayed now says so: join a Wi-Fi network, or
   turn on Airplane Mode until the game starts loading, then turn it off again. The game starts by

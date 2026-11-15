@@ -443,19 +443,43 @@ private func prepare(_ debugger: Debugger, address: UInt64, length: UInt64, firs
 }
 
 // CoreDevice's app service through the tunnel's RSD (com.apple.coredevice.appservice): `bundle` launched
-// with no arguments and no environment (so the launcher shows the start screen), killing the running copy
-// first. The device's own service does both, so the launch outlives the kill, which ends the app and with it
-// this helper (checked on the iPhone, iOS 27). A reply means it didn't happen.
-func relaunch(_ tunnel: Tunnel, bundle: String, log: (String) -> Void) throws -> String {
-    guard !bundle.isEmpty else { throw HelperError("relaunch: no bundle ID") }
+// with no arguments and no environment (so the launcher shows the start screen) once the app's process,
+// `pid`, has ended. Not the service's own terminate-existing: it kills the app and its extensions (this
+// helper too), then asks SpringBoard to open the app at once, and SpringBoard can take that request before
+// it has seen the old process die. It then answers with the dying process ("no process was found to return
+// to the requestor", CoreDevice error 10004), and the person lands on the home screen. A game's 1–2.5 GB
+// process lost that race in every run (the iPhone, iOS 27.2.1, 2026-11-15). So the app exits on its own
+// (spjit.m's sp_relaunch doesn't wait for this reply), this helper outlives it (Helper.swift's beginRequest
+// says how), and the launch goes once the pid is gone and SpringBoard has had a moment; a launch that comes
+// back with no new process is retried.
+func relaunch(_ tunnel: Tunnel, bundle: String, pid: Int32, log: (String) -> Void) throws -> String {
+    guard !bundle.isEmpty, pid > 0 else { throw HelperError("relaunch: no bundle ID or pid") }
     var client: OpaquePointer?
     try check("app service", app_service_connect_rsd(tunnel.adapter, tunnel.handshake, &client))
     defer { app_service_free(client) }
+    // kill(pid, 0) finds the process before the sandbox's signal check, so ESRCH means it's gone (EPERM, there).
     let t = now()
-    var response: UnsafeMutablePointer<LaunchResponseC>?
-    try check("launch", app_service_launch_app(client, bundle, nil, 0, 1, 0, nil, &response))
-    defer { app_service_free_launch_response(response) }
-    log(String(format: "relaunch: launched as pid %d after %.2f s", response?.pointee.pid ?? 0, now() - t))
-    return "relaunched"
+    while kill(pid, 0) == 0 || errno != ESRCH {
+        guard now() - t < 30 else { throw HelperError("relaunch: pid \(pid) still running after 30 s") }
+        usleep(50_000)
+    }
+    log(String(format: "relaunch: pid %d gone after %.2f s", pid, now() - t))
+    var tries = 0
+    while true {
+        usleep(tries == 0 ? 300_000 : 1_000_000)  // SpringBoard's own note of the death, first
+        tries += 1
+        var response: UnsafeMutablePointer<LaunchResponseC>?
+        var why: String?
+        do { try check("launch", app_service_launch_app(client, bundle, nil, 0, 0, 0, nil, &response)) } catch { why = "\(error)" }
+        let launched = Int32(bitPattern: response?.pointee.pid ?? 0)
+        app_service_free_launch_response(response)
+        if why == nil && launched > 0 && launched != pid {
+            log(String(format: "relaunch: launched as pid %d, try %d, %.2f s after the app's exit started", launched, tries,
+                       now() - t))
+            return "relaunched"
+        }
+        log("relaunch: try \(tries): \(why ?? "no new process (pid \(launched))")")
+        guard tries < 5 else { throw HelperError("relaunch: no new process after \(tries) tries") }
+    }
 }
 #endif

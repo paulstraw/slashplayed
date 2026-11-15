@@ -641,9 +641,9 @@ static void launch_arguments(NSString *flavor, int *argc, char ***argv) {
 // terminate: request it answers Cancel to, then its own shutdown: the iPhone, 2026-11-14), and a terminate: the
 // AppKit shim finishes itself calls exit(0) (spuikit.m's sp_terminate_now). Either marks the quit as wanted; a
 // failure (the client's own exit(1), a crash) doesn't, and just ends the app. The relaunch itself (spjit.m's
-// sp_relaunch: the helper launches the app again, killing this process) waits for the exit handlers: this one,
-// registered before the client loads, runs after every one the client registered (atexit runs them last in,
-// first out), so its shutdown is done, and the libSystem shim's login.txt delete has run.
+// sp_relaunch: the helper launches the app again once this process has exited) waits for the exit handlers:
+// this one, registered before the client loads, runs after every one the client registered (atexit runs them
+// last in, first out), so its shutdown is done, and the libSystem shim's login.txt delete has run.
 void sp_relaunch(void);  // spjit.m
 static BOOL relaunch_wanted;
 void sp_relaunch_wanted(void) { relaunch_wanted = YES; }  // also spuikit.m's
