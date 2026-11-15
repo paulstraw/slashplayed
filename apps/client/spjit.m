@@ -387,13 +387,13 @@ NSString *sp_jit_attach(void (^pump)(double)) {
 void sp_login_clear(NSArray<NSString *> *flavors);  // splogin.m
 
 // Back to the start screen when a game quits (launcher.m's exit handler, after the client's own): the game
-// can't be unloaded from this process (its threads, Metal, and classes stay), so the helper asks CoreDevice to
-// launch this app again with no game named, killing this one (its "relaunch"). A kill skips whatever exit
-// handlers are left, so a login.txt still there is deleted first (the libSystem shim's delete is one, run by
-// now unless the exit didn't go through it). Returns only when the relaunch didn't happen within a few seconds
-// (no pairing record, LocalDevVPN off, a helper that didn't answer): the exit goes on, and the next open from the
-// home screen shows the start screen. The wait doesn't run the main thread; the helper's reply comes on the
-// extension's own queue.
+// can't be unloaded from this process (its threads, Metal, and classes stay), so the helper launches this app
+// again with no game named once this process has exited (its "relaunch"; helper/Device.swift says why it waits
+// for the exit rather than killing). A login.txt still there is deleted first (the libSystem shim's delete has
+// run by now unless the exit didn't go through it). The helper's reply isn't waited for, since it comes after
+// this process is gone: only an early one, a failure such as no tunnel with LocalDevVPN off, is logged. Then the
+// exit goes on; when the relaunch can't happen, the next open from the home screen shows the start screen. The
+// wait doesn't run the main thread; the helper's reply comes on the extension's own queue.
 void sp_relaunch(void) {
     double t = now();
     NSString *flavor = NSProcessInfo.processInfo.environment[@"SP_SYSTEM_FLAVOR"];
@@ -402,7 +402,24 @@ void sp_relaunch(void) {
     NSData *pairing = [NSData dataWithContentsOfFile:record];
     NSString *bundle = NSBundle.mainBundle.bundleIdentifier;
     if (!pairing.length || !bundle) { say(@"relaunch: no pairing record; exiting"); return; }
-    NSDictionary *reply = sp_jit_request(@{@"op": @"relaunch", @"bundle": bundle, @"pairing": pairing, @"endpoints": ENDPOINTS},
-                                         8, ^(double s) { usleep((useconds_t)(s * 1e6)); });
-    say([NSString stringWithFormat:@"relaunch: %@ after %.2f s; exiting", reply ? summary(reply) : @"no reply", now() - t]);
+    NSObject *lock = [NSObject new];
+    __block NSDictionary *reply = nil;
+    __block BOOL replied = NO;
+    begin(@{@"op": @"relaunch", @"bundle": bundle, @"pid": @(getpid()), @"pairing": pairing, @"endpoints": ENDPOINTS},
+          ^(NSDictionary *r) {
+        @synchronized (lock) {
+            reply = r;
+            replied = YES;
+        }
+    });
+    // Long enough for the helper to start (about 0.15 s) and for a tunnel that won't come up to say so.
+    for (double end = now() + 1.5; now() < end; usleep(10000)) {
+        @synchronized (lock) {
+            if (replied) break;
+        }
+    }
+    @synchronized (lock) {
+        say([NSString stringWithFormat:@"relaunch: %@ after %.2f s; exiting", replied ? (reply ? summary(reply) : @"no reply")
+                                                                                 : @"handed to the helper", now() - t]);
+    }
 }

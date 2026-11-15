@@ -22,10 +22,10 @@
 //            application-identifier, team prefix included), and "expires". How the app renews its own
 //            signing with no host (spjit.m's sp_jit_profiles): iOS opens an app on any valid installed
 //            profile for its App ID, not only the one it embeds (research/isideload, step 4; jittest h5).
-//   "relaunch" launches the app "bundle" with no arguments through CoreDevice's app service, killing the
-//            running one first (devicectl's --terminate-existing): how a game's Exit Game gets back to
-//            the start screen (spjit.m's sp_relaunch). The kill takes this helper with it, so the reply
-//            only comes when the launch failed.
+//   "relaunch" launches the app "bundle" with no arguments through CoreDevice's app service once the
+//            app's process "pid" has exited on its own (Device.swift's relaunch says why not the service's
+//            terminate-existing): how a game's Exit Game gets back to the start screen (spjit.m's
+//            sp_relaunch). The app doesn't wait for the reply; the helper outlives it.
 //   "pair"   the headset only: pair-setup with visionOS's manual pairing service at "endpoints", the code
 //            from the app over loopback ("pinPort", "pinToken"); the new record is the reply's "pairing"
 //            (Pair.swift).
@@ -41,22 +41,34 @@ import idevice  // the profiles op's misagent calls (below)
 final class SPHelper: NSObject, NSExtensionRequestHandling {
     func beginRequest(with context: NSExtensionContext) {
         let request = (context.inputItems.first as? NSExtensionItem)?.userInfo ?? [:]
-        DispatchQueue.global().async {
-            var lines: [String] = []
-            var reply: [String: Any] = ["pid": Int(getpid())]
-            do {
-                reply["summary"] = try SPHelper.handle(request, &reply, log: { lines.append($0) })
-                reply["ok"] = true
-            } catch {
-                reply["ok"] = false
-                reply["summary"] = "\(error)"
-                if (error as? HelperError)?.rejected == true { reply["rejected"] = true }
+        // The relaunch's work comes after its host has exited (Device.swift's relaunch). PlugInKit ends an
+        // extension whose host connection goes with SIGTERM, and RunningBoard suspends one nothing holds up:
+        // an expiring activity, the call made for an extension's work that outlives its host, holds it.
+        if request["op"] as? String == "relaunch" {
+            signal(SIGTERM, SIG_IGN)
+            ProcessInfo.processInfo.performExpiringActivity(withReason: "relaunch") { expired in
+                if !expired { SPHelper.respond(request, context) }
             }
-            reply["log"] = lines
-            let item = NSExtensionItem()
-            item.userInfo = reply
-            context.completeRequest(returningItems: [item], completionHandler: nil)
+            return
         }
+        DispatchQueue.global().async { SPHelper.respond(request, context) }
+    }
+
+    private static func respond(_ request: [AnyHashable: Any], _ context: NSExtensionContext) {
+        var lines: [String] = []
+        var reply: [String: Any] = ["pid": Int(getpid())]
+        do {
+            reply["summary"] = try SPHelper.handle(request, &reply, log: { lines.append($0) })
+            reply["ok"] = true
+        } catch {
+            reply["ok"] = false
+            reply["summary"] = "\(error)"
+            if (error as? HelperError)?.rejected == true { reply["rejected"] = true }
+        }
+        reply["log"] = lines
+        let item = NSExtensionItem()
+        item.userInfo = reply
+        context.completeRequest(returningItems: [item], completionHandler: nil)
     }
 
     private static func handle(_ request: [AnyHashable: Any], _ reply: inout [String: Any],
@@ -96,7 +108,8 @@ final class SPHelper: NSObject, NSExtensionRequestHandling {
             reply["profiles"] = list
             return summary
         case "relaunch":
-            return try relaunch(tunnel, bundle: request["bundle"] as? String ?? "", log: log)
+            return try relaunch(tunnel, bundle: request["bundle"] as? String ?? "",
+                                pid: Int32(request["pid"] as? Int ?? 0), log: log)
         default:
             throw HelperError("unknown op \(op)")
         }

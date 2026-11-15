@@ -66,9 +66,19 @@ runs, before the client is loaded:
 
 **relaunch** is the way back to the start screen when a game quits: the game can't be unloaded from the
 app's process, so the helper asks CoreDevice's app service (`com.apple.coredevice.appservice`, idevice's
-`core_device` feature) to launch the app again with no game named, killing the running one, as
-`devicectl device process launch --terminate-existing` does. The device's own service does both, so the
-launch outlives the kill, which takes the helper with it (iPhone, iOS 27, 2026-11-14). The client's Exit
+`core_device` feature) to launch the app again with no game named, once the app's process has exited on
+its own. Not with the service's terminate-existing (`devicectl device process launch
+--terminate-existing`): that kills the app and its extensions, then asks SpringBoard to open the app at
+once, and SpringBoard can take the request before it has seen the old process die. It answers with the
+dying process, CoreDevice reports error 10004 to a helper that's already gone, and the person is left on
+the Home Screen. A game's 1 to 2.5 GB process lost that race every time (iPhone, iOS 27.2.1, 2026-11-15).
+So the app hands the request to the helper and exits; the helper waits for the app's pid to go
+(`kill(pid, 0)` answering `ESRCH`), gives SpringBoard 0.3 s, and launches, trying again when no new
+process comes back. An extension doesn't normally outlive its host: PlugInKit ends it with SIGTERM when
+the host's connection goes, and RunningBoard suspends it once the host's assertion does. For the
+relaunch the helper ignores SIGTERM and does the work in `ProcessInfo`'s expiring activity, which holds
+it up; both are needed (each left out, on the iPhone, no relaunch). The new instance is up about a
+second after the old one's exit. The client's Exit
 Game and Quit end with its `main` returning 0 (it answers `terminate:` with Cancel and shuts down on its
 own: `SP_QUIT_DRILL`'s `terminate:`, on the iPhone), and the launcher's exit handler, registered before
 the client loads and so run after the client's own, asks for it (`spjit.m`'s `sp_relaunch`); a client
