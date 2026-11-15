@@ -6,6 +6,8 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-14
+
 ### Fixed
 
 - Exit Game and Quit in a game bring back Slashplayed's start screen again, instead of leaving you on
