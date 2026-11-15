@@ -409,6 +409,12 @@ shows the same message:
   opens LocalDevVPN to turn it on, which comes straight back to Slashplayed, and the game starts once
   it's on. If that didn't take, press **Turn On LocalDevVPN**, or turn it on in LocalDevVPN and come
   back: there's no need to close Slashplayed. While the device waits, the companion's step says the same.
+- **"Connect to Wi-Fi"**: LocalDevVPN is on, but the device's developer services don't answer through
+  it. That's cellular data: LocalDevVPN works only on Wi-Fi (an Apple limit LocalDevVPN can't get
+  around), and turning it off and on doesn't help. Join a Wi-Fi network, or turn on **Airplane Mode**
+  until the game starts loading, then turn it off again: the game needs LocalDevVPN for only a second
+  or two at the start, and signs in once the network is back. Either way the game starts by itself,
+  with no need to close Slashplayed or restart the device.
 - **"couldn't reach this … 's developer services, though LocalDevVPN is on"**: the tunnel didn't come
   up anyway. In LocalDevVPN, turn it off and on again, then close Slashplayed and open it again (or
   press **Retry Launch**).

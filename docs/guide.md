@@ -152,7 +152,8 @@ update". If no update is out, the companion's **Report It…** opens a pre-fille
   [Details](troubleshooting.md#closing-the-window).
 - **LocalDevVPN has to be on at every start.** Slashplayed's helper attaches to the game for a second
   or two to prepare its code, and reaches the device's developer services through LocalDevVPN. If
-  it's off, Slashplayed opens LocalDevVPN and starts the game once it's on.
+  it's off, Slashplayed opens LocalDevVPN and starts the game once it's on. LocalDevVPN works only on
+  Wi-Fi: on cellular data, turn on Airplane Mode until the game starts loading, then turn it off again.
 - **The game's on-screen keyboard is on an iPad or iPhone only.** On a Vision Pro, chat and
   authenticator codes need a hardware keyboard.
   [Details](troubleshooting.md#the-on-screen-keyboard).

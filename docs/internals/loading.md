@@ -89,7 +89,11 @@ isn't one of those: before pairing and each status request, the launcher tries a
 `10.7.0.1:49152`, and when that fails it shows a screen and waits (`spvpn.m`). The screen opens
 `localdevvpn://enable?scheme=slashplayed`, once by itself and again from its button: LocalDevVPN turns
 its VPN on and opens `slashplayed://` (the app's one URL type), back to the app. The connect, tried every
-second off the main thread, is what ends the wait, so turning it on by hand works too. An app that a
+second off the main thread, is what ends the wait, so turning it on by hand works too. A refused connect
+(`ECONNREFUSED`, where LocalDevVPN off times out) means the VPN is on and the device's services refuse
+through it, which is cellular data: the tunnel works only on a joined Wi-Fi network (LocalDevVPN's issue
+31). The screen then says to join Wi-Fi or turn on Airplane Mode until the game loads, and doesn't open
+LocalDevVPN; the same connects end the wait. An app that a
 debugger already holds (StikDebug launched it) skips the helper. When the device no longer accepts the
 record (the status reply says `rejected`: the tunnel's pair-verify failed and idevice asked for a
 pair-setup code), the launcher deletes it, so it's made again.

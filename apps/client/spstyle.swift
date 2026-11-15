@@ -182,6 +182,7 @@ struct LauncherScreen<Controls: View>: View {
 final class LauncherHost: UIHostingController<AnyView> {
     let model: ScreenModel
     var patch: PatchModel?  // the newer-build screen's own state (sppatchscreen.swift); nil on the others
+    var vpn: VPNModel?  // the LocalDevVPN wait's (spvpnscreen.swift); nil on the others
 
     init<V: View>(model: ScreenModel, view: V) {
         self.model = model

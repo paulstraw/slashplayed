@@ -90,6 +90,7 @@ void sp_apple_screen_show(UIViewController *screen, NSDictionary *step);
 UIViewController *sp_pair_screen(NSString *_Nullable (^send)(NSString *code), void (^renew)(void));
 void sp_pair_ask(UIViewController *screen, BOOL ask);
 UIViewController *sp_vpn_screen(NSString *noun, void (^turnOn)(void));
+void sp_vpn_refused(UIViewController *screen, BOOL refused);
 void sp_screen_status(UIViewController *screen, NSString *text);
 // sppatchscreen.swift: the newer-build screen (sppatch.m's). `choose` gets the index of the button tapped;
 // sp_patch_show sets what it says (no buttons: a spinner) and clears the status line.

@@ -10,6 +10,12 @@
 // needs no handling here: a connect through the VPN, tried every second off the main thread, is what
 // ends the wait, so turning it on by hand and coming back works too. On iOS the app is suspended while
 // it's in the background, and the tries pick up again when it's back.
+//
+// A refused connect means something else: LocalDevVPN is on, and the device's own services refuse through it.
+// That's cellular data: LocalDevVPN works only on Wi-Fi (LocalDevVPN's issue 31, "Apple-enforced"; on the iPhone
+// with Wi-Fi off, errno 61, where LocalDevVPN off times out, errno 60). Opening LocalDevVPN again doesn't help
+// there, so the screen says to join Wi-Fi or turn on Airplane Mode until the game loads, and the same connects
+// end the wait (the iPhone, 2026-11-14: Airplane Mode on from this screen, through within a second).
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #include <arpa/inet.h>
@@ -61,6 +67,7 @@ UIViewController *sp_scene_root(void) {
 // ---- the screen (spvpnscreen.swift: only the screen; its button comes back here)
 
 UIViewController *sp_vpn_screen(NSString *noun, void (^turnOn)(void));  // spvpnscreen.swift
+void sp_vpn_refused(UIViewController *screen, BOOL refused);  // spvpnscreen.swift
 void sp_screen_status(UIViewController *screen, NSString *text);  // spstyle.swift
 
 // Opens LocalDevVPN to turn it on. open's completion says whether any app took the URL, so no
@@ -95,20 +102,31 @@ NSString *sp_vpn_wait(void (^*pump)(double), NSString *noun) {
     __block __weak UIViewController *weakScreen = nil;
     UIViewController *screen = sp_vpn_screen(noun, ^{ turn_on(weakScreen); });
     weakScreen = screen;
+    BOOL refused = err == ECONNREFUSED;
+    sp_vpn_refused(screen, refused);
     [root presentViewController:screen animated:NO completion:nil];
     // One line: the companion follows it (ClientLauncher.Marker.vpnOff).
     say(@"waiting for LocalDevVPN");
-    static atomic_bool up;
-    atomic_store(&up, false);
+    if (refused) say(@"refused: LocalDevVPN is on, and this needs Wi-Fi (cellular data?)");
+    // The latest connect's errno, 0 once one went through.
+    static atomic_int last;
+    atomic_store(&last, err);
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        while (sp_vpn_errno()) sleep(1);
-        atomic_store(&up, true);
+        for (int e; (e = sp_vpn_errno()); sleep(1)) atomic_store(&last, e);
+        atomic_store(&last, 0);
     });
     double t = now();
     BOOL opened = NO;
-    while (!atomic_load(&up)) {
-        // Once, by itself: an openURL from an app that isn't active yet goes nowhere.
-        if (!opened && UIApplication.sharedApplication.applicationState == UIApplicationStateActive) {
+    for (int e; (e = atomic_load(&last));) {
+        // The screen follows the connects: LocalDevVPN turned off or on while it waits.
+        if ((e == ECONNREFUSED) != refused) {
+            refused = !refused;
+            say([NSString stringWithFormat:@"10.7.0.1:49152: errno %d (%s)%@", e, strerror(e),
+                 refused ? @": LocalDevVPN is on, and this needs Wi-Fi (cellular data?)" : @""]);
+            sp_vpn_refused(screen, refused);
+        }
+        // Once, by itself, and only when it's off: an openURL from an app that isn't active yet goes nowhere.
+        if (!opened && !refused && UIApplication.sharedApplication.applicationState == UIApplicationStateActive) {
             opened = YES;
             turn_on(screen);
         }
