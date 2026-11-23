@@ -31,7 +31,9 @@ void (^sp_launch_uikit(void))(double);  // launcher.m
 NSData *sp_pair_headset(NSString *path, void (^pump)(double), NSString **problem);  // sppair.m
 NSString *sp_vpn_wait(void (^*pump)(double), NSString *noun);  // spvpn.m
 int sp_vpn_errno(void);  // spvpn.m
-NSString *sp_vpn_endpoint(void);  // spvpn.m
+NSArray<NSString *> *sp_vpn_endpoints(void);  // spvpn.m
+BOOL sp_vpn_search(void (^pump)(double));  // spvpn.m
+void sp_vpn_worked(NSString *endpoint);  // spvpn.m
 
 @interface NSObject (SPNSExtension)
 + (id)extensionWithIdentifier:(NSString *)identifier error:(NSError **)error;
@@ -168,9 +170,9 @@ static NSDictionary *read_ddi(NSString *library) {
 
 static NSString *summary(NSDictionary *reply) { return reply[@"summary"] ?: @"no summary"; }
 
-// LocalDevVPN's end of the loopback: the device's RemotePairing service, as the helper reaches it (its port
-// as sp_vpn_wait last found it).
-#define ENDPOINTS (@[sp_vpn_endpoint()])
+// LocalDevVPN's end of the loopback: the device's RemotePairing service, as the helper reaches it (the
+// endpoints sp_vpn_wait's search last found, tried in turn).
+#define ENDPOINTS (sp_vpn_endpoints())
 
 // The helper's session: the pairing record (on the headset made here when there's none), LocalDevVPN, and a
 // status request through the tunnel, which says whether the device accepts the record and whether the disk
@@ -190,7 +192,7 @@ static NSString *session(void (^*pump)(double), NSData **pairing_out, NSDictiona
     NSDictionary *status = nil;
     NSString *problem = nil;
     // A rejected record is deleted, and on the headset made again, once.
-    for (BOOL again = NO;;) {
+    for (BOOL again = NO, searched = NO;;) {
         if (!pairing) {
             say(@"no pairing record (Library/sppairing.plist)");
 #if TARGET_OS_VISION
@@ -224,10 +226,20 @@ static NSString *session(void (^*pump)(double), NSData **pairing_out, NSDictiona
             return @"Slashplayed's helper didn't start.\n\nInstall Slashplayed again from Slashplayed Companion on your Mac.";
         }
         say([@"status: " stringByAppendingString:summary(status)]);
-        if ([status[@"ok"] boolValue]) break;
+        if ([status[@"ok"] boolValue]) {
+            sp_vpn_worked(status[@"endpoint"]);
+            break;
+        }
         if (![status[@"rejected"] boolValue]) {
             // LocalDevVPN turned off since the check: the loop waits for it again.
             if (sp_vpn_errno()) continue;
+            // A connect goes through but no tunnel came up: RemotePairing's port isn't fixed, so that may be
+            // some other listener. Once, a Bonjour search for where it is (spvpn.m), when that finds more. (A
+            // reply with "endpoint" had its tunnel, and failed after it.)
+            if (!searched && !status[@"endpoint"]) {
+                searched = YES;
+                if (sp_vpn_search(*pump)) continue;
+            }
             return [NSString stringWithFormat:@"Slashplayed couldn't reach this %@'s developer services, though LocalDevVPN "
                     @"is on.\n\nIn LocalDevVPN, turn it off and on again, then close Slashplayed and open it again.\n\n(%@)",
                     noun, summary(status)];

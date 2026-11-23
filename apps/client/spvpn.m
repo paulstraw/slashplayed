@@ -20,14 +20,17 @@
 // A refused connect on Wi-Fi can also be the port: RemotePairing's network listener isn't always on 49152. An
 // iPhone 16 on iOS 27.3 beta (24C5037i), on Wi-Fi, advertised _remotepairing._tcp at port 50022 and refused
 // 49152, from the Mac too (2026-11-22). So before saying "Connect to Wi-Fi", a refused connect browses Bonjour
-// for _remotepairing._tcp and tries each advertised port at 10.7.0.1 (sp_bonjour_loopbacks, sppair.m): only
-// this device's own answers there. The port that connects is the one sp_vpn_endpoint gives the helper.
+// for _remotepairing._tcp and tries each advertised port at 10.7.0.1 (sp_bonjour_loopbacks, sppair.m), this
+// device's own service first. The ports that connect are the helper's endpoints (sp_vpn_endpoints), and a
+// tunnel that fails where a connect goes through searches again once (spjit.m's session), since 49152 itself
+// may be some other listener now.
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <os/lock.h>
 #include <poll.h>
 #include <stdatomic.h>
 #include <sys/socket.h>
@@ -42,11 +45,29 @@ static double now(void) { return CFAbsoluteTimeGetCurrent(); }
 
 NSArray<NSString *> *sp_bonjour_loopbacks(const char *type, double seconds, void (^pump)(double));  // sppair.m
 
-// The device's RemotePairing port: 49152 until a Bonjour browse found it elsewhere (discover).
-static atomic_int rp_port = 49152;
+#define RP_DEFAULT @"10.7.0.1:49152"
 
-// Where the helper reaches the device's RemotePairing service through LocalDevVPN.
-NSString *sp_vpn_endpoint(void) { return [NSString stringWithFormat:@"10.7.0.1:%d", atomic_load(&rp_port)]; }
+// Where the helper reaches the device's RemotePairing service through LocalDevVPN, in the order it tries
+// them (helper/Device.swift's Tunnel.open): 10.7.0.1:49152 alone until a Bonjour search found more (search),
+// and the one a tunnel last came up through first (sp_vpn_worked). Set from the main thread and the wait's
+// background loop.
+static NSArray<NSString *> *rp_endpoints;
+static os_unfair_lock rp_lock = OS_UNFAIR_LOCK_INIT;
+
+NSArray<NSString *> *sp_vpn_endpoints(void) {
+    os_unfair_lock_lock(&rp_lock);
+    NSArray<NSString *> *list = rp_endpoints ?: @[RP_DEFAULT];
+    os_unfair_lock_unlock(&rp_lock);
+    return list;
+}
+
+static void set_endpoints(NSArray<NSString *> *list) {
+    os_unfair_lock_lock(&rp_lock);
+    rp_endpoints = [list copy];
+    os_unfair_lock_unlock(&rp_lock);
+}
+
+static int port_of(NSString *endpoint) { return [endpoint substringFromIndex:@"10.7.0.1:".length].intValue; }
 
 // 0 when a TCP connect to `a` goes through within 3 s, else the errno.
 static int connect_addr(const struct sockaddr *a, socklen_t size) {
@@ -70,33 +91,52 @@ static int connect_errno(int port) {
     return connect_addr((struct sockaddr *)&a, sizeof a);
 }
 
-// 0 when a TCP connect to the device's RemotePairing port goes through the VPN, else the errno. Not
-// logged: the wait tries it every second.
-int sp_vpn_errno(void) { return connect_errno(atomic_load(&rp_port)); }
+// 0 when a TCP connect to the device's likeliest RemotePairing endpoint goes through the VPN, else the
+// errno. Not logged: the wait tries it every second.
+int sp_vpn_errno(void) { return connect_errno(port_of(sp_vpn_endpoints().firstObject)); }
 
-// After a refused connect: the RemotePairing port Bonjour advertises, when it isn't the one tried. YES once
-// one connects through the VPN (it's then sp_vpn_endpoint's). `wait` waits on the browse.
-static BOOL discover(void (^wait)(double)) {
+// The endpoints from a Bonjour search for _remotepairing._tcp: each advertised port that connects through
+// LocalDevVPN, this device's own service first (sp_bonjour_loopbacks), then 49152. A connect alone doesn't
+// prove a port is RemotePairing: the browse also finds other devices' services, and their port can be some
+// other listener on this one, so those come after this device's own and the helper tries them in turn. YES
+// when that changed the endpoints. `wait` waits on the browse.
+static BOOL search(void (^wait)(double)) {
     NSArray<NSString *> *found = sp_bonjour_loopbacks("_remotepairing._tcp", 2, wait);
     if (!found) {
         say(@"_remotepairing._tcp: local network access refused, so only the default port is tried");
         return NO;
     }
+    NSMutableArray<NSString *> *list = [NSMutableArray array];
     for (NSString *e in found) {
-        int port = [e substringFromIndex:@"10.7.0.1:".length].intValue;
-        if (port <= 0 || port > 65535 || port == atomic_load(&rp_port)) continue;
+        int port = port_of(e);
+        if (port <= 0 || port > 65535) continue;
         int err = connect_errno(port);
-        if (err) {
-            say([NSString stringWithFormat:@"%@ (Bonjour): errno %d (%s)", e, err, strerror(err)]);
-            continue;
-        }
-        say([NSString stringWithFormat:@"RemotePairing is at %@ (Bonjour), not %d", e, atomic_load(&rp_port)]);
-        atomic_store(&rp_port, port);
-        return YES;
+        if (err) say([NSString stringWithFormat:@"%@ (Bonjour): errno %d (%s)", e, err, strerror(err)]);
+        else [list addObject:e];
     }
-    say([NSString stringWithFormat:@"_remotepairing._tcp: %lu advertised, none other than %d answers through LocalDevVPN",
-         (unsigned long)found.count, atomic_load(&rp_port)]);
-    return NO;
+    if (![list containsObject:RP_DEFAULT]) [list addObject:RP_DEFAULT];
+    if ([list isEqual:sp_vpn_endpoints()]) {
+        say([NSString stringWithFormat:@"_remotepairing._tcp: %lu advertised, no other endpoint answers through LocalDevVPN",
+             (unsigned long)found.count]);
+        return NO;
+    }
+    say([NSString stringWithFormat:@"RemotePairing endpoints (Bonjour): %@", [list componentsJoinedByString:@", "]]);
+    set_endpoints(list);
+    return YES;
+}
+
+// A search again when a tunnel failed though a connect goes through: the port may be some other listener,
+// not RemotePairing, since its port isn't fixed (spjit.m's session). YES when the endpoints changed.
+BOOL sp_vpn_search(void (^pump)(double)) { return search(pump); }
+
+// The endpoint a tunnel came up through (the status reply's "endpoint") goes first, so the next requests
+// don't try the others before it.
+void sp_vpn_worked(NSString *endpoint) {
+    NSMutableArray<NSString *> *list = [sp_vpn_endpoints() mutableCopy];
+    if (!endpoint || ![list containsObject:endpoint] || [list.firstObject isEqual:endpoint]) return;
+    [list removeObject:endpoint];
+    [list insertObject:endpoint atIndex:0];
+    set_endpoints(list);
 }
 
 // The scene's root view controller, which the launcher's screens (this one, sppair.m's, splogin.m's) are
@@ -137,9 +177,9 @@ static void turn_on(UIViewController *screen) {
 NSString *sp_vpn_wait(void (^*pump)(double), NSString *noun) {
     int err = sp_vpn_errno();
     if (!err) return nil;
-    say([NSString stringWithFormat:@"%@: errno %d (%s)", sp_vpn_endpoint(), err, strerror(err)]);
+    say([NSString stringWithFormat:@"%@: errno %d (%s)", sp_vpn_endpoints().firstObject, err, strerror(err)]);
     // On, but refused: maybe RemotePairing listens on another port.
-    if (err == ECONNREFUSED && discover(*pump)) return nil;
+    if (err == ECONNREFUSED && search(*pump) && !sp_vpn_errno()) return nil;
     // It waits on the person: UIKit has to be up for the launch watchdog (on iOS it already is).
     void (^ui)(double) = sp_launch_uikit();
     UIViewController *root = ui ? sp_scene_root() : nil;
@@ -167,7 +207,8 @@ NSString *sp_vpn_wait(void (^*pump)(double), NSString *noun) {
         for (int e; (e = sp_vpn_errno()); sleep(1)) {
             if (e == ECONNREFUSED && now() - looked > 10) {
                 looked = now();
-                if (discover(^(double s) { usleep((useconds_t)(s * 1e6)); })) break;
+                search(^(double s) { usleep((useconds_t)(s * 1e6)); });
+                continue;  // the loop's connect goes to what it found
             }
             atomic_store(&last, e);
         }
@@ -179,7 +220,7 @@ NSString *sp_vpn_wait(void (^*pump)(double), NSString *noun) {
         // The screen follows the connects: LocalDevVPN turned off or on while it waits.
         if ((e == ECONNREFUSED) != refused) {
             refused = !refused;
-            say([NSString stringWithFormat:@"%@: errno %d (%s)%@", sp_vpn_endpoint(), e, strerror(e),
+            say([NSString stringWithFormat:@"%@: errno %d (%s)%@", sp_vpn_endpoints().firstObject, e, strerror(e),
                  refused ? @": LocalDevVPN is on, and this needs Wi-Fi (cellular data?)" : @""]);
             sp_vpn_refused(screen, refused);
         }

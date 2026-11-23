@@ -17,8 +17,9 @@
 	     settings and addons can be edited there. The start screen's Settings opens each game's folder in it. -->
 	<key>LSSupportsOpeningDocumentsInPlace</key><true/>
 	@PLATFORM_KEYS@
-	<!-- The headset's pairing (sppair.m) finds Settings' Remote Devices over Bonjour; the first browse asks for
-	     local network access. Only visionOS browses: an iPad or iPhone gets its pairing from the Mac. -->
+	<!-- The headset's pairing (sppair.m) finds Settings' Remote Devices over Bonjour, and every device's launch finds
+	     its own RemotePairing service when 10.7.0.1:49152 doesn't answer (spvpn.m); the first browse asks for
+	     local network access. -->
 	<key>NSBonjourServices</key><array><string>_remotepairing-manual-pairing._tcp</string><string>_remotepairing._tcp</string></array>
 	<key>NSLocalNetworkUsageDescription</key><string>Slashplayed finds this device's own developer services, and on a Vision Pro Remote Devices in Settings to pair with, so it can prepare the game without a Mac.</string>
 	<!-- LocalDevVPN's localdevvpn://enable?scheme=slashplayed turns it on and opens this, back to the app (spvpn.m). -->

@@ -104,13 +104,17 @@ second off the main thread, is what ends the wait, so turning it on by hand work
 (`ECONNREFUSED`, where LocalDevVPN off times out) means the VPN is on and the device's services refuse
 through it, which is cellular data: the tunnel works only on a joined Wi-Fi network (LocalDevVPN's issue
 31), or RemotePairing listening on another port. So a refused connect first browses Bonjour for
-`_remotepairing._tcp` and tries each advertised port at `10.7.0.1` (only the device's own answers there),
-and that port is the helper's endpoint from then on (an iPhone on iOS 27.3 beta advertised 50022 and
-refused 49152). The browse needs local network access (the app's `NSBonjourServices` lists the type);
-without it, only 49152 is tried. When no port answers, the screen says to join Wi-Fi or turn on Airplane
-Mode for now, and doesn't open LocalDevVPN; the same connects end the wait. Once the helper has prepared the
-client's code and detached, the last step that needs LocalDevVPN without cellular data, and before any of
-the client's code runs, the launcher tries a TCP connect to the game's region's patch service
+`_remotepairing._tcp` and tries each advertised port at `10.7.0.1` (an iPhone on iOS 27.3 beta advertised
+50022 and refused 49152). Every port that connects is one of the helper's endpoints from then on, tried in
+turn: the device's own service first (the one that resolves to one of its own addresses), then other
+devices' (their port reaches whatever listens there on this one, usually nothing), then 49152. Once a
+tunnel comes up, its endpoint goes first. The port isn't fixed, so 49152 can also connect to something
+that isn't RemotePairing: a status request whose tunnel fails though the connect goes through searches
+once more before it gives up. The browse needs local network access (the app's `NSBonjourServices` lists
+the type); without it, only 49152 is tried. When no port answers, the screen says to join Wi-Fi or turn on
+Airplane Mode for now, and doesn't open LocalDevVPN; the same connects end the wait. Once the helper has
+prepared the client's code and detached, the last step that needs LocalDevVPN without cellular data, and
+before any of the client's code runs, the launcher tries a TCP connect to the game's region's patch service
 (`<region>.version.battle.net:443`; `sp_net_wait`, which `sp_guest_main` calls): the game signs in to
 Battle.net seconds later, and a cellular connection turned back on after Airplane Mode wasn't always back
 by then (BLZ51901016, issue #129). Online, that's one connect and no screen. Otherwise a screen over the

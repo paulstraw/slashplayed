@@ -26,6 +26,7 @@
 #include <arpa/inet.h>
 #include <dns_sd.h>
 #include <fcntl.h>
+#include <ifaddrs.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -33,7 +34,7 @@
 
 void sp_launch_say(NSString *s);  // launcher.m
 NSDictionary *sp_jit_request(NSDictionary *req, double timeout, void (^pump)(double));  // spjit.m
-NSString *sp_vpn_endpoint(void);  // spvpn.m
+NSArray<NSString *> *sp_vpn_endpoints(void);  // spvpn.m
 UIViewController *sp_scene_root(void);  // spvpn.m
 
 static void say(NSString *s) { sp_launch_say([@"pair: " stringByAppendingString:s]); }
@@ -157,6 +158,7 @@ void sp_screen_status(UIViewController *screen, NSString *text);  // spstyle.swi
 @property (atomic) BOOL denied;  // local network access was refused
 - (instancetype)initWithType:(const char *)type;
 - (NSArray<NSString *> *)endpoints:(void (^)(double))pump;
+- (NSArray<NSString *> *)endpoints:(void (^)(double))pump own:(NSMutableSet<NSString *> *)own;
 @end
 
 @implementation SPPairBrowse {
@@ -217,28 +219,71 @@ void sp_screen_status(UIViewController *screen, NSString *text);  // spstyle.swi
     }
 }
 
+// Whether `address` is one of this device's own (its interfaces', loopback included): a service this device
+// advertises resolves to one. A link-local IPv6 address is compared without its scope, which getifaddrs
+// embeds in the address's bytes 2 and 3 (KAME) and the resolved one doesn't.
+static BOOL own_address(const struct sockaddr *address) {
+    if (!address) return NO;
+    struct ifaddrs *list = NULL;
+    if (getifaddrs(&list) != 0) return NO;
+    BOOL own = NO;
+    for (struct ifaddrs *i = list; i && !own; i = i->ifa_next) {
+        const struct sockaddr *a = i->ifa_addr;
+        if (!a || a->sa_family != address->sa_family) continue;
+        if (a->sa_family == AF_INET) {
+            own = ((const struct sockaddr_in *)a)->sin_addr.s_addr == ((const struct sockaddr_in *)address)->sin_addr.s_addr;
+        } else if (a->sa_family == AF_INET6) {
+            struct in6_addr x = ((const struct sockaddr_in6 *)a)->sin6_addr, y = ((const struct sockaddr_in6 *)address)->sin6_addr;
+            if (IN6_IS_ADDR_LINKLOCAL(&x)) x.s6_addr[2] = x.s6_addr[3] = 0;
+            if (IN6_IS_ADDR_LINKLOCAL(&y)) y.s6_addr[2] = y.s6_addr[3] = 0;
+            own = memcmp(&x, &y, sizeof x) == 0;
+        }
+    }
+    freeifaddrs(list);
+    return own;
+}
+
 // Each service found, resolved by connecting (TCP, nothing sent): the path names its address and port.
-// 10.7.0.1 at that port first (the loopback VPN, which is what worked in p2), then the address itself.
-- (NSArray<NSString *> *)endpoints:(void (^)(double))pump {
+// 10.7.0.1 at that port first (the loopback VPN, which is what worked in p2), then the address itself. The
+// connects run together, up to 2 s in all, so a busy network's many services don't add up. With `own`, the
+// loopbacks of the services at this device's own addresses are added to it.
+- (NSArray<NSString *> *)endpoints:(void (^)(double))pump own:(NSMutableSet<NSString *> *)own {
     NSArray<nw_endpoint_t> *services;
     @synchronized (self) {
         services = _found.allValues;
     }
-    NSMutableArray<NSString *> *out = [NSMutableArray array];
-    for (nw_endpoint_t service in services) {
-        nw_connection_t c = nw_connection_create(service,
+    NSUInteger n = services.count;
+    NSMutableArray<nw_connection_t> *connections = [NSMutableArray arrayWithCapacity:n];
+    // Per service: 1 ready, 2 failed. Each in its own buffer, held by its handler, which runs once more
+    // (cancelled) after this returns.
+    NSMutableArray<NSMutableData *> *boxes = [NSMutableArray arrayWithCapacity:n];
+    for (NSUInteger i = 0; i < n; i++) {
+        nw_connection_t c = nw_connection_create(services[i],
             nw_parameters_create_secure_tcp(NW_PARAMETERS_DISABLE_PROTOCOL, NW_PARAMETERS_DEFAULT_CONFIGURATION));
         nw_connection_set_queue(c, _queue);
-        __block _Atomic int state = 0;  // 1 ready, 2 failed
+        NSMutableData *box = [NSMutableData dataWithLength:sizeof(_Atomic int)];
+        [boxes addObject:box];
+        _Atomic int *state = box.mutableBytes;
         nw_connection_set_state_changed_handler(c, ^(nw_connection_state_t s, nw_error_t e) {
-            if (s == nw_connection_state_ready) state = 1;
-            else if (s == nw_connection_state_failed || s == nw_connection_state_cancelled) state = state ?: 2;
+            (void)box;  // keeps `state` alive
+            if (s == nw_connection_state_ready) *state = 1;
+            else if (s == nw_connection_state_failed || s == nw_connection_state_cancelled) *state = *state ?: 2;
         });
         nw_connection_start(c);
-        for (double end = now() + 2; !state && now() < end;) pump(0.05);
-        nw_path_t path = state == 1 ? nw_connection_copy_current_path(c) : nil;
+        [connections addObject:c];
+    }
+    for (double end = now() + 2; now() < end;) {
+        NSUInteger settled = 0;
+        for (NSMutableData *box in boxes) settled += *(_Atomic int *)box.mutableBytes != 0;
+        if (settled == n) break;
+        pump(0.05);
+    }
+    NSMutableArray<NSString *> *out = [NSMutableArray array];
+    for (NSUInteger i = 0; i < n; i++) {
+        nw_endpoint_t service = services[i];
+        nw_connection_t c = connections[i];
+        nw_path_t path = *(_Atomic int *)boxes[i].mutableBytes == 1 ? nw_connection_copy_current_path(c) : nil;
         nw_endpoint_t remote = path ? nw_path_copy_effective_remote_endpoint(path) : nil;
-        nw_connection_cancel(c);
         if (!remote || nw_endpoint_get_type(remote) != nw_endpoint_type_address) {
             say([NSString stringWithFormat:@"bonjour: %s didn't resolve", nw_endpoint_get_bonjour_service_name(service)]);
             continue;
@@ -247,8 +292,11 @@ void sp_screen_status(UIViewController *screen, NSString *text);  // spstyle.swi
         char *address = nw_endpoint_copy_address_string(remote);
         NSString *a = address ? @(address) : nil;
         free(address);
-        say([NSString stringWithFormat:@"bonjour: %s at %@ port %u", nw_endpoint_get_bonjour_service_name(service), a, port]);
+        BOOL mine = own_address(nw_endpoint_get_address(remote));
+        say([NSString stringWithFormat:@"bonjour: %s at %@ port %u%@", nw_endpoint_get_bonjour_service_name(service), a, port,
+             mine ? @" (this device)" : @""]);
         NSString *loopback = [NSString stringWithFormat:@"10.7.0.1:%u", port];
+        if (mine) [own addObject:loopback];
         if (![out containsObject:loopback]) [out addObject:loopback];
         if (a) {
             NSString *direct = [a containsString:@":"] ? [NSString stringWithFormat:@"[%@]:%u", a, port]
@@ -256,23 +304,32 @@ void sp_screen_status(UIViewController *screen, NSString *text);  // spstyle.swi
             if (![out containsObject:direct]) [out addObject:direct];
         }
     }
+    for (nw_connection_t c in connections) nw_connection_cancel(c);
     return out;
 }
+
+- (NSArray<NSString *> *)endpoints:(void (^)(double))pump { return [self endpoints:pump own:nil]; }
 @end
 
-// The loopback endpoints (10.7.0.1:<port>) of every `type` service Bonjour finds within `seconds`, nil
-// when local network access was refused. Each is only a candidate: LocalDevVPN sends 10.7.0.1 back to this
-// device, so only this device's own service answers there, and another device's port is refused.
+// The loopback endpoints (10.7.0.1:<port>) of every `type` service Bonjour finds within `seconds`, this
+// device's own first (the services that resolve to one of its addresses), nil when local network access was
+// refused. Each is only a candidate: LocalDevVPN sends 10.7.0.1 back to this device, so another device's port
+// reaches whatever listens there on this one, usually nothing.
 NSArray<NSString *> *sp_bonjour_loopbacks(const char *type, double seconds, void (^pump)(double)) {
     SPPairBrowse *browse = [[SPPairBrowse alloc] initWithType:type];
-    // Up to `seconds` for a first result; the rest come with it (one browse reply holds them all).
-    for (double end = now() + seconds; ![browse anything] && !browse.denied && now() < end;) pump(0.05);
+    // Up to `seconds` for a first result, then half a second more for the rest: results come in as they're
+    // found, and on a busy network this device's own needn't be the first.
+    double end = now() + seconds;
+    while (![browse anything] && !browse.denied && now() < end) pump(0.05);
+    for (double rest = MIN(now() + 0.5, end); [browse anything] && now() < rest;) pump(0.05);
     if (browse.denied) return nil;
-    NSMutableArray<NSString *> *out = [NSMutableArray array];
-    for (NSString *e in [browse endpoints:pump]) {
-        if ([e hasPrefix:@"10.7.0.1:"]) [out addObject:e];
+    NSMutableSet<NSString *> *own = [NSMutableSet set];
+    NSMutableArray<NSString *> *mine = [NSMutableArray array], *others = [NSMutableArray array];
+    for (NSString *e in [browse endpoints:pump own:own]) {
+        if (![e hasPrefix:@"10.7.0.1:"]) continue;
+        [[own containsObject:e] ? mine : others addObject:e];
     }
-    return out;
+    return [mine arrayByAddingObjectsFromArray:others];
 }
 
 // ---- the flow
@@ -372,7 +429,7 @@ NSData *sp_pair_headset(NSString *path, void (^pump)(double), NSString **problem
         };
         // The helper waits up to 10 minutes for the code; this waits a little longer for its reply.
         NSDictionary *reply = sp_jit_request(@{@"op": @"pair", @"endpoints": endpoints, @"pinPort": @(listener.port),
-                                               @"pinToken": listener.token, @"tunnelEndpoints": @[sp_vpn_endpoint()]},
+                                               @"pinToken": listener.token, @"tunnelEndpoints": sp_vpn_endpoints()},
                                              660, watch);
         [listener close];
         sp_pair_ask(ui, NO);
