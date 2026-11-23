@@ -131,7 +131,10 @@ it has no token to give a device (every Vision Pro is set up that way), and a pu
 taking would otherwise need a computer again. It's `slashplayed-companion`'s sign-in, run on the device:
 `spapple`'s `login` op (isideload's GSA sign-in over SRP, its 2FA, and anisette from a remote-v3 server,
 by default the same `mac-ani.jkcoxson.com`, with the same fixed client identity, which every later
-request then claims). The login runs as a task in `spapple`; its 2FA callback parks until the next call
+request then claims). The token records that identity (`client_identity`) and renewals claim it. A token
+from 1.6.1 or earlier has none and keeps claiming the identity it was made with, iloader 2.4.1's
+`<Mac15,7> <macOS;…>`: developer services still take that, but since about 2026-11-20 GrandSlam's login
+answers 503 to a `<macOS;…>` identity, so sign-ins now claim iloader 2.4.2's `<MacBookPro13,3> <Mac OS X;…>`. The login runs as a task in `spapple`; its 2FA callback parks until the next call
 (`login_answer`) brings the code, a text to one of Apple's trusted numbers, or the Apple devices, so the
 screen (`spapplescreen.swift`) can ask between calls. At the end `spapple` mints the `xcode.auth` token,
 checks with `listTeams` that the Apple ID is on the team that signed the app (a token for another team

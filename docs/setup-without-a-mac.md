@@ -207,8 +207,16 @@ signing key kept for that Apple ID, as the window's **Forget this computer's sig
   starts usbmuxd).
 - **The device doesn't show up:** use a data cable, unlock the device, and plug it in directly rather
   than through a hub.
+- **The device shows up in File Explorer, but Apple Devices (or iTunes) and Slashplayed don't see it:**
+  Windows may have given it a third-party driver instead of Apple's. Install **Apple Mobile Device USB
+  Driver** from the
+  [Microsoft Update Catalog](https://www.catalog.update.microsoft.com/Search.aspx?q=Apple+Mobile+Device+USB+Driver),
+  then unplug the device and plug it in again.
 - **The sign-in fails with -80045 or "This action cannot be completed at this time":** the anisette
   server was refused. Try again later, or another server with slashplayed-cli's `--anisette`.
+- **The sign-in fails with "503 Service Temporarily Unavailable" from grandslam:** that's Apple's
+  sign-in server, not the anisette server, so changing servers doesn't help. Since November 20, 2026,
+  Apple refuses the sign-in versions 1.6.1 and earlier make. Update Slashplayed.
 - **"the team can make N more App ID(s)":** a free Apple ID can make 10 App IDs a week, and Slashplayed
   needs 2 the first time. Wait a few days.
 - **Starting games keeps failing at the pairing step:** make a new pairing record with

@@ -8,6 +8,11 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ### Fixed
 
+- Signing in to Apple works again on Windows and Linux, and on an iPhone, iPad, or Vision Pro with
+  **Sign In to Apple…**. Since November 20, 2026, Apple's sign-in server has refused it with "503
+  Service Temporarily Unavailable", which looked like a blocked anisette server.
+  ([#122](https://github.com/paulstraw/slashplayed/issues/122),
+  [#123](https://github.com/paulstraw/slashplayed/issues/123))
 - On Wi-Fi, an iPhone or iPad whose developer services moved off their usual port no longer sits on
   "Connect to Wi-Fi": Slashplayed finds the port the device advertises and starts the game. The first
   time, it asks for local network access to do that.

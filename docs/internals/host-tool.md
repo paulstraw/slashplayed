@@ -23,7 +23,9 @@ device can't renew its own profiles:
    would. If Developer Mode is off, the tool reveals it in Settings (amfi); the window then waits through
    the device's restart and Turn On, while `slashplayed-cli` stops and is run again.
 3. **The Apple ID** (`src/account.rs`), through the vendored isideload: GSA over SRP, 2FA, anisette from
-   `mac-ani.jkcoxson.com` by default (`--anisette` for another). The password is typed, used for the one
+   `mac-ani.jkcoxson.com` by default (`--anisette` for another), claiming iloader 2.4.2's fixed client
+   identity (`<MacBookPro13,3> <Mac OS X;…>`; GrandSlam's login has answered 503 to a `<macOS;…>` one since
+   about 2026-11-20) unless `--server-client-info`. The password is typed, used for the one
    login, and zeroed. The whole login lives in memory and ends with the process, so each run asks again.
    No tracing subscriber is installed, and `DEBUG_SENSITIVE` is cleared at start.
 4. **Provisioning** (`src/provision.rs`), isideload's low-level developer-services API, not its
@@ -53,7 +55,7 @@ device can't renew its own profiles:
      with `--pair-again`.
    - The developer disk image (below).
    - The Apple token as `Library/spappletoken.json`, every run: the `xcode.auth` app token from this
-     sign-in, its adsid, and the anisette server and machine identity it was made on
+     sign-in, its adsid, and the anisette server, machine identity, and client identity it was made on
      (`account::device_token`). The launcher imports it into its keychain (`spapple.m`) and gets the app's
      renewed profiles from Apple with it. Not with `--server-client-info`, whose client identity the
      device doesn't claim.

@@ -60,7 +60,9 @@ use zeroize::{Zeroize, Zeroizing};
 
 /// What the device keeps of a sign-in (spapple.m stores it whole, as this JSON): the xcode.auth app
 /// token, the account's adsid it goes with, and the anisette server and machine identity it was made on.
-/// Every later request has to claim the same machine (research/isideload/README.md, "Anisette").
+/// Every later request has to claim the same machine (research/isideload/README.md, "Anisette"), so it also
+/// names the client identity it was made with; one from before that (1.6.1 and earlier) has none, and was
+/// made with legacy_client_info's.
 #[derive(Deserialize)]
 struct Token {
     token: String,
@@ -70,6 +72,8 @@ struct Token {
     anisette_url: String,
     #[serde(default)]
     anisette_state: String,
+    #[serde(default)]
+    client_identity: Option<AnisetteClientInfo>,
 }
 
 impl Drop for Token {
@@ -88,9 +92,20 @@ struct ProfilesRequest {
     helper: String,
 }
 
-/// iloader 2.4.1's client identity, which the companion and the spike send too: the anisette server's own
-/// is refused for SMS 2FA, and every request after the login has to claim the one the login did.
+/// The client identity a sign-in claims, iloader 2.4.2's, as the companion's (apps/companion-rs/src/account.rs):
+/// the anisette server's own is refused for SMS 2FA, and since about 2026-11-20 GrandSlam's login answers
+/// 503 to a `<macOS;…>` one. Every request after the login has to claim the one the login did (Token).
 fn client_info_override() -> AnisetteClientInfo {
+    AnisetteClientInfo {
+        client_info: "<MacBookPro13,3> <Mac OS X;10.12.6;16G29> <com.apple.AuthKit/1 (com.apple.akd/1.0)>".into(),
+        user_agent: "akd/1.0 CFNetwork/811.5.4 Darwin/16.7.0".into(),
+    }
+}
+
+/// iloader 2.4.1's, which every token from 1.6.1 and earlier was made with. Renewing one still claims it:
+/// developer services still take it (only GrandSlam's login refuses it), and a token's requests have to
+/// claim the machine it was made on.
+fn legacy_client_info() -> AnisetteClientInfo {
     AnisetteClientInfo {
         client_info: "<Mac15,7> <macOS;27.0;26A5378j> <com.apple.AuthKit/1 (com.apple.akd/1.0)>".into(),
         user_agent: "akd/1.0 CFNetwork/811.5.4".into(),
@@ -177,7 +192,7 @@ async fn session(token: &Token, storage: &MemoryStorage) -> Result<DeveloperSess
         storage.store(ANISETTE_STATE_KEY, &token.anisette_state)?;
     }
     let provider = RemoteV3AnisetteProvider::new(&token.anisette_url, Box::new(storage.clone()), "0".into())?
-        .set_client_info_override(Some(client_info_override()));
+        .set_client_info_override(Some(token.client_identity.clone().unwrap_or_else(legacy_client_info)));
     // No email: the account is only the GrandSlam client and anisette for the session, never logged in here.
     let account = AppleAccount::builder("").anisette_provider(provider).build().await?;
     // isideload's AppToken and the session keep copies of the token that it drops unzeroed (the header).
@@ -325,8 +340,9 @@ where
     C: isideload::util::callbacks::TwoFactorCallback,
 {
     let storage = MemoryStorage::default();
+    let identity = client_info_override();
     let provider = RemoteV3AnisetteProvider::new(&req.anisette_url, Box::new(storage.clone()), "0".into())?
-        .set_client_info_override(Some(client_info_override()));
+        .set_client_info_override(Some(identity.clone()));
     let mut account = AppleAccount::builder(&req.email).anisette_provider(provider).build().await?;
     let password = Zeroizing::new(std::mem::take(&mut req.password));
     let result = account.login(&password, two_factor).await;
@@ -364,6 +380,7 @@ where
                 "token": {
                     "token": token.token, "expiry": token.expiry, "duration": token.duration, "adsid": *adsid,
                     "anisette_url": req.anisette_url, "anisette_state": *state,
+                    "client_identity": { "client_info": identity.client_info, "user_agent": identity.user_agent },
                 },
             })
         }),

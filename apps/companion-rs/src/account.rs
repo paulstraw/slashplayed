@@ -33,12 +33,14 @@ use crate::flow::Frontend;
 /// (research/isideload/README.md, "Anisette"). --anisette names another, such as one you run yourself.
 pub const DEFAULT_ANISETTE: &str = "https://mac-ani.jkcoxson.com";
 
-/// The client identity iloader 2.4.1 sends in place of the server's (its fix for SMS 2FA 403s), which
-/// every request of the login must then claim.
+/// The client identity iloader 2.4.2 sends in place of the server's (its fix for SMS 2FA 403s), which
+/// every request of the login must then claim, the device's renewals too (device_token records it). 2.4.1's,
+/// `<Mac15,7> <macOS;27.0;26A5378j>`, gets a 503 from GrandSlam's login since about 2026-11-20: its edge
+/// refuses a `<macOS;…>` one. iloader warns this older one may bring back SMS 2FA trouble for some.
 fn client_info_override() -> AnisetteClientInfo {
     AnisetteClientInfo {
-        client_info: "<Mac15,7> <macOS;27.0;26A5378j> <com.apple.AuthKit/1 (com.apple.akd/1.0)>".into(),
-        user_agent: "akd/1.0 CFNetwork/811.5.4".into(),
+        client_info: "<MacBookPro13,3> <Mac OS X;10.12.6;16G29> <com.apple.AuthKit/1 (com.apple.akd/1.0)>".into(),
+        user_agent: "akd/1.0 CFNetwork/811.5.4 Darwin/16.7.0".into(),
     }
 }
 
@@ -62,12 +64,14 @@ impl SideloadingStorage for MemoryStorage {
 
 /// What the device keeps of this sign-in, as the launcher's spapple.m stores it and spapple's Token reads it
 /// (apps/client/spapple/src/lib.rs): the xcode.auth app token, the adsid it goes with, and the anisette
-/// server and machine identity it was made on. Pushed as Library/spappletoken.json, so the device can get its
+/// server, machine identity, and client identity it was made on. Pushed as Library/spappletoken.json, so the device can get its
 /// own renewed profiles from Apple with no computer. A credential: never logged, not even its size.
 pub fn device_token(token: &AppToken, adsid: &str, anisette_url: &str, anisette_state: &str) -> Result<Zeroizing<Vec<u8>>, Report> {
+    let identity = client_info_override();
     Ok(Zeroizing::new(serde_json::to_vec(&serde_json::json!({
         "token": token.token, "expiry": token.expiry, "duration": token.duration, "adsid": adsid,
         "anisette_url": anisette_url, "anisette_state": anisette_state,
+        "client_identity": { "client_info": identity.client_info, "user_agent": identity.user_agent },
     }))?))
 }
 
@@ -121,7 +125,10 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&device_token(&t, "a", "https://anisette.example", "s").unwrap()).unwrap();
         let mut keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
         keys.sort();
-        assert_eq!(keys, ["adsid", "anisette_state", "anisette_url", "duration", "expiry", "token"]);
+        assert_eq!(keys, ["adsid", "anisette_state", "anisette_url", "client_identity", "duration", "expiry", "token"]);
+        // The identity the sign-in claimed, which the device's renewals must claim too.
+        assert_eq!(v["client_identity"]["client_info"], client_info_override().client_info);
+        assert_eq!(v["client_identity"]["user_agent"], client_info_override().user_agent);
         assert!(v["expiry"].is_u64() && v["duration"].is_u64());
     }
 }

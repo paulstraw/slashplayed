@@ -90,7 +90,8 @@ static BOOL whole(id n) {
 }
 
 // The fields spapple's Token needs, all there and of the right kinds (anisette_state may be missing, but is a
-// string when it's there); nil when not. Only shapes are checked: whether Apple still takes the token, only
+// string when it's there; so may client_identity, a token from 1.6.1 or earlier, but when it's there it has
+// both of its strings); nil when not. Only shapes are checked: whether Apple still takes the token, only
 // Apple says.
 static NSDictionary *parse(NSData *blob) {
     NSDictionary *t = blob.length ? [NSJSONSerialization JSONObjectWithData:blob options:0 error:nil] : nil;
@@ -100,6 +101,12 @@ static NSDictionary *parse(NSData *blob) {
     for (NSString *k in @[@"expiry", @"duration"])
         if (!whole(t[k])) return nil;
     if (t[@"anisette_state"] && ![t[@"anisette_state"] isKindOfClass:NSString.class]) return nil;
+    NSDictionary *identity = t[@"client_identity"];
+    if (identity) {
+        if (![identity isKindOfClass:NSDictionary.class]) return nil;
+        for (NSString *k in @[@"client_info", @"user_agent"])
+            if (![identity[k] isKindOfClass:NSString.class] || ![identity[k] length]) return nil;
+    }
     return t;
 }
 
