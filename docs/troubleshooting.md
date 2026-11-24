@@ -412,9 +412,13 @@ shows the same message:
 - **"Connect to Wi-Fi"**: LocalDevVPN is on, but the device's developer services don't answer through
   it. That's cellular data: LocalDevVPN works only on Wi-Fi (an Apple limit LocalDevVPN can't get
   around), and turning it off and on doesn't help. Join a Wi-Fi network, or turn on **Airplane Mode**
-  until the game starts loading, then turn it off again: the game needs LocalDevVPN for only a second
-  or two at the start, and signs in once the network is back. Either way the game starts by itself,
-  with no need to close Slashplayed or restart the device.
+  for now: the game needs LocalDevVPN for only a second or two at the start, and Slashplayed then says
+  when to turn it off (next). Either way the game starts by itself, with no need to close Slashplayed or
+  restart the device.
+- **"Waiting for the Internet"**: the game is ready to load, but the device isn't online, and the game
+  signs in to Battle.net as it starts. Turn Airplane Mode off (or cellular data back on), or join a Wi-Fi
+  network: the game starts by itself once the device is online. **Start Anyway** starts it without
+  waiting, for a network that reaches the game but not Blizzard's patch service.
 - **"couldn't reach this … 's developer services, though LocalDevVPN is on"**: the tunnel didn't come
   up anyway. In LocalDevVPN, turn it off and on again, then close Slashplayed and open it again (or
   press **Retry Launch**).

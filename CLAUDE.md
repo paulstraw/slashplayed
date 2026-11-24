@@ -32,7 +32,7 @@ the owner asks for it.
 - `apps/client/`: the device app. `launcher.m` (the `slashplayed` executable: picks the game, retires what it can't load, and loads
   `Library/spgames/wow-<flavor>`, the game's unchanged slice, with spguest),
   `spjit.m` (its side of the JIT helper, and `sp_relaunch`, the way back to the start screen when a game quits), `sppair.m` (the headset's pairing; its screen is `sppairscreen.swift`), `spvpn.m` (the
-  wait for LocalDevVPN; its screen is `spvpnscreen.swift`), `spstyle.swift` (the launcher's look, shared by every
+  wait for LocalDevVPN, and after the helper's attach for the internet; its screens are `spvpnscreen.swift`), `spstyle.swift` (the launcher's look, shared by every
   SwiftUI screen: one game button, `GameButtonStyle`), `splogin.m` (the Battle.net sign-in: the keychain and `login.txt`; its screen is `spsignin.swift`),
   `spstart.m` (the start screen, every launch that doesn't name a game: the wait for a tap, `SP_START_TEXT_SIZE`, Goodmountain's
   registration, `sp_face`; its screen is `spstartscreen.swift`; its logo is the icon's own vectors, `splogo.h`, and its face

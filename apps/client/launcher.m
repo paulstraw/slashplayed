@@ -55,6 +55,7 @@ static void say(NSString *s) {
 
 void sp_launch_say(NSString *s) { say(s); }  // spjit.m, sppair.m, and spvpn.m log through it
 NSString *sp_jit_attach(void (^pump)(double));  // spjit.m
+void sp_net_wait(void (^pump)(double), NSString *region);  // spvpn.m
 NSArray<NSDictionary *> *sp_jit_profiles(NSArray<NSData *> *install, void (^pump)(double), NSString **problem);  // spjit.m
 NSString *sp_apple_token_import(void);  // spapple.m
 NSString *sp_apple_token_describe(void);  // spapple.m
@@ -81,7 +82,7 @@ static NSString *profiles_drill(void (^pump)(double)) {
 NSString *sp_device_noun(void);  // spjit.m
 NSString *sp_guest_hooks_problem(void);  // spguestlaunch.m
 NSString *sp_guest_preflight(NSString *path);  // spguestlaunch.m
-int sp_guest_main(NSString *path, int argc, char **argv, NSString **problem);
+int sp_guest_main(NSString *path, int argc, char **argv, void (^detached)(void), NSString **problem);
 void sp_login_clear(NSArray<NSString *> *flavors);  // splogin.m
 NSMutableData *sp_login_prepare(BOOL token, void (^*pump)(double), NSString **problem);
 BOOL sp_login_write(NSString *flavor, NSMutableData *bytes);
@@ -827,7 +828,11 @@ int main(int argc, char **argv) {
     // unresolved import, a bad opcode, a refused hook), and a file that turned out bad is deleted with its
     // stamp, so the next Play or start gets it again.
     atexit(relaunch_at_exit);
-    int status = sp_guest_main(library, argc, argv, &problem);
+    // Once the helper has prepared the client's code and detached, the last step that needs LocalDevVPN without
+    // cellular data, and before the client's own code runs: the game signs in to Battle.net seconds after, so
+    // it waits for the network a person may have turned off for LocalDevVPN (spvpn.m's sp_net_wait).
+    NSString *region = choice[@"Region"];
+    int status = sp_guest_main(library, argc, argv, ^{ sp_net_wait(pump, region); }, &problem);
     if (problem)
         fail_launch([NSString stringWithFormat:@"%@ %@ couldn't be loaded on this %@: %@.", sp_flavor_name(flavor), stamp[@"Version"],
                                                sp_device_noun(), problem]);

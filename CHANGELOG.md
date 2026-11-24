@@ -6,6 +6,14 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- After LocalDevVPN has done its part, an iPhone or iPad that isn't online yet, such as one still in
+  Airplane Mode from the "Connect to Wi-Fi" step, waits on a "Waiting for the Internet" screen and
+  starts the game once it's back online, so the game no longer reaches its sign-in before cellular data
+  does (BLZ51901016). **Start Anyway** skips the wait.
+  ([#129](https://github.com/paulstraw/slashplayed/issues/129))
+
 ### Fixed
 
 - On Wi-Fi, an iPhone or iPad whose developer services moved off their usual port no longer sits on

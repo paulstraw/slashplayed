@@ -1,8 +1,8 @@
 #!/bin/sh
 # Builds the device app's main executable, the launcher (launcher.m, spjit.m, its side of the JIT helper,
 # sppair.m, the headset's pairing screen, spsettings.swift, the Settings sheet (in SwiftUI), spaddons.m and
-# spaddonsscreen.swift, the addon manager and its Settings pages, spvpn.m, the wait
-# for LocalDevVPN, splogin.m and spsignin.swift, the Battle.net sign-in, spstart.m and spstartscreen.swift, the
+# spaddonsscreen.swift, the addon manager and its Settings pages, spvpn.m, the waits
+# for LocalDevVPN and the internet, splogin.m and spsignin.swift, the Battle.net sign-in, spstart.m and spstartscreen.swift, the
 # start screen, sppatch.m, the patch check, with spcdn.m, Blizzard's CDN, and spbind.m, the bind check on the
 # device, spguestlaunch.m with spguest.c, the loader that runs the game's unchanged client, and spapple.m,
 # the Apple token, the app's profile renewal, and the Apple sign-in (spapplescreen.swift its screen), with the
@@ -25,7 +25,7 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 # The Swift screens (spstartscreen.swift, the start screen; spsettings.swift, the Settings sheet; spaddonsscreen.swift, its
 # Addons pages; spsignin.swift, the Battle.net sign-in;
-# spapplescreen.swift, the Apple sign-in; sppairscreen.swift and spvpnscreen.swift, the pairing and LocalDevVPN waits;
+# spapplescreen.swift, the Apple sign-in; sppairscreen.swift and spvpnscreen.swift, the pairing, LocalDevVPN, and internet waits;
 # sppatchscreen.swift, the newer-build screen; spstyle.swift, their shared
 # look), with spswift.h as their bridging header: the
 # Objective-C they call, and their C entry points the Objective-C calls. -parse-as-library: main is launcher.m's. -wmo: one module, one object.

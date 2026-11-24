@@ -26,6 +26,7 @@
 #import <UIKit/UIKit.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <stdatomic.h>
@@ -47,13 +48,12 @@ static atomic_int rp_port = 49152;
 // Where the helper reaches the device's RemotePairing service through LocalDevVPN.
 NSString *sp_vpn_endpoint(void) { return [NSString stringWithFormat:@"10.7.0.1:%d", atomic_load(&rp_port)]; }
 
-static int connect_errno(int port) {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
+// 0 when a TCP connect to `a` goes through within 3 s, else the errno.
+static int connect_addr(const struct sockaddr *a, socklen_t size) {
+    int fd = socket(a->sa_family, SOCK_STREAM, 0);
     if (fd < 0) return errno;
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
-    struct sockaddr_in a = {.sin_len = sizeof a, .sin_family = AF_INET, .sin_port = htons(port)};
-    inet_pton(AF_INET, "10.7.0.1", &a.sin_addr);
-    int r = connect(fd, (struct sockaddr *)&a, sizeof a);
+    int r = connect(fd, a, size);
     int err = r == 0 ? 0 : errno;
     if (err == EINPROGRESS) {
         struct pollfd p = {.fd = fd, .events = POLLOUT};
@@ -62,6 +62,12 @@ static int connect_errno(int port) {
     }
     close(fd);
     return err;
+}
+
+static int connect_errno(int port) {
+    struct sockaddr_in a = {.sin_len = sizeof a, .sin_family = AF_INET, .sin_port = htons(port)};
+    inet_pton(AF_INET, "10.7.0.1", &a.sin_addr);
+    return connect_addr((struct sockaddr *)&a, sizeof a);
 }
 
 // 0 when a TCP connect to the device's RemotePairing port goes through the VPN, else the errno. Not
@@ -195,4 +201,96 @@ NSString *sp_vpn_wait(void (^*pump)(double), NSString *noun) {
     // The input view (spevent.m) takes the keys back.
     [root.view becomeFirstResponder];
     return nil;
+}
+
+// ---- the internet, once the helper has detached (issue #129)
+//
+// On cellular data, getting past "Connect to Wi-Fi" takes Airplane Mode (or cellular data off) until the
+// helper has prepared the client's code, and the game signs in to Battle.net seconds after: turned back on
+// once the game was loading, the cellular connection wasn't always back in time, and the sign-in failed
+// (BLZ51901016). So once the helper has detached (spguestlaunch.m calls this then, before any of the client's
+// code runs), a TCP connect to the game's region's Battle.net host (the patch service sppatch.m asks) has to go
+// through. Not at the attach: the helper still needs its tunnel then, and nothing says a tunnel survives
+// Airplane Mode going off under it. Online, that's one connect and no screen. Otherwise a screen (over the
+// loading screen) says to turn the network back on and waits, as long as it takes; its Start Anyway is for a
+// network that reaches the game but not that host.
+
+UIViewController *sp_net_screen(NSString *noun, void (^startAnyway)(void));  // spvpnscreen.swift
+NSString *sp_device_noun(void);  // spjit.m
+
+static void net_say(NSString *s) { sp_launch_say([@"net: " stringByAppendingString:s]); }
+
+// nil when a TCP connect to host:443 goes through, else why not (the name's resolve, or the last address's errno).
+static NSString *internet_problem(NSString *host) {
+    struct addrinfo hints = {.ai_family = AF_UNSPEC, .ai_socktype = SOCK_STREAM}, *info = NULL;
+    int gai = getaddrinfo(host.UTF8String, "443", &hints, &info);
+    if (gai) return [NSString stringWithFormat:@"resolve: %s", gai_strerror(gai)];
+    int err = EHOSTUNREACH;
+    for (struct addrinfo *a = info; a && err; a = a->ai_next) err = connect_addr(a->ai_addr, a->ai_addrlen);
+    freeaddrinfo(info);
+    return err ? [NSString stringWithFormat:@"errno %d (%s)", err, strerror(err)] : nil;
+}
+
+void sp_net_wait(void (^pump)(double), NSString *region) {
+    NSString *host = [NSString stringWithFormat:@"%@.version.battle.net", region];
+    double t = now();
+    // The latest try's problem: @"" until the first ends, nil once one went through. The tries stop then, or
+    // once the wait is over (Start Anyway, or no screen to wait on).
+    NSObject *lock = [NSObject new];
+    __block NSString *problem = @"";
+    __block BOOL over = NO;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        for (;;) {
+            NSString *p = internet_problem(host);
+            @synchronized (lock) {
+                problem = p;
+                if (!p || over) return;
+            }
+            sleep(1);
+        }
+    });
+    NSString *(^latest)(void) = ^NSString * {
+        @synchronized (lock) {
+            return problem;
+        }
+    };
+    void (^end)(void) = ^{
+        @synchronized (lock) {
+            over = YES;
+        }
+    };
+    // The first try, without a screen: online, it's well under a second.
+    for (double until = now() + 4; latest().length == 0 && latest() && now() < until;) pump(0.05);
+    if (!latest()) {
+        net_say([NSString stringWithFormat:@"%@ answers, after %.2f s", host, now() - t]);
+        return;
+    }
+    net_say([NSString stringWithFormat:@"%@: %@", host, latest().length ? latest() : @"no answer within 4 s"]);
+    void (^ui)(double) = sp_launch_uikit();
+    UIViewController *root = ui ? sp_scene_root() : nil;
+    if (!root) {
+        end();
+        net_say(@"offline, and no screen to wait on: the game starts anyway");
+        return;
+    }
+    pump = ui;
+    __block BOOL anyway = NO;
+    UIViewController *screen = sp_net_screen(sp_device_noun(), ^{ anyway = YES; });
+    [root presentViewController:screen animated:NO completion:nil];
+    net_say(@"waiting for the internet");
+    NSString *logged = latest();
+    while (latest() && !anyway) {
+        // A new reason only, not every second's.
+        if (latest().length && ![latest() isEqual:logged]) net_say([NSString stringWithFormat:@"%@: %@", host, logged = latest()]);
+        pump(0.25);
+    }
+    end();
+    net_say(anyway ? [NSString stringWithFormat:@"Start Anyway, after %.1f s offline", now() - t]
+                   : [NSString stringWithFormat:@"online again, after %.1f s", now() - t]);
+    // As the LocalDevVPN screen's: gone before the next screen (the loading screen) goes up.
+    __block BOOL gone = NO;
+    [screen dismissViewControllerAnimated:NO completion:^{ gone = YES; }];
+    for (double until = now() + 5; !gone && now() < until;) pump(0.05);
+    if (!gone) net_say(@"the internet screen didn't go away");
+    [root.view becomeFirstResponder];
 }
