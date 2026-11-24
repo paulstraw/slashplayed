@@ -6,6 +6,8 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-24
+
 ### Added
 
 - After LocalDevVPN has done its part, an iPhone or iPad that isn't online yet, such as one still in

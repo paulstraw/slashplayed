@@ -39,7 +39,7 @@ body:
     id: companion-version
     attributes:
       label: Companion version
-      placeholder: 1.6.1
+      placeholder: 1.7.0
     validations:
       required: true
   - type: textarea
