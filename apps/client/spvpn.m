@@ -14,7 +14,7 @@
 // A refused connect means something else: LocalDevVPN is on, and the device's own services refuse through it.
 // That's cellular data: LocalDevVPN works only on Wi-Fi (LocalDevVPN's issue 31, "Apple-enforced"; on the iPhone
 // with Wi-Fi off, errno 61, where LocalDevVPN off times out, errno 60). Opening LocalDevVPN again doesn't help
-// there, so the screen says to join Wi-Fi or turn on Airplane Mode until the game loads, and the same connects
+// there, so the screen says to join Wi-Fi or turn on Airplane Mode for now (sp_net_wait, below, says when to turn it off), and the same connects
 // end the wait (the iPhone, 2026-11-14: Airplane Mode on from this screen, through within a second).
 //
 // A refused connect on Wi-Fi can also be the port: RemotePairing's network listener isn't always on 49152. An
@@ -241,10 +241,13 @@ void sp_net_wait(void (^pump)(double), NSString *region) {
     __block BOOL over = NO;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         for (;;) {
+            @synchronized (lock) {
+                if (over) return;
+            }
             NSString *p = internet_problem(host);
             @synchronized (lock) {
                 problem = p;
-                if (!p || over) return;
+                if (!p) return;
             }
             sleep(1);
         }
@@ -260,12 +263,14 @@ void sp_net_wait(void (^pump)(double), NSString *region) {
         }
     };
     // The first try, without a screen: online, it's well under a second.
-    for (double until = now() + 4; latest().length == 0 && latest() && now() < until;) pump(0.05);
-    if (!latest()) {
+    // Each read of the latest is one read: the tries change it meanwhile.
+    NSString *p;
+    for (double until = now() + 4; (p = latest()) && !p.length && now() < until;) pump(0.05);
+    if (!p) {
         net_say([NSString stringWithFormat:@"%@ answers, after %.2f s", host, now() - t]);
         return;
     }
-    net_say([NSString stringWithFormat:@"%@: %@", host, latest().length ? latest() : @"no answer within 4 s"]);
+    net_say([NSString stringWithFormat:@"%@: %@", host, p.length ? p : @"no answer within 4 s"]);
     void (^ui)(double) = sp_launch_uikit();
     UIViewController *root = ui ? sp_scene_root() : nil;
     if (!root) {
@@ -278,10 +283,10 @@ void sp_net_wait(void (^pump)(double), NSString *region) {
     UIViewController *screen = sp_net_screen(sp_device_noun(), ^{ anyway = YES; });
     [root presentViewController:screen animated:NO completion:nil];
     net_say(@"waiting for the internet");
-    NSString *logged = latest();
-    while (latest() && !anyway) {
+    NSString *logged = p;
+    while ((p = latest()) && !anyway) {
         // A new reason only, not every second's.
-        if (latest().length && ![latest() isEqual:logged]) net_say([NSString stringWithFormat:@"%@: %@", host, logged = latest()]);
+        if (p.length && ![p isEqual:logged]) net_say([NSString stringWithFormat:@"%@: %@", host, logged = p]);
         pump(0.25);
     }
     end();

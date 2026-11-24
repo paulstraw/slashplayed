@@ -805,7 +805,6 @@ int main(int argc, char **argv) {
     if (!problem) sp_profiles_renew(pump);
     if (!problem) problem = sp_jit_attach(pump);
     if (problem) fail_launch(problem);
-    if (login) sp_login_write(flavor, login);  // on failure it says so; the token or the game's login screen is left
     // The loading screen (the AppKit shim's sploading.m), from here until the client's first frame, instead
     // of black: the game's name, then the data setup's progress or "Loading…". On visionOS it goes up when
     // the client brings UIKit up.
@@ -830,9 +829,17 @@ int main(int argc, char **argv) {
     atexit(relaunch_at_exit);
     // Once the helper has prepared the client's code and detached, the last step that needs LocalDevVPN without
     // cellular data, and before the client's own code runs: the game signs in to Battle.net seconds after, so
-    // it waits for the network a person may have turned off for LocalDevVPN (spvpn.m's sp_net_wait).
+    // it waits for the network a person may have turned off for LocalDevVPN (spvpn.m's sp_net_wait). login.txt only
+    // after that wait, which can be hours: a person who gives up on it and closes the app leaves the file behind
+    // (the libSystem shim's delete is set up by the client's first call). On failure sp_login_write says so; the
+    // token or the game's login screen is left.
     NSString *region = choice[@"Region"];
-    int status = sp_guest_main(library, argc, argv, ^{ sp_net_wait(pump, region); }, &problem);
+    int status = sp_guest_main(library, argc, argv, ^{
+        sp_net_wait(pump, region);
+        if (login) sp_login_write(flavor, login);
+    }, &problem);
+    // A load that failed before the wait never wrote the sign-in: its bytes are zeroed here instead.
+    if (login) [login resetBytesInRange:NSMakeRange(0, login.length)];
     if (problem)
         fail_launch([NSString stringWithFormat:@"%@ %@ couldn't be loaded on this %@: %@.", sp_flavor_name(flavor), stamp[@"Version"],
                                                sp_device_noun(), problem]);

@@ -115,10 +115,12 @@ the client's code runs, the launcher tries a TCP connect to the game's region's 
 Battle.net seconds later, and a cellular connection turned back on after Airplane Mode wasn't always back
 by then (BLZ51901016, issue #129). Online, that's one connect and no screen. Otherwise a screen over the
 loading screen says to turn Airplane Mode off and waits until a connect goes through, or until **Start
-Anyway**. An app that a
-debugger already holds (StikDebug launched it) skips the helper. When the device no longer accepts the
-record (the status reply says `rejected`: the tunnel's pair-verify failed and idevice asked for a
-pair-setup code), the launcher deletes it, so it's made again.
+Anyway**. `login.txt` is written only after that wait, so a person who closes the app on it leaves
+no sign-in behind.
+
+An app that a debugger already holds (StikDebug launched it) skips the helper. When the device no longer
+accepts the record (the status reply says `rejected`: the tunnel's pair-verify failed and idevice asked
+for a pair-setup code), the launcher deletes it, so it's made again.
 
 What the helper needs is in the app's data container. The companion puts it there when it installs,
 except the headset's record:
