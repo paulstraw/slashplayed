@@ -146,11 +146,11 @@ int sp_guest_main(NSString *path, int argc, char **argv, void (^detached)(void),
         *problem = retired ? [NSString stringWithFormat:@"%s; it's deleted, so the next start gets it again", err] : @(err);
         return 1;
     }
-    // The helper has prepared __TEXT and detached (prepare_text), and none of the client's code has run yet. Its
-    // wait (a person turning Airplane Mode off) is left out of the load's time below.
-    double waited = now();
+    // The helper has prepared __TEXT and detached (prepare_text), and none of the client's code has run yet.
+    // Timed apart: the wait can be minutes offline, which isn't the load's.
+    double t_net = now();
     detached();
-    t0 += now() - waited;
+    t_net = now() - t_net;
     // libspSystem is loaded (launcher.m's first line), so it knows before the client's first call into a shim.
     void (*set_client)(const struct mach_header *, intptr_t, const char *, uintptr_t) = dlsym(RTLD_DEFAULT, "sp_set_client");
     if (!set_client) {
@@ -173,8 +173,9 @@ int sp_guest_main(NSString *path, int argc, char **argv, void (^detached)(void),
     else say(@"audio: can't refuse the microphone: voice chat settings may stop the app");
     double load, link, init;
     spguest_times(g, &load, &link, &init);
-    say([NSString stringWithFormat:@"loaded and linked in %.3f s (prepare %.3f s, detach %.3f s, load %.3f s with both, link %.3f s); "
-                                   @"initializers, then main", now() - t0, t_prepare, t_detach, load, link]);
+    say([NSString stringWithFormat:@"loaded and linked in %.3f s (prepare %.3f s, detach %.3f s, load %.3f s with both, link %.3f s), "
+                                   @"plus %.3f s for the internet; initializers, then main",
+                                   now() - t0 - t_net, t_prepare, t_detach, load, link, t_net]);
     const char *apple[] = {path.fileSystemRepresentation, NULL};
     return spguest_run(g, argc, (const char **)argv, (const char **)environ, apple);
 }
