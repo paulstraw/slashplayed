@@ -50,10 +50,14 @@ for p in $PLATFORMS; do
 done
 
 # Panic messages carry source paths: map the ones on this machine to fixed names, so nothing built from
-# this names anyone's home directory.
+# this names anyone's home directory. Encoded (0x1f between flags), as scripts/build-idevice.sh does, so
+# a path with a space in it stays one flag.
 CARGO_DIR=${CARGO_HOME:-$HOME/.cargo}
 SYSROOT=$(rustup run "$TOOLCHAIN" rustc --print sysroot)
-export RUSTFLAGS="--remap-path-prefix=$CARGO_DIR/registry/src=/cargo --remap-path-prefix=$CARGO_DIR/git/checkouts=/cargo-git --remap-path-prefix=$SYSROOT=/rustc --remap-path-prefix=$ROOT=/slashplayed"
+remaps=("--remap-path-prefix=$CARGO_DIR/registry/src=/cargo" "--remap-path-prefix=$CARGO_DIR/git/checkouts=/cargo-git"
+  "--remap-path-prefix=$SYSROOT=/rustc" "--remap-path-prefix=$ROOT=/slashplayed")
+CARGO_ENCODED_RUSTFLAGS=$(IFS=$'\037'; echo "${remaps[*]}")
+export CARGO_ENCODED_RUSTFLAGS
 mkdir -p "$OUT"
 kept=""
 if [ -f "$OUT/BUILD.txt" ]; then

@@ -98,9 +98,15 @@ git -C "$OUT/src" -c advice.detachedHead=false checkout --quiet --force "$COMMIT
 # BUILD.txt keeps the lines of platforms this run doesn't rebuild.
 # Panic messages carry source paths: map the ones on this machine (the cargo registry, the toolchain, the
 # clone) to fixed names, so nothing built from this names anyone's home directory.
+# CARGO_ENCODED_RUSTFLAGS, not RUSTFLAGS: cargo splits RUSTFLAGS on spaces, so a checkout (or home) path
+# with a space in it ("/Volumes/SSK SSD/...") broke each flag in two. The encoded form separates flags
+# with 0x1f, so a path goes through whole (and cargo prefers it to any RUSTFLAGS in the environment).
 CARGO_DIR=${CARGO_HOME:-$HOME/.cargo}
 SYSROOT=$(rustup run "$TOOLCHAIN" rustc --print sysroot)
-export RUSTFLAGS="--remap-path-prefix=$CARGO_DIR/registry/src=/cargo --remap-path-prefix=$CARGO_DIR/git/checkouts=/cargo-git --remap-path-prefix=$SYSROOT=/rustc --remap-path-prefix=$OUT/src=/idevice"
+remaps=("--remap-path-prefix=$CARGO_DIR/registry/src=/cargo" "--remap-path-prefix=$CARGO_DIR/git/checkouts=/cargo-git"
+  "--remap-path-prefix=$SYSROOT=/rustc" "--remap-path-prefix=$OUT/src=/idevice")
+CARGO_ENCODED_RUSTFLAGS=$(IFS=$'\037'; echo "${remaps[*]}")
+export CARGO_ENCODED_RUSTFLAGS
 rm -f "$OUT/BUILD.txt.tmp"
 kept=""
 if [ -f "$OUT/BUILD.txt" ]; then

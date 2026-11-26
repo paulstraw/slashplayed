@@ -13,12 +13,12 @@ OUT=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 cd "$(dirname "$0")"
 . ../../scripts/platform.sh
 IDEVICE=../../work/idevice
-[ -f $IDEVICE/$SP_PLATFORM/libidevice_ffi.a ] && [ -f $IDEVICE/$SP_PLATFORM/native-libs.txt ] ||
+[ -f "$IDEVICE/$SP_PLATFORM/libidevice_ffi.a" ] && [ -f "$IDEVICE/$SP_PLATFORM/native-libs.txt" ] ||
   { echo "build-helper: no idevice for $SP_PLATFORM in work/idevice/: run scripts/build-idevice.sh $SP_PLATFORM" >&2; exit 1; }
 # NSExtensionMain (Foundation's) is the entry point, as for any app extension; -application-extension
 # keeps the code to extension-safe API.
 # shellcheck disable=SC2046 # native-libs.txt is a list of linker flags
 xcrun --sdk $SP_SDK swiftc -target $SP_TARGET -O -parse-as-library -application-extension \
-  -Xlinker -e -Xlinker _NSExtensionMain -D SP_IDEVICE -I $IDEVICE/include -I helper/iokit \
-  helper/Helper.swift helper/Device.swift helper/Pair.swift $IDEVICE/$SP_PLATFORM/libidevice_ffi.a \
-  $(cat $IDEVICE/$SP_PLATFORM/native-libs.txt) -o "$OUT"
+  -Xlinker -e -Xlinker _NSExtensionMain -D SP_IDEVICE -I "$IDEVICE/include" -I helper/iokit \
+  helper/Helper.swift helper/Device.swift helper/Pair.swift "$IDEVICE/$SP_PLATFORM/libidevice_ffi.a" \
+  $(cat "$IDEVICE/$SP_PLATFORM/native-libs.txt") -o "$OUT"
