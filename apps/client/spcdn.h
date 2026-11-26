@@ -66,8 +66,8 @@ NSString *sp_patch_needs_update_body(NSString *news);
 
 // The device's .build.info once `product` is on the build the patch service's `version` row names in
 // `region` (`cdns` is the region's row of its cdns table): Battle.net's header, and for the product the row
-// the companion writes for that build (BlizzardCDN.buildInfoLine). Its Tags are `tags` when given (a game
-// the device decides the region of: sp_game_region, sp_region_tags), else kept from the product's row in
+// the companion writes for that build (BlizzardCDN.buildInfoLine). Its Tags are `tags` when given (the game's
+// region's: sp_game_region), else kept from the product's row in
 // `existing`, else a US English Mac install's. The other products' rows of `existing` are kept, in their
 // order, laid out by name in the same columns; a product with no row gets one at the end.
 NSString *sp_build_info_with(NSString *_Nullable existing, NSString *product, NSString *region, NSString *_Nullable tags,
@@ -77,24 +77,27 @@ NSString *sp_build_info_with(NSString *_Nullable existing, NSString *product, NS
 // (Library/spgames/wow-<flavor>), so the client streams that build's data: `kept` is the .build.info
 // text update wrote beside the image when it made it (spgames/spbuildinfo-<flavor>, sp_build_info_with's
 // for its build with no existing rows), `stamp` the image's stamp. Laid out as sp_build_info_with lays it,
-// the Tags kept from `existing`'s row. With `region` (Branch and Tags: a game whose region the device decides,
+// the Tags kept from `existing`'s row. With `region` (Branch and Tags: the game's region,
 // sp_game_region), the row is in that region instead, with those Tags, and is written again when `existing`'s
-// has another Branch or Tags too, so a region changed in Settings isn't put back. nil when `existing`'s row is
+// has another Branch or Tags too, so a region picked in Settings isn't put back by the Mac's row. nil when `existing`'s row is
 // already that build's (and in `region`) (*why nil), or when it isn't and `kept` has no row for that build to
 // write (*why says so, for the log: an image made before the row was kept beside it).
 NSString *_Nullable sp_build_info_for_image(NSString *_Nullable existing, NSString *product, NSString *_Nullable kept,
                                             NSString *_Nullable stamp, NSDictionary<NSString *, NSString *> *_Nullable region,
                                             NSString *_Nullable *_Nonnull why);
 
-// ---- The region a game plays in (issue #34)
+// ---- The region a game plays in (issues #34 and #132)
 //
-// Each game has its own, as Battle.net does it. A game the companion installed (the app bundles its image,
-// and the Mac's game data comes with it) plays in the Mac's: its .build.info row, which the companion sends
-// again at every sync, so the device never decides it. A game the device made (installed or updated here, in
-// an app with no image of it) plays in the one in Library/spregion-<flavor> (sp_region_file): the device's
-// region by default (sp_region_for_country), and its languages, from the device's (sp_region_locale), until
-// Settings changes it. Everything else follows that file at each start: the patch check's region, an Update's
-// kept row and stamp, the start-time .build.info rewrite, and Config.wtf.
+// Each game has its own, as Battle.net does it, and a person can pick it on the device for every game
+// (Settings' Region). Only a pick is saved, in Library/sppickedregion-<flavor> (one word), and it always wins:
+// nothing but Settings writes it, so a Mac's Play, an Update on either side, and an install again all leave it.
+// Without one, the game follows the Mac when the Mac has said a region for it (Library/spmacregion-<flavor>, its
+// install's .build.info row, which the companion sends at every Play and nothing on the device rewrites), else the
+// device's region, worked out at every start and never saved. Everything else follows the result at each start:
+// the patch check's region, an Update's kept row and stamp, the start-time .build.info rewrite, and Config.wtf.
+// A region differs in more than the portal: its languages (Config.wtf's textLocale and audioLocale, and the
+// row's Tags, which say what the client streams), and at times its build (the patch check then offers that
+// region's build as an Update).
 
 // The regions a person can pick, in Settings' order: us, eu, kr, tw.
 NSArray<NSString *> *sp_regions(void);
@@ -126,20 +129,20 @@ NSString *sp_region_tags(NSString *region, NSString *text, NSString *speech);
 // The text and speech locales a Tags value names (nil for one it doesn't).
 void sp_tags_locales(NSString *_Nullable tags, NSString *_Nullable *_Nonnull text, NSString *_Nullable *_Nonnull speech);
 
-// Library/spregion-<flavor>: a one-row table (the stamp's shape) of the product, the region, its text and
-// speech locales, and the locales the build ships (space-separated; empty when not known) from `choice`.
-NSString *sp_region_file(NSString *product, NSDictionary<NSString *, NSString *> *choice);
+// What a person reads for where the region came from (sp_game_region's Source): "picked on device",
+// "following the Mac", "from the device's region".
+NSString *sp_region_source_name(NSString *source);
 
-// The region a game plays in, as Region, Text, Speech (locales), Source (for the log and Settings), and
-// Shipped when the region file knows it. `device`: the device decides it (the app has no image of the game);
-// else the Mac does ("mac": `buildInfo`'s row, else the image's stamp, else us). The device's, in order: the
-// region file (`regionFile`, "chosen"); for a game made before it, the row kept beside its image (`kept`,
-// "kept row") or its stamp's Branch ("stamp"), as before; game data's .build.info row ("build.info"); else the
-// device's region and languages (`country`, `preferred`: "device"). Languages a row's Tags don't name are the
-// device's for that region.
-NSDictionary<NSString *, NSString *> *sp_game_region(NSString *product, BOOL device, NSString *_Nullable regionFile,
-                                                     NSString *_Nullable kept, NSString *_Nullable stamp,
-                                                     NSString *_Nullable buildInfo, NSString *_Nullable country,
+// The region a game plays in: Region, its Text and Speech locales, Tags (its .build.info row's), Source ("picked",
+// "mac", or "device"), Default (the region without a pick: what Settings' first choice names), and Mac (the
+// Mac's region, when it has said one). `picked`: Library/sppickedregion-<flavor>'s word; `macFile`:
+// Library/spmacregion-<flavor>, a table (Product, Branch, Tags) of the Mac install's row; `shipped`: the locales
+// the client's build ships (nil when not known); `country` and `preferred`: the device's region (ISO 3166-1) and
+// preferred languages (BCP 47). A pick or a Mac region that isn't one of sp_regions() is passed over. In the
+// Mac's region the languages and Tags are the Mac row's; in any other, the device's for that region
+// (sp_region_locale) and sp_region_tags.
+NSDictionary<NSString *, NSString *> *sp_game_region(NSString *product, NSString *_Nullable picked, NSString *_Nullable macFile,
+                                                     NSArray<NSString *> *_Nullable shipped, NSString *_Nullable country,
                                                      NSArray<NSString *> *preferred);
 
 // A |-separated table (a stamp, a kept .build.info) with `values` (by column name) set in `product`'s rows, its
@@ -151,8 +154,8 @@ NSString *_Nullable sp_table_with(NSString *_Nullable text, NSString *product, N
 // the device, and with neither it opens a region picker the device can't show and exits. A missing or empty
 // one is always set. With a portal that isn't the region, the region moved (Settings, or Battle.net on the
 // Mac), or the portal was never the region (the first Config.wtf an older companion sent said "us" whatever the
-// Mac's region, issue #94): all three are replaced, unless nothing said the region (its Source "default", a Mac
-// game whose row and stamp have none). Otherwise a value set stays (a language picked in the game's options).
+// Mac's region, issue #94): all three are replaced. Otherwise a value set stays (a language picked in the game's
+// options).
 // *set: the names set (empty for none).
 NSString *sp_config_with_region(NSString *_Nullable config, NSDictionary<NSString *, NSString *> *choice,
                                 NSArray<NSString *> *_Nullable *_Nonnull set);

@@ -12,8 +12,8 @@
 // until the app goes to the background, the sheet closes, or a game starts (sp_settings_hide_email). The
 // forget acts at the tap, after an alert whose default is Cancel. Display: the backing scale (sp_scale). Then a
 // section per game (the start screen's, in its order): the build it starts with and where its client came
-// from (spsource-<flavor>: from the Mac, or updated or installed on this device), its region (a picker for a game the device decides it for, sp_game_set_region; the Mac's, named,
-// for a game the companion installed), Addons (spaddonsscreen.swift's pages, for an installed game), Open in Files,
+// from (spsource-<flavor>: from the Mac, or updated or installed on this device), its region (a picker for every game, sp_game_set_region: Follow Mac
+// or Automatic, its region without a pick, first, then the regions), Addons (spaddonsscreen.swift's pages, for an installed game), Open in Files,
 // and Reset Game Settings (after its alert). About: the app's version and
 // Acknowledgements, the licenses of what the app ships.
 import SwiftUI
@@ -82,10 +82,12 @@ enum Confirmation: Identifiable {
 struct Snapshot {
     // `installed`: the device has it (sp_game_has_image: its client, or game data whose client its next start
     // gets, `version` nil); `source`: where its client came from (sp_game_build).
-    // `region`: its code (sp_game_region_now); `regionHere`: the device decides it, so Settings can change it.
+    // `region`: its code and where it came from (sp_game_region_now's Source: picked, mac, or device);
+    // `fallback`: its region without a pick, and `mac` whether that's the Mac's.
     struct Game {
         let flavor: String, name: String, version: String?, source: String?, installed: Bool
-        let region: String, regionHere: Bool
+        let region: String, regionSource: String, fallback: String, mac: Bool
+        var picked: Bool { regionSource == "picked" }
     }
     var saved = false
     var appleToken = false  // spapple.m's: the token the app renews its own profiles with
@@ -139,7 +141,8 @@ final class Settings: ObservableObject {
             let version = sp_game_build(flavor, &source)?["Version"]
             let region = sp_game_region_now(flavor)
             return .init(flavor: flavor, name: sp_flavor_name(flavor), version: version, source: source as String?,
-                         installed: sp_game_has_image(flavor), region: region["Region"] ?? "us", regionHere: region["Device"] == "1")
+                         installed: sp_game_has_image(flavor), region: region["Region"] ?? "us",
+                         regionSource: region["Source"] ?? "device", fallback: region["Default"] ?? "us", mac: region["Mac"] != nil)
         }
         s.version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         now = s
@@ -147,6 +150,7 @@ final class Settings: ObservableObject {
 
     // ---- the actions
 
+    // `region` "" deletes the pick: the game follows the Mac, or the device's region, again.
     func setRegion(_ flavor: String, _ region: String) {
         say(sp_game_set_region(flavor, region))
         reload()
@@ -226,8 +230,8 @@ final class Settings: ObservableObject {
     // be tapped, if anything). `reset-<flavor>` is Reset's Reset tapped: it resets that game's settings with
     // no alert, so a test can check what it deletes and the next start's seeding. `scale-<0|1|2>` picks that
     // Display > Scale (0 is Automatic), so a test can set it without taps; it's saved, as a tap's is.
-    // `files-<flavor>` is that game's Open in Files tapped. `region-<flavor>-<us|eu|kr|tw>` picks that game's
-    // Region, saved as a pick is (one the Mac decides logs that it can't). `addons-<flavor>` is that game's Addons
+    // `files-<flavor>` is that game's Open in Files tapped. `region-<flavor>-<us|eu|kr|tw|follow>` picks that game's
+    // Region, saved as a pick is (follow: Follow Mac, or Automatic, which deletes the pick). `addons-<flavor>` is that game's Addons
     // page, `addons-browse-<flavor>` its catalog, and `addons-link-<flavor>` Add from GitHub's field;
     // `addon-install-<flavor>-<catalog id>`, `addon-update-` and `addon-remove-<flavor>-<id>`, and `addon-link-<flavor>-<owner/repo>`
     // are those taps (a real install or removal, as a tap's is), the install with its dependency ask, the
@@ -297,7 +301,7 @@ final class Settings: ObservableObject {
         }
         if open == nil, let rest = suffix("region-"), let dash = rest.lastIndex(of: "-"), flavors.contains(String(rest[..<dash])) {
             let f = String(rest[..<dash]), r = String(rest[rest.index(after: dash)...])
-            open = { self.setRegion(f, r); self.scrollTo?("game-" + f) }
+            open = { self.setRegion(f, r == "follow" ? "" : r); self.scrollTo?("game-" + f) }
         }
         if open == nil, let i = ["scale-0", "scale-1", "scale-2"].firstIndex(of: state) {
             open = { setScale(i); self.reload(); self.scrollTo?("display") }
@@ -498,16 +502,14 @@ struct SettingsView: View {
                 }
             }
             .id("game-" + g.flavor)
-            if g.regionHere {
-                LabeledContent("Region") {
-                    Picker("Region", selection: Binding(get: { g.region }, set: { settings.setRegion(g.flavor, $0) })) {
-                        ForEach(sp_regions(), id: \.self) { Text(sp_region_name($0)).tag($0) }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()  // LabeledContent's is the label
+            // "" is no pick: the Mac's region (Follow Mac) or the device's (Automatic), named.
+            LabeledContent("Region") {
+                Picker("Region", selection: Binding(get: { g.picked ? g.region : "" }, set: { settings.setRegion(g.flavor, $0) })) {
+                    Text("\(g.mac ? "Follow Mac" : "Automatic") (\(sp_region_name(g.fallback)))").tag("")
+                    ForEach(sp_regions(), id: \.self) { Text(sp_region_name($0)).tag($0) }
                 }
-            } else {
-                LabeledContent("Region", value: sp_region_name(g.region))
+                .pickerStyle(.menu)
+                .labelsHidden()  // LabeledContent's is the label
             }
             if g.installed { NavigationLink("Addons", value: Page.addons(g.flavor)) }
             Button("Open in Files") { settings.openInFiles(g.flavor) }
@@ -516,20 +518,29 @@ struct SettingsView: View {
             Text(g.name)
         } footer: {
             // About the region only: the build row above says where the client came from.
-            Text(g.regionHere
-                 ? "Region is where your realms are. The game’s language follows this \(sp_device_noun())’s. A change applies the next time the game starts."
-                 : "\(g.name)’s region is set in Battle.net on your Mac. To change it, change it there, then press Play in Slashplayed Companion.")
+            Text("Region is where your realms are: \(sp_region_name(g.region)), \(regionSourceText(g)). "
+                 + (g.region == g.fallback && g.mac ? "The game’s language follows your Mac’s." : "The game’s language follows this \(sp_device_noun())’s.")
+                 + " A change applies the next time the game starts.")
+        }
+    }
+
+    // Where the region came from, after its name in the footer.
+    private func regionSourceText(_ g: Snapshot.Game) -> String {
+        switch g.regionSource {
+        case "picked": "picked on this \(sp_device_noun())"
+        case "mac": "from Battle.net on your Mac"
+        default: "from this \(sp_device_noun())’s region"
         }
     }
 
     // Where the game's client came from. One with no word (none of today's writers leaves it out) reads as
-    // the device's own: installed for a game whose region the device decides (it installed it), else updated.
+    // the device's own: installed for a game the Mac has no region for, else updated.
     private func sourceText(_ g: Snapshot.Game) -> String {
         switch g.source {
         case "mac": "From your Mac"
         case "updated": "Updated on this device"
         case "installed": "Installed on this device"
-        default: g.regionHere ? "Installed on this device" : "Updated on this device"
+        default: g.mac ? "Updated on this device" : "Installed on this device"
         }
     }
 

@@ -287,6 +287,15 @@ enum GameFiles {
         for flavor in current {
             try planFlavor(flavor, onDevice: onDevice, consider: { consider($0, $1, sizeOnly: $2) })
         }
+        // The Mac's region for each game (macRegion), every Play: the launcher follows it unless a region was picked on
+        // the device. Only from a read of the install (GameInstall's snapshot): without one, what the device has stays.
+        if let rows = GameInstall.known?.rows {
+            for flavor in flavors {
+                let url = try staging("spmacregion-\(flavor.rawValue)")
+                try macRegion(flavor.product, row: rows[flavor.product]).write(to: url, atomically: true, encoding: .utf8)
+                consider(url, "Library/" + macRegionFile(flavor))
+            }
+        }
         func marker(_ text: String) throws -> Copy {
             let url = try staging("spcopying-\(device.udid)-\(text.dropLast()).txt")
             try text.write(to: url, atomically: true, encoding: .utf8)
@@ -532,6 +541,19 @@ enum GameFiles {
         // Not the addons: the device app carries them (ClientAssembly.addonFiles), and its launcher puts them
         // in the game's folder before each start (apps/client/spcdn.m's sp_addons_place), so a game the
         // device installed itself has them too.
+    }
+
+    /// Library/spmacregion-<flavor>: the Mac install's region for the game, which the launcher follows when no
+    /// region was picked on the device (spcdn.h's sp_game_region). Its own file, since the device rewrites its
+    /// .build.info row (an Update, a pick), so that row can't say the Mac's any more (issue #132).
+    static func macRegionFile(_ flavor: Flavor) -> String { "spmacregion-\(flavor.rawValue)" }
+
+    /// That file: the install's row's Branch and Tags for `product`, as a one-row table, or the header alone when
+    /// the Mac has no region for it (no row, or one with no Branch), so an earlier one stops counting.
+    static func macRegion(_ product: String, row: [String: String]?) -> String {
+        var text = "Product!STRING:0|Branch!STRING:0|Tags!STRING:0\n"
+        if let branch = row?["Branch"]?.lowercased(), !branch.isEmpty { text += "\(product)|\(branch)|\(row?["Tags"] ?? "")\n" }
+        return text
     }
 
     /// A game's first Config.wtf on the device: the Mac install's region (its row's Branch, Flavor.region) as the

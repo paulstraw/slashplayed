@@ -19,10 +19,10 @@ NSDictionary<NSString *, NSString *> *_Nullable sp_game_build(NSString *flavor, 
 // the start screen offers to install.
 BOOL sp_game_has_image(NSString *flavor);
 NSString *sp_game_reset(NSString *flavor);
-// The game's region and languages (spcdn.h's sp_game_region: Region, Text, Speech, Source), and Device "1"
-// when the device decides them (Settings can change it), "0" when the Mac does (Battle.net there).
+// The game's region and languages (spcdn.h's sp_game_region: Region, Text, Speech, Source, Default, Mac).
 NSDictionary<NSString *, NSString *> *sp_game_region_now(NSString *flavor);
-// Settings' Region: the region file in `region`, applied from the game's next start. A line for the log.
+// Settings' Region: `region` saved as the pick, or "" to delete it (Follow Mac, or Automatic), applied from the
+// game's next start. A line for the log.
 NSString *sp_game_set_region(NSString *flavor, NSString *region);
 // spcdn.m: the regions offered (us, eu, kr, tw) and what a person reads for one (Americas, Europe, ...).
 NSArray<NSString *> *sp_regions(void);

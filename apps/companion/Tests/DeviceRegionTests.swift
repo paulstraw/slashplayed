@@ -1,10 +1,10 @@
 import XCTest
 
-/// The region a game plays in on the device (issue #34; spcdn.h's "The region a game plays in"): the
+/// The region a game plays in on the device (issues #34 and #132; spcdn.h's "The region a game plays in"): the
 /// device's region and languages mapped to Blizzard's (sp_region_for_country, sp_region_locale), the Tags
 /// that says them (sp_region_tags, against Flavor.tags' layout), which source decides a game's
-/// (sp_game_region: the Mac's for a game the companion installed, the region file for one the device made),
-/// and how a change reaches the kept row, the stamp, .build.info, and Config.wtf without being put back.
+/// (sp_game_region: a pick, else the Mac's, else the device's region), and how a change reaches the kept row,
+/// the stamp, .build.info, and Config.wtf without being put back.
 /// Made-up rows, no Blizzard file.
 final class DeviceRegionTests: XCTestCase {
     private let header = "Branch!STRING:0|Active!DEC:1|Build Key!HEX:16|CDN Key!HEX:16|Tags!STRING:0|Version!STRING:0|Product!STRING:0"
@@ -70,55 +70,132 @@ final class DeviceRegionTests: XCTestCase {
         XCTAssertNil(text)
     }
 
-    private func region(_ device: Bool, file: String? = nil, kept: String? = nil, stamp: String? = nil, info: String? = nil,
-                        country: String? = "DE", preferred: [String] = ["de-DE"]) -> [String: String] {
-        sp_game_region("wow_classic_era", device, file, kept, stamp, info, country, preferred)
+    private func region(picked: String? = nil, mac: String? = nil, shipped: [String]? = nil, country: String? = "DE",
+                        preferred: [String] = ["de-DE"], product: String = "wow_classic_era") -> [String: String] {
+        sp_game_region(product, picked, mac, shipped, country, preferred)
     }
 
-    /// A game the companion installed plays in the Mac's region (its .build.info row, else the image's stamp),
-    /// whatever the device's region: the companion sends the row again at every sync.
-    func testTheMacDecidesItsGames() {
-        let info = table(header, ["eu|1|aa|cc|\(euTags)|1.15.9.1|wow_classic_era"])
-        var r = region(false, file: sp_region_file("wow_classic_era", ["Region": "kr", "Text": "koKR", "Speech": "koKR"]), info: info,
-                       country: "US", preferred: ["en-US"])
-        XCTAssertEqual([r["Region"], r["Text"], r["Speech"], r["Source"]], ["eu", "enUS", "enUS", "mac"])
-        r = region(false, stamp: table(stampHeader, ["wow_classic_era|kr|aa|1.15.9.1"]))
-        XCTAssertEqual([r["Region"], r["Text"], r["Source"]], ["kr", "koKR", "mac"])
-        r = region(false)
-        XCTAssertEqual([r["Region"], r["Text"]], ["us", "enUS"])
+    private func macFile(_ branch: String, _ tags: String, product: String = "wow_classic_era") -> String {
+        GameFiles.macRegion(product, row: ["Branch": branch, "Tags": tags, "Product": product])
     }
 
-    /// A game the device decides: its region file, else (made before it) the kept row, else the stamp, else the
-    /// game data's row, else the device's region and languages.
-    func testTheDeviceDecidesItsOwn() {
-        let file = sp_region_file("wow_classic_era", ["Region": "tw", "Text": "zhTW", "Speech": "zhTW", "Shipped": "enUS zhTW"])
-        let kept = table(header, ["kr|1|aa|cc|OSX x86_64 KR? koKR speech?:OSX x86_64 KR? koKR text?|1.15.9.1|wow_classic_era"])
-        let stamp = table(stampHeader, ["wow_classic_era|us|aa|1.15.9.1"])
-        let info = table(header, ["eu|1|aa|cc|\(euTags)|1.15.9.1|wow_classic_era"])
-        var r = region(true, file: file, kept: kept, stamp: stamp, info: info)
-        XCTAssertEqual([r["Region"], r["Text"], r["Speech"], r["Source"], r["Shipped"]], ["tw", "zhTW", "zhTW", "chosen", "enUS zhTW"])
-        // A region file 1.4 or 1.5 wrote for Europe's English: enUS, so the game no longer exits at its start.
-        r = region(true, file: sp_region_file("wow_classic_era", ["Region": "eu", "Text": "enGB", "Speech": "enGB"]))
-        XCTAssertEqual([r["Region"], r["Text"], r["Speech"], r["Source"]], ["eu", "enUS", "enUS", "chosen"])
-        r = region(true, kept: kept, stamp: stamp, info: info)
-        XCTAssertEqual([r["Region"], r["Text"], r["Source"]], ["kr", "koKR", "kept row"])
-        // The stamp's Branch, with the game data's languages when its row is in that region, else the device's.
-        r = region(true, stamp: stamp, info: info, preferred: ["es-ES"])
-        XCTAssertEqual([r["Region"], r["Text"], r["Source"]], ["us", "esMX", "stamp"])
-        r = region(true, stamp: table(stampHeader, ["wow_classic_era|eu|aa|1.15.9.1"]), info: info, preferred: ["de-DE"])
-        XCTAssertEqual([r["Region"], r["Text"], r["Source"]], ["eu", "enUS", "stamp"])
-        r = region(true, info: info)
-        XCTAssertEqual([r["Region"], r["Text"], r["Source"]], ["eu", "enUS", "build.info"])
-        // Nothing yet (an empty container: the host tool's): the device's, German in Germany. No more "us".
-        r = region(true)
-        XCTAssertEqual([r["Region"], r["Text"], r["Speech"], r["Source"]], ["eu", "deDE", "deDE", "device"])
-        r = region(true, country: "KR", preferred: ["en-US"])
+    /// A pick wins over the Mac's, and the Mac's over the device's; nothing but a pick is saved, so with neither
+    /// the device's region is the answer every time. In the Mac's region its row's languages and Tags; in any
+    /// other, the device's languages for it that the build ships.
+    func testPickThenMacThenDevice() {
+        let frTags = "OSX x86_64 EU? acct-FRA? geoip-FR? frFR speech?:OSX x86_64 EU? acct-FRA? geoip-FR? frFR text?"
+        let mac = macFile("eu", frTags)
+        // The Mac's: its row's languages and Tags, Battle.net's acct- and geoip- kept, whatever the device's.
+        var r = region(mac: mac, country: "US", preferred: ["en-US"])
+        XCTAssertEqual([r["Region"], r["Text"], r["Speech"], r["Tags"], r["Source"], r["Default"], r["Mac"]],
+                       ["eu", "frFR", "frFR", frTags, "mac", "eu", "eu"])
+        // A pick in another region: the device's languages there, its own Tags; Default and Mac still say the Mac's.
+        r = region(picked: "kr\n", mac: mac, country: "US", preferred: ["en-US"])
+        XCTAssertEqual([r["Region"], r["Text"], r["Tags"], r["Source"], r["Default"], r["Mac"]],
+                       ["kr", "koKR", "OSX x86_64 KR? koKR speech?:OSX x86_64 KR? koKR text?", "picked", "eu", "eu"])
+        // A pick of the Mac's own region: the Mac's languages, as following it would give.
+        r = region(picked: "eu", mac: mac, country: "US", preferred: ["en-US"])
+        XCTAssertEqual([r["Region"], r["Text"], r["Source"]], ["eu", "frFR", "picked"])
+        // A pick of Europe without the Mac: the device's German, unless the build doesn't ship it.
+        r = region(picked: "eu", country: "US", preferred: ["it-IT", "de-DE"])
+        XCTAssertEqual([r["Region"], r["Text"], r["Speech"], r["Default"]], ["eu", "itIT", "itIT", "us"])
+        XCTAssertNil(r["Mac"])
+        r = region(picked: "eu", shipped: ["deDE", "enUS", "frFR"], country: "US", preferred: ["it-IT", "de-DE"])
+        XCTAssertEqual(r["Text"], "deDE")
+        // Neither: the device's region and languages, worked out now.
+        r = region()
+        XCTAssertEqual([r["Region"], r["Text"], r["Speech"], r["Source"], r["Default"]], ["eu", "deDE", "deDE", "device", "eu"])
+        r = region(country: "KR", preferred: ["en-US"])
         XCTAssertEqual([r["Region"], r["Text"]], ["kr", "koKR"])
-        // A region file for another product, or one in a region it doesn't offer, is passed over.
-        r = region(true, file: sp_region_file("wow", ["Region": "kr", "Text": "koKR", "Speech": "koKR"]))
-        XCTAssertEqual(r["Source"], "device")
-        r = region(true, file: sp_region_file("wow_classic_era", ["Region": "cn", "Text": "zhCN", "Speech": "zhCN"]))
-        XCTAssertEqual(r["Source"], "device")
+        // A pick that isn't a region, a Mac row for another product, or one with no Branch (header only, as the
+        // companion sends for a game the Mac has no region for): passed over.
+        XCTAssertEqual(region(picked: "cn")["Source"], "device")
+        XCTAssertEqual(region(mac: macFile("eu", frTags, product: "wow"))["Source"], "device")
+        XCTAssertEqual(region(mac: GameFiles.macRegion("wow_classic_era", row: ["Branch": ""]))["Source"], "device")
+        XCTAssertEqual(region(mac: GameFiles.macRegion("wow_classic_era", row: nil))["Source"], "device")
+        // A Mac row in a region Slashplayed doesn't offer (cn) is passed over too, not played in.
+        XCTAssertEqual(region(mac: macFile("cn", ""))["Source"], "device")
+        // A Mac row with no locales: the region's default, not the device's (Battle.net's first start's).
+        r = region(mac: macFile("eu", ""), country: "US", preferred: ["de-DE"])
+        XCTAssertEqual([r["Region"], r["Text"], r["Tags"]], ["eu", "enUS", sp_region_tags("eu", "enUS", "enUS")])
+        // Europe's English as Slashplayed 1.4 and 1.5 wrote it in rows (issue #88): enUS.
+        r = region(mac: macFile("eu", euTags))
+        XCTAssertEqual([r["Text"], r["Speech"]], ["enUS", "enUS"])
+        XCTAssertEqual(sp_region_source_name("picked"), "picked on device")
+        XCTAssertEqual(sp_region_source_name("mac"), "following the Mac")
+        XCTAssertEqual(sp_region_source_name("device"), "from the device's region")
+    }
+
+    /// Issue #132: Forever installed on an iPad set to the United States, then played from a Mac in Europe, then
+    /// updated on the iPad. 1.7 saved the iPad's guess (us) at the install and went back to it after the Update.
+    /// Now the Mac's region holds through the Update, a pick holds through the Mac's Plays and Updates, and
+    /// following the Mac again is one choice away. Each step's region drives the kept row, .build.info, and
+    /// Config.wtf as the launcher's start does.
+    func testIssue132Sequence() throws {
+        let product = "wowf", ipad = (country: "US", preferred: ["en-US"])
+        let frTags = "OSX x86_64 EU? acct-FRA? geoip-FR? frFR speech?:OSX x86_64 EU? acct-FRA? geoip-FR? frFR text?"
+        let version = ["BuildConfig": String(repeating: "b", count: 32), "CDNConfig": String(repeating: "c", count: 32),
+                       "VersionsName": "1.60.1.71091"]
+        let cdns = ["Path": "tpr/wow", "Hosts": "h.example", "Servers": "https://h.example/?x=1"]
+        let stamp = table(stampHeader, ["wowf|us|\(version["BuildConfig"]!)|1.60.1.71091"])
+        var picked: String?, mac: String?
+        func now() -> [String: String] { sp_game_region(product, picked, mac, nil, ipad.country, ipad.preferred) }
+        var set: NSArray?, why: NSString?
+
+        // 1. Installed on the iPad, no Mac yet: the iPad's region, and nothing saved.
+        var r = now()
+        XCTAssertEqual([r["Region"], r["Source"]], ["us", "device"])
+        let installed = sp_build_info_with(nil, product, r["Region"]!, r["Tags"], version, cdns)
+        var config = sp_config_with_region(nil, r, &set)
+        XCTAssertTrue(config.contains("SET portal \"us\""))
+
+        // 2. Play from the Mac in Europe: it sends its row; the game follows it, and the start moves the row
+        // and Config.wtf to Europe.
+        mac = GameFiles.macRegion(product, row: ["Branch": "eu", "Tags": frTags, "Product": product])
+        r = now()
+        XCTAssertEqual([r["Region"], r["Text"], r["Source"]], ["eu", "frFR", "mac"])
+        config = sp_config_with_region(config, r, &set)
+        XCTAssertEqual(config, "SET portal \"eu\"\nSET textLocale \"frFR\"\nSET audioLocale \"frFR\"\n")
+        var info = try XCTUnwrap(sp_build_info_for_image(installed, product, installed, stamp, ["Branch": r["Region"]!, "Tags": r["Tags"]!], &why))
+        XCTAssertEqual(sp_table_row(info, "Product", product)?["Branch"], "eu")
+        XCTAssertEqual(sp_table_row(info, "Product", product)?["Tags"], frTags)
+
+        // 3. Updated on the iPad: nothing it writes says the region, so it's still the Mac's, and the Update's
+        // kept row is in Europe.
+        r = now()
+        XCTAssertEqual([r["Region"], r["Source"]], ["eu", "mac"])
+        let updated = sp_build_info_with(nil, product, r["Region"]!, r["Tags"], version, cdns)
+        XCTAssertEqual(sp_table_row(updated, "Product", product)?["Branch"], "eu")
+        XCTAssertEqual(sp_config_with_region(config, r, &set), config)  // Config.wtf stays Europe's
+        XCTAssertEqual(set?.count, 0)
+
+        // 4. Korea picked on the iPad: it wins over the Mac's, with Korean.
+        picked = "kr\n"
+        r = now()
+        XCTAssertEqual([r["Region"], r["Text"], r["Source"], r["Default"]], ["kr", "koKR", "picked", "eu"])
+        config = sp_config_with_region(config, r, &set)
+        XCTAssertEqual(config, "SET portal \"kr\"\nSET textLocale \"koKR\"\nSET audioLocale \"koKR\"\n")
+        info = try XCTUnwrap(sp_build_info_for_image(info, product, updated, stamp, ["Branch": r["Region"]!, "Tags": r["Tags"]!], &why))
+        XCTAssertEqual(sp_table_row(info, "Product", product)?["Branch"], "kr")
+
+        // 5. Another Play from the Mac (its row sent again, and its .build.info row, in Europe), then an Update
+        // on the iPad: the pick holds, and the next start puts the row back in Korea.
+        mac = GameFiles.macRegion(product, row: ["Branch": "eu", "Tags": frTags, "Product": product])
+        let fromMac = GameStore.buildInfoText([BlizzardCDN.buildInfoLine(
+            product: product, version: .init(region: "eu", buildConfig: version["BuildConfig"]!, cdnConfig: version["CDNConfig"]!,
+                                              keyRing: "", buildID: "71091", versionsName: version["VersionsName"]!, productConfig: ""),
+            cdns: .init(path: cdns["Path"]!, hosts: cdns["Hosts"]!, servers: cdns["Servers"]!), tags: frTags)])
+        r = now()
+        XCTAssertEqual([r["Region"], r["Source"]], ["kr", "picked"])
+        info = try XCTUnwrap(sp_build_info_for_image(fromMac, product, updated, stamp, ["Branch": r["Region"]!, "Tags": r["Tags"]!], &why))
+        XCTAssertEqual(sp_table_row(info, "Product", product)?["Branch"], "kr")
+        XCTAssertEqual(sp_table_row(sp_build_info_with(nil, product, r["Region"]!, r["Tags"], version, cdns), "Product", product)?["Branch"], "kr")
+
+        // 6. Follow Mac: the pick deleted, Europe and the Mac's French again.
+        picked = nil
+        r = now()
+        XCTAssertEqual([r["Region"], r["Text"], r["Source"]], ["eu", "frFR", "mac"])
+        XCTAssertEqual(sp_config_with_region(config, r, &set), "SET portal \"eu\"\nSET textLocale \"frFR\"\nSET audioLocale \"frFR\"\n")
     }
 
     /// A device-decided row's Tags win over the old row's, so a change isn't put back; the Mac's game keeps its
@@ -188,9 +265,6 @@ final class DeviceRegionTests: XCTestCase {
         XCTAssertEqual(sp_config_with_region(us, eu, &set),
                        "SET portal \"eu\"\nSET textLocale \"deDE\"\nSET audioLocale \"deDE\"\nSET gxApi \"metal\"\n")
         XCTAssertEqual(set as? [String], ["portal", "textLocale", "audioLocale"])
-        // Nothing said the region (a Mac game with no Branch in its row or stamp): what's set stays.
-        XCTAssertEqual(sp_config_with_region(us, ["Region": "us", "Text": "enUS", "Speech": "enUS", "Source": "default"], &set), us)
-        XCTAssertEqual(set?.count, 0)
     }
 
     /// A game copied from a Mac in Europe (issue #94): the companion's first Config.wtf says the Mac's region and
@@ -198,8 +272,7 @@ final class DeviceRegionTests: XCTestCase {
     /// start, so the client signs in to Europe's account server. The Mac's own row decides both.
     func testMacGameConfigFollowsTheMacsRow() {
         let frTags = "OSX x86_64 EU? acct-FRA? geoip-FR? frFR speech?:OSX x86_64 EU? acct-FRA? geoip-FR? frFR text?"
-        let info = table(header, ["eu|1|aa|cc|\(frTags)|1.60.1.70938|wowf"])
-        let choice = sp_game_region("wowf", false, nil, nil, nil, info, "US", ["en-US"])
+        let choice = sp_game_region("wowf", nil, GameFiles.macRegion("wowf", row: ["Branch": "eu", "Tags": frTags]), nil, "US", ["en-US"])
         let config = "SET portal \"eu\"\nSET textLocale \"frFR\"\nSET audioLocale \"frFR\"\n"
         XCTAssertEqual(GameFiles.firstConfig(region: "eu", tags: frTags), config)
         var set: NSArray?
