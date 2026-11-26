@@ -24,13 +24,14 @@ case $SP_PLATFORM in
   ios) _source=icons/AppIcon.icon; _devices='--target-device iphone --target-device ipad' ;;
 esac
 # Absolute: actool hands the work to a helper that resolves a relative input against its own working
-# directory, not this one, then exits 0 with only a "Failed to read file attributes" notice.
+# directory, not this one, then exits 0 with only a "Failed to read file attributes" notice. Quoted below:
+# the checkout's path may have a space in it ("/Volumes/SSK SSD/..."). _devices is split on purpose.
 _source=$(pwd)/$_source
 PARTIAL=$(mktemp -t sp-icon-plist)
 trap 'rm -f "$PARTIAL"' EXIT
 # actool reports problems on stdout in its own plist and still exits 0 for most of them, so a warning or
 # error there fails the build rather than shipping an app without its icon.
-RESULT=$(xcrun actool $_source --compile "$OUT" --platform $SP_SDK \
+RESULT=$(xcrun actool "$_source" --compile "$OUT" --platform $SP_SDK \
   --minimum-deployment-target $SP_MINOS $_devices --app-icon AppIcon \
   --output-partial-info-plist "$PARTIAL" --output-format human-readable-text --warnings --errors) \
   || { echo "actool failed on $_source:" >&2; echo "$RESULT" >&2; exit 1; }
