@@ -6,6 +6,20 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- Every game's Region can be changed in the start screen's Settings, including games copied from your Mac.
+  Its first choice, **Follow Mac** (or **Automatic** for a game your Mac doesn't have), plays in your Mac's
+  region, or your device's. A region you pick stays picked through Plays from your Mac, updates, and
+  installing the game again. Settings says where the region came from.
+
+### Fixed
+
+- A game copied from a Mac in Europe no longer goes back to the Americas after it's updated on the iPad,
+  iPhone, or Vision Pro, when it was once installed there (#132). The region a device guessed from its own
+  is no longer saved, so a region you picked in an earlier version follows your Mac or your device again
+  until you pick it again.
+
 ## [1.7.0] - 2026-11-24
 
 ### Added

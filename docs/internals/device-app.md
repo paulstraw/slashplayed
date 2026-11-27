@@ -184,8 +184,7 @@ team, free ones included. The chain, all in the launcher, runs between the build
    there's no Play Anyway, and the next start gets the game ready.
 5. **Load it.** Just before the client loads, the launcher writes the kept row into
    `Documents/.build.info` (`sp_build_info_for_image`, through `sp_build_info_with`: the line
-   `BlizzardCDN.buildInfoLine` writes, the Tags kept from the device's row, or for a game the device
-   decides the region of, its region's, [below](#a-games-region); the other products' rows kept). It does
+   `BlizzardCDN.buildInfoLine` writes, the Tags the game's region's, [below](#a-games-region); the other products' rows kept). It does
    so at every start whose row isn't the client's build, not only the one that updated, so a start that
    ended before the client loaded (at the sign-in, say), or game data emptied under the client, doesn't
    leave the client streaming with no row for its build (#134, "Invalid schema … for Table StartupFiles",
@@ -219,7 +218,9 @@ What the device holds for it, all in the app's container:
 |---|---|---|---|
 | A game's client | `Library/spgames/wow-<flavor>`, its stamp `spbuild-<flavor>`, its `.build.info` row `spbuildinfo-<flavor>`, and `spsource-<flavor>` | the companion's copy (`mac`), Update (`updated`), or an install (`installed`) | a newer build's replaces it, or it isn't a client spguest can load |
 | A newer build's slice | `Library/spslice/<flavor>.arm64`, `spbuild-<flavor>` | the patch check | Update takes it, or the client catches up with it |
-| A device-decided game's region | `Library/spregion-<flavor>` | an install or Update, and Settings' Region | never (it outlives the client, so an install again keeps it) |
+| A region picked on the device | `Library/sppickedregion-<flavor>` | Settings' Region only | Settings' Follow Mac or Automatic (it outlives the client, so an install again keeps it) |
+| The Mac's region for a game | `Library/spmacregion-<flavor>` | the companion, at every Play | the next Play's replaces it |
+| The locales a build ships | `Library/spgames/spshipped-<flavor>` | an install or Update | the next install or Update's replaces it |
 | The build's row and configs | `Documents/.build.info`, `Documents/Data/config/` | Update's configs, and the launcher's row before a load whose row isn't the client's build | a later build's are written |
 
 ### Installing a game on the device
@@ -253,34 +254,44 @@ so an installed game has them too.
 ### A game's region
 
 Each game has its own region and languages, as Battle.net does it (`sp_game_region` in `spcdn.m`, read at
-each start by `sp_game_region_now` in `launcher.m`). Who decides depends on where the game came from:
+each start by `sp_game_region_now` in `launcher.m`). Every game's can be picked on the device, in
+Settings' **Region**, whoever installed it. In order:
 
-- **A game the Mac copied** (`spsource` `mac`: the companion copied its client, and syncs the Mac's game
-  data): the Mac does. Its `.build.info` row's Branch and Tags, which the companion sends again at every
-  sync, else the client's stamp. Settings names the region and says to change it in Battle.net on the Mac.
-  The game's first `Config.wtf`, which the companion sends, says that row's region and languages
-  (`GameFiles.firstConfig`): without Battle.net the client signs in to its portal's account server.
-- **A game the device decides** (installed or updated here, so it has a region file, or with no game data
-  yet, and not the Mac's): the device does, from `Library/spregion-<flavor>`, a one-row table of the
-  region, its text and speech locales, and the locales the build ships. The install writes it: by default
-  the device's region in Settings mapped to Blizzard's (`sp_region_for_country`: the Americas and Oceania
-  `us`; Europe, Russia, the Middle East, and Africa `eu`; Korea `kr`; Taiwan, Hong Kong, and Macao `tw`;
-  anything else `us`, never `cn`, `sg`, or `xx`), and the device's first preferred language that region
-  has a locale for (`sp_region_locale`: us enUS esMX ptBR; eu enUS deDE esES frFR itIT ruRU; kr koKR; tw
-  zhTW), else the region's default. Speech follows text. Europe's English is `enUS`, as Blizzard ships
-  it: the clients have no `enGB`, and one set to it opens the region picker the device can't show, and
-  exits (issue #88), so an `enGB` an older version wrote reads as `enUS`. The slice download reads the
-  build's install manifest, so the locale is checked against the tags it lists (`sp_locale_shipped`;
-  Classic's have no itIT). Settings' **Region** picker rewrites the file; nothing else does but an
-  install or Update.
+- **A pick** (`Library/sppickedregion-<flavor>`, one word): always wins. Only Settings writes it, and
+  nothing deletes it but Settings' first choice, so a Mac's Play, an Update on either side, and an install
+  again leave it. It's the only region the device saves.
+- **The Mac's** (`Library/spmacregion-<flavor>`: the Mac install's row's Branch and Tags, which the
+  companion sends at every Play, from its snapshot of the install). Its own file, since the device rewrites
+  the game data's row; before an older companion sent it, the game data's `.build.info` row stands in for
+  a client the Mac copied. Settings' first choice reads **Follow Mac (Europe)**.
+- **The device's region**, worked out at every start and never saved (`sp_region_for_country`: the
+  Americas and Oceania `us`; Europe, Russia, the Middle East, and Africa `eu`; Korea `kr`; Taiwan, Hong
+  Kong, and Macao `tw`; anything else `us`, never `cn`, `sg`, or `xx`). Settings' first choice reads
+  **Automatic (Americas)**. Saving this guess was issue #132: a game installed on an iPad set to the
+  United States, then played from a Mac in Europe, went back to `us` after its next Update on the iPad.
+  So Slashplayed 1.4 to 1.7's `Library/spregion-<flavor>`, as often a guess as a pick, is deleted at the
+  start and decides nothing.
 
-Everything else follows that file at each start, so a change isn't put back by a copy written before it:
+A region is more than the portal. In the Mac's region the languages and Tags are the Mac row's (Battle.net's,
+`acct-` and `geoip-` included). In any other, the device's first preferred language that region has a
+locale for (`sp_region_locale`: us enUS esMX ptBR; eu enUS deDE esES frFR itIT ruRU; kr koKR; tw zhTW),
+and that the build ships (`spshipped-<flavor>`, which an install or Update reads from the build's install
+manifest; Classic's have no itIT), else the region's default. Speech follows text. Europe's English is
+`enUS`, as Blizzard ships it: the clients have no `enGB`, and one set to it opens the region picker the
+device can't show, and exits (issue #88), so an `enGB` an older version wrote reads as `enUS`. A region can
+also be on another build (on 2026-11-25 Forever's `kr` and `tw` were a build behind its `us` and `eu`): the
+patch check asks the region's patch service, so it offers that build as an Update. The game data is one
+store for every region, which the client streams into by its row's Tags, so nothing else is fetched again.
+
+Everything else follows the result at each start, so a change isn't put back by a copy written before it:
 the patch check's region, an Update's kept row (its Branch and Tags, `sp_region_tags`) and stamp, the
 start-time `.build.info` rewrite (which also writes the row again when it's in another region,
 `sp_build_info_for_image`), and `Config.wtf` (`sp_config_with_region`). Before the client is chosen the
 launcher moves the kept row and stamp into the region (`region_sync`, `region:` lines). The stamp's Branch
-stays, but decides nothing for these games. Tags are Battle.net's layout without its `acct-` and `geoip-`
-tags, which no install manifest lists.
+decides nothing. Outside the Mac's region, Tags are Battle.net's layout without its `acct-` and `geoip-`
+tags, which no install manifest lists. The log says each installed game's region and where it came from
+at every start, the start screen's included (`region: forever plays in eu (Europe, picked on device), …`),
+so a diagnostics export always has it.
 
 ### The addons
 

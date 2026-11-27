@@ -636,8 +636,8 @@ static NSArray<NSString *> *build_info_columns(void) {
 
 // `existing` with `mine` as the product's row (by .build.info's column names), its Tags kept from the
 // product's row in `existing` when that has some, else mine's, else Flavor.tags' default (a US English Mac
-// install's). With `mineWins`, mine's Tags (a game the device decides the region of: sp_game_region), so a
-// region changed in Settings isn't put back by the old row's. sp_build_info_with's and
+// install's). With `mineWins`, mine's Tags (the game's region's: sp_game_region), so a
+// region picked in Settings isn't put back by the old row's. sp_build_info_with's and
 // sp_build_info_for_image's layout.
 static NSString *build_info_merged(NSString *existing, NSString *product, NSDictionary<NSString *, NSString *> *given,
                                    BOOL mineWins) {
@@ -806,59 +806,41 @@ void sp_tags_locales(NSString *tags, NSString **text, NSString **speech) {
     }
 }
 
-static BOOL is_region(NSString *r) {
-    NSCharacterSet *notRegion = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz"].invertedSet;
-    return r.length && [r rangeOfCharacterFromSet:notRegion].location == NSNotFound;
+NSString *sp_region_source_name(NSString *source) {
+    if ([source isEqual:@"picked"]) return @"picked on device";
+    if ([source isEqual:@"mac"]) return @"following the Mac";
+    return @"from the device's region";
 }
 
-static NSString *const region_header = @"Product!STRING:0|Region!STRING:0|Text!STRING:0|Speech!STRING:0|Shipped!STRING:0";
-
-NSString *sp_region_file(NSString *product, NSDictionary<NSString *, NSString *> *choice) {
-    return [NSString stringWithFormat:@"%@\n%@|%@|%@|%@|%@\n", region_header, product, choice[@"Region"], choice[@"Text"],
-                                      choice[@"Speech"], choice[@"Shipped"] ?: @""];
-}
-
-NSDictionary<NSString *, NSString *> *sp_game_region(NSString *product, BOOL device, NSString *regionFile, NSString *kept,
-                                                     NSString *stamp, NSString *buildInfo, NSString *country,
+NSDictionary<NSString *, NSString *> *sp_game_region(NSString *product, NSString *picked, NSString *macFile,
+                                                     NSArray<NSString *> *shipped, NSString *country,
                                                      NSArray<NSString *> *preferred) {
-    NSDictionary<NSString *, NSString *> *info = sp_table_row(buildInfo, @"Product", product);
-    NSDictionary<NSString *, NSString *> *stamped = sp_table_row(stamp, @"Product", product);
-    // A region from a row, its languages from the row's Tags (or `tagsFrom`'s), else the device's for that region.
-    NSDictionary * (^from)(NSString *, NSString *, NSString *) = ^NSDictionary *(NSString *region, NSString *tags, NSString *source) {
-        NSString *text = nil, *speech = nil;
-        sp_tags_locales(tags, &text, &speech);
-        text = game_locale(text);
-        speech = game_locale(speech);
-        text = text ?: speech ?: (device ? sp_region_locale(region, preferred, nil) : sp_region_locales(region).firstObject ?: @"enUS");
-        return @{@"Region": region, @"Text": text, @"Speech": speech ?: text, @"Source": source};
-    };
-    NSString *infoBranch = info[@"Branch"].lowercaseString, *stampBranch = stamped[@"Branch"].lowercaseString;
-    if (!device) {
-        // The Mac's: its .build.info row (the companion sends it again at every sync), else the image's stamp.
-        // With neither, nothing says the region: "default", which Config.wtf doesn't follow (sp_config_with_region).
-        if (is_region(infoBranch)) return from(infoBranch, info[@"Tags"], @"mac");
-        if (is_region(stampBranch)) return from(stampBranch, nil, @"mac");
-        return from(@"us", nil, @"default");
+    NSDictionary<NSString *, NSString *> *mac = sp_table_row(macFile, @"Product", product);
+    NSString *macRegion = mac[@"Branch"].lowercaseString;
+    if (![sp_regions() containsObject:macRegion]) macRegion = nil;
+    NSString *pick = [picked stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].lowercaseString;
+    if (![sp_regions() containsObject:pick]) pick = nil;
+    NSString *fallback = macRegion ?: sp_region_for_country(country);
+    NSString *region = pick ?: fallback;
+    NSString *source = pick ? @"picked" : macRegion ? @"mac" : @"device";
+    // In the Mac's region, the Mac's languages and Tags (Battle.net's, acct- and geoip- included); a row without
+    // locales gets the region's default, as Battle.net's first start would. Anywhere else, the device's
+    // languages for that region that the build ships: the Mac's are another region's.
+    NSString *text = nil, *speech = nil, *tags = nil;
+    if ([region isEqual:macRegion]) {
+        sp_tags_locales(mac[@"Tags"], &text, &speech);
+        text = game_locale(text ?: speech ?: sp_region_locales(region).firstObject ?: @"enUS");
+        speech = speech ? game_locale(speech) : text;
+        if (mac[@"Tags"].length) tags = mac[@"Tags"];
+    } else {
+        text = speech = sp_region_locale(region, preferred, shipped);
     }
-    NSDictionary<NSString *, NSString *> *chosen = sp_table_row(regionFile, @"Product", product);
-    if ([sp_regions() containsObject:chosen[@"Region"]] && chosen[@"Text"].length) {
-        NSMutableDictionary *out = [@{@"Region": chosen[@"Region"], @"Text": game_locale(chosen[@"Text"]),
-                                      @"Speech": game_locale(chosen[@"Speech"].length ? chosen[@"Speech"] : chosen[@"Text"]),
-                                      @"Source": @"chosen"}
-                                    mutableCopy];
-        if (chosen[@"Shipped"].length) out[@"Shipped"] = chosen[@"Shipped"];
-        return out;
-    }
-    // A game the device made before the region file: its kept row, else its stamp, as before.
-    NSDictionary<NSString *, NSString *> *keptRow = sp_table_row(kept, @"Product", product);
-    if (is_region(keptRow[@"Branch"].lowercaseString)) return from(keptRow[@"Branch"].lowercaseString, keptRow[@"Tags"], @"kept row");
-    if (is_region(stampBranch))
-        return from(stampBranch, [infoBranch isEqual:stampBranch] ? info[@"Tags"] : nil, @"stamp");
-    // Game data with a row and no image (an image the device made was refused and deleted): its region.
-    if (is_region(infoBranch)) return from(infoBranch, info[@"Tags"], @"build.info");
-    NSString *region = sp_region_for_country(country);
-    NSString *text = sp_region_locale(region, preferred, nil);
-    return @{@"Region": region, @"Text": text, @"Speech": text, @"Source": @"device"};
+    NSMutableDictionary<NSString *, NSString *> *out = [@{
+        @"Region": region, @"Text": text, @"Speech": speech, @"Tags": tags ?: sp_region_tags(region, text, speech),
+        @"Source": source, @"Default": fallback,
+    } mutableCopy];
+    if (macRegion) out[@"Mac"] = macRegion;
+    return out;
 }
 
 NSString *sp_table_with(NSString *text, NSString *product, NSDictionary<NSString *, NSString *> *values) {
@@ -901,8 +883,7 @@ NSString *sp_config_with_region(NSString *config, NSDictionary<NSString *, NSStr
     // and both languages go with it, since the old languages are the old portal's. Otherwise a value set stays
     // (a language picked in the game's own options), and only a missing or empty one is filled.
     NSString *portal = value(@"portal");
-    BOOL follow = ![choice[@"Source"] isEqual:@"default"];
-    BOOL moved = follow && portal.length && ![portal.lowercaseString isEqual:choice[@"Region"]];
+    BOOL moved = portal.length && ![portal.lowercaseString isEqual:choice[@"Region"]];
     NSMutableArray<NSString *> *names = [NSMutableArray array];
     for (NSArray<NSString *> *cvar in cvars) {
         NSString *now = value(cvar[0]), *line = [NSString stringWithFormat:@"SET %@ \"%@\"", cvar[0], cvar[1]];

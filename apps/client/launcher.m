@@ -304,7 +304,7 @@ static NSDictionary<NSString *, NSString *> *build_info_row(NSString *path, NSSt
     return sp_table_row([NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil], @"Product", product);
 }
 
-// ---- the region a game plays in (issue #34; spcdn.h says how it's decided)
+// ---- the region a game plays in (issues #34 and #132; spcdn.h says how it's decided)
 
 static NSString *home_path(NSString *relative) { return [NSHomeDirectory() stringByAppendingPathComponent:relative]; }
 
@@ -312,11 +312,18 @@ static NSString *read_text(NSString *path) {
     return [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
 }
 
-static NSString *region_path(NSString *flavor) { return home_path([@"Library/spregion-" stringByAppendingString:flavor]); }
+// The region a person picked in Settings (one word; only sp_game_set_region writes it), and the Mac install's row
+// for the game (Product, Branch, Tags: the companion sends it at every Play, GameFiles.macRegion).
+static NSString *picked_path(NSString *flavor) { return home_path([@"Library/sppickedregion-" stringByAppendingString:flavor]); }
+static NSString *mac_region_path(NSString *flavor) { return home_path([@"Library/spmacregion-" stringByAppendingString:flavor]); }
 
 static NSString *games_path(NSString *name, NSString *flavor) {
     return home_path([NSString stringWithFormat:@"Library/spgames/%@%@", name, flavor]);
 }
+
+// The locales the client's build ships (spgames/spshipped-<flavor>, space-separated), as the last install or
+// Update on the device read them from its install manifest; nil when not known (the Mac copied the client).
+static NSString *shipped_path(NSString *flavor) { return games_path(@"spshipped-", flavor); }
 
 // Where the game's client came from (Library/spgames/spsource-<flavor>, one word): "mac" (the companion
 // copied it), "updated" or "installed" (the device fetched it: sppatch.m), or nil without one.
@@ -327,16 +334,12 @@ static NSString *client_source(NSString *flavor) {
 
 static NSDictionary<NSString *, NSString *> *data_build(NSString *flavor);
 
-// The game's region and languages now (sp_game_region), and "Device" "1" when the device decides them, "0"
-// when the Mac does. The device decides for a game it installs itself: one with a region file (an install
-// writes it, and so do Settings' changes, which need the device deciding), or with no game data yet (its
-// install is the device's), unless the Mac has copied its client (spsource-<flavor> "mac"), which makes it the
-// Mac's game, as a bundled image did. Game data with no region file is the Mac's copy (or an older
-// Slashplayed's update of the Mac's game), whose .build.info row says its region. Reads the
-// region file, the client's kept row and stamp, the game data's .build.info, and the device's region and
-// languages; logs nothing. $SP_REGION_COUNTRY (an ISO country code) and $SP_REGION_LANGUAGES (BCP 47,
-// comma-separated) stand in for the device's, for tests (run.sh passes them): a test device's own region is
-// the owner's.
+// The game's region and languages now (sp_game_region): the pick, else the Mac's, else the device's region,
+// worked out here and never saved. A Mac game from before the companion sent spmacregion-<flavor> (an older
+// companion's Play) has the Mac's row in the game data's .build.info, when the Mac copied the client. Reads
+// those files and the device's region and languages; logs nothing. $SP_REGION_COUNTRY (an ISO country code) and
+// $SP_REGION_LANGUAGES (BCP 47, comma-separated) stand in for the device's, for tests (run.sh passes them): a
+// test device's own region is the owner's.
 NSArray<NSString *> *sp_device_languages(void) {  // sppatch.m too
     NSString *test = NSProcessInfo.processInfo.environment[@"SP_REGION_LANGUAGES"];
     return test.length ? [test componentsSeparatedByString:@","] : NSLocale.preferredLanguages;
@@ -345,53 +348,59 @@ NSArray<NSString *> *sp_device_languages(void) {  // sppatch.m too
 NSDictionary<NSString *, NSString *> *sp_game_region_now(NSString *flavor) {
     NSString *test = NSProcessInfo.processInfo.environment[@"SP_REGION_COUNTRY"];
     NSString *country = test.length ? test : [NSLocale.currentLocale objectForKey:NSLocaleCountryCode];
-    BOOL device = ![client_source(flavor) isEqual:@"mac"] &&
-                  ([NSFileManager.defaultManager fileExistsAtPath:region_path(flavor)] || !data_build(flavor));
-    NSMutableDictionary *choice = [sp_game_region(
-        flavor_entry(flavor)[@"product"] ?: @"", device, read_text(region_path(flavor)), read_text(games_path(@"spbuildinfo-", flavor)),
-        read_text(games_path(@"spbuild-", flavor)), read_text(home_path(@"Documents/.build.info")), country,
-        sp_device_languages()) mutableCopy];
-    choice[@"Device"] = device ? @"1" : @"0";
-    return choice;
+    NSString *mac = read_text(mac_region_path(flavor));
+    if (!mac && [client_source(flavor) isEqual:@"mac"]) mac = read_text(home_path(@"Documents/.build.info"));
+    NSString *shipped = [read_text(shipped_path(flavor)) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    return sp_game_region(flavor_entry(flavor)[@"product"] ?: @"", read_text(picked_path(flavor)), mac,
+                          shipped.length ? [shipped componentsSeparatedByString:@" "] : nil, country, sp_device_languages());
 }
 
-// Library/spregion-<flavor> from `choice` (sppatch.m's install and Update, and Settings). nil, or why not.
-NSString *sp_game_region_write(NSString *flavor, NSDictionary<NSString *, NSString *> *choice) {
-    NSString *product = flavor_entry(flavor)[@"product"];
-    if (!product.length) return @"the app doesn't know the game's product";
-    NSError *e = nil;
-    if (![sp_region_file(product, choice) writeToFile:region_path(flavor) atomically:YES encoding:NSUTF8StringEncoding error:&e])
-        return [NSString stringWithFormat:@"couldn't write Library/spregion-%@ (%@ %ld)", flavor, e.domain, (long)e.code];
-    return nil;
+// spgames/spshipped-<flavor> from the tag names of the build's install manifest (sppatch.m's install and Update),
+// its locales only, so a region picked later gets a language the build has (Classic's have no itIT).
+void sp_game_shipped_write(NSString *flavor, NSArray<NSString *> *tags) {
+    NSMutableArray<NSString *> *locales = [NSMutableArray array];
+    for (NSString *t in tags)
+        if ([t rangeOfString:@"^[a-z]{2}[A-Z]{2}$" options:NSRegularExpressionSearch].location != NSNotFound) [locales addObject:t];
+    [NSFileManager.defaultManager createDirectoryAtPath:home_path(@"Library/spgames") withIntermediateDirectories:YES attributes:nil error:nil];
+    if (![[[locales componentsJoinedByString:@" "] stringByAppendingString:@"\n"] writeToFile:shipped_path(flavor) atomically:YES
+                                                                                   encoding:NSUTF8StringEncoding error:nil])
+        say([NSString stringWithFormat:@"region: couldn't write Library/spgames/spshipped-%@", flavor]);
 }
 
-// Settings' Region for a game the device decides it for: the region file now has `region`, with the
-// device's languages for it that the build ships (as far as the last install or Update read them). The next
-// start does the rest (region_sync, game_region, build_info_for_image), and so does every start after, so
-// nothing written before puts the old region back. A line for the log.
+// The region line diagnostics carry: "region: forever plays in eu (Europe, picked on device), text deDE, speech deDE".
+static NSString *region_line(NSString *flavor, NSDictionary<NSString *, NSString *> *choice) {
+    return [NSString stringWithFormat:@"region: %@ plays in %@ (%@, %@), text %@, speech %@%@", flavor, choice[@"Region"],
+                                      sp_region_name(choice[@"Region"]), sp_region_source_name(choice[@"Source"]), choice[@"Text"],
+                                      choice[@"Speech"], choice[@"Mac"] && ![choice[@"Mac"] isEqual:choice[@"Region"]]
+                                          ? [NSString stringWithFormat:@"; the Mac's is %@", choice[@"Mac"]] : @""];
+}
+
+// Settings' Region: `region` saved as the pick (Library/sppickedregion-<flavor>), or with "" the pick deleted, so
+// the game follows the Mac (or the device's region) again. The next start does the rest (region_sync,
+// game_region, build_info_for_image), and so does every start after. A line for the log.
 NSString *sp_game_set_region(NSString *flavor, NSString *region) {
+    NSDictionary<NSString *, NSString *> *was = sp_game_region_now(flavor);
+    NSError *e = nil;
+    if (!region.length) {
+        [NSFileManager.defaultManager removeItemAtPath:picked_path(flavor) error:nil];
+    } else if (![sp_regions() containsObject:region]) {
+        return [NSString stringWithFormat:@"region %@: %@ isn't a region", flavor, region];
+    } else if (![[region stringByAppendingString:@"\n"] writeToFile:picked_path(flavor) atomically:YES encoding:NSUTF8StringEncoding error:&e]) {
+        return [NSString stringWithFormat:@"region %@: couldn't write Library/sppickedregion-%@ (%@ %ld)", flavor, flavor, e.domain, (long)e.code];
+    }
     NSDictionary<NSString *, NSString *> *now = sp_game_region_now(flavor);
-    if (![now[@"Device"] isEqual:@"1"]) return [NSString stringWithFormat:@"region %@: the Mac decides it (Battle.net)", flavor];
-    if (![sp_regions() containsObject:region]) return [NSString stringWithFormat:@"region %@: %@ isn't a region", flavor, region];
-    NSArray<NSString *> *shipped = now[@"Shipped"].length ? [now[@"Shipped"] componentsSeparatedByString:@" "] : nil;
-    NSString *text = [region isEqual:now[@"Region"]] ? now[@"Text"] : sp_region_locale(region, sp_device_languages(), shipped);
-    NSMutableDictionary *choice = [@{@"Region": region, @"Text": text, @"Speech": text} mutableCopy];
-    if (shipped) choice[@"Shipped"] = now[@"Shipped"];
-    NSString *problem = sp_game_region_write(flavor, choice);
-    return problem ? [NSString stringWithFormat:@"region %@: %@", flavor, problem]
-                   : [NSString stringWithFormat:@"region %@ (Settings): %@ (%@), text %@, speech %@; was %@ from %@", flavor, region,
-                                                sp_region_name(region), text, text, now[@"Region"], now[@"Source"]];
+    return [NSString stringWithFormat:@"region %@ (Settings): %@ (%@, %@), text %@; was %@ (%@)", flavor, now[@"Region"],
+                                      sp_region_name(now[@"Region"]), sp_region_source_name(now[@"Source"]), now[@"Text"],
+                                      was[@"Region"], sp_region_source_name(was[@"Source"])];
 }
 
-// For a game whose region the device decides, from its region file: the row kept beside its Library/spgames
-// image (its Branch and Tags) and the image's stamp (its Branch) in that region, if a Settings change since the
-// last start left them in another. Nothing decides the region from them any more, but they say it, and the
-// companion pulls the stamps. Before the image is chosen, so the patch check, the load, and the start-time
+// The row kept beside the game's Library/spgames image (its Branch and Tags) and the image's stamp (its Branch)
+// in the game's region, if a pick, a Mac's Play, or an Update since the last start left them in another. Nothing
+// decides the region from them, but they say it, and the companion pulls the stamps. Before the image is chosen, so the patch check, the load, and the start-time
 // .build.info rewrite (build_info_for_image) all see one region. region: lines.
 static void region_sync(NSString *flavor, NSDictionary<NSString *, NSString *> *choice) {
-    if (![choice[@"Device"] isEqual:@"1"] || ![choice[@"Source"] isEqual:@"chosen"]) return;
     NSString *product = flavor_entry(flavor)[@"product"], *spgames = home_path(@"Library/spgames");
-    NSString *tags = sp_region_tags(choice[@"Region"], choice[@"Text"], choice[@"Speech"]);
+    NSString *tags = choice[@"Tags"];
     for (NSArray *file in @[@[@"spbuildinfo-", @{@"Branch": choice[@"Region"], @"Tags": tags}],
                             @[@"spbuild-", @{@"Branch": choice[@"Region"]}]]) {
         NSString *path = [spgames stringByAppendingPathComponent:[file[0] stringByAppendingString:flavor]];
@@ -493,9 +502,7 @@ static void build_info_for_image(NSString *flavor, NSString *image, NSDictionary
                                  NSDictionary<NSString *, NSString *> *choice) {
     NSString *product = flavor_entry(flavor)[@"product"], *dir = image.stringByDeletingLastPathComponent;
     NSString *info = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/.build.info"], *why = nil;
-    NSDictionary<NSString *, NSString *> *region = nil;
-    if ([choice[@"Device"] isEqual:@"1"] && [choice[@"Source"] isEqual:@"chosen"])
-        region = @{@"Branch": choice[@"Region"], @"Tags": sp_region_tags(choice[@"Region"], choice[@"Text"], choice[@"Speech"])};
+    NSDictionary<NSString *, NSString *> *region = @{@"Branch": choice[@"Region"], @"Tags": choice[@"Tags"]};
     NSString *text = sp_build_info_for_image(
         [NSString stringWithContentsOfFile:info encoding:NSUTF8StringEncoding error:nil], product,
         [NSString stringWithContentsOfFile:[dir stringByAppendingPathComponent:[@"spbuildinfo-" stringByAppendingString:flavor]]
@@ -698,6 +705,14 @@ int main(int argc, char **argv) {
     if (!flavors.count) { say(@"no games: none in flavors.plist"); return 1; }
     say([NSString stringWithFormat:@"games: %lu on this device, %lu to install here", (unsigned long)madeGames.count,
                                    (unsigned long)installable.count]);
+    // Each game's region and where it came from, so a diagnostics export from the start screen alone says it
+    // (issue #132's had none). An older Slashplayed's saved region (Library/spregion-<flavor>, the device's guess
+    // as often as a pick) no longer decides anything: deleted.
+    for (NSString *f in order) {
+        if ([NSFileManager.defaultManager removeItemAtPath:home_path([@"Library/spregion-" stringByAppendingString:f]) error:nil])
+            say([NSString stringWithFormat:@"region: deleted an older Slashplayed's Library/spregion-%@", f]);
+        if ([madeGames containsObject:f]) say(region_line(f, sp_game_region_now(f)));
+    }
     // Before the start screen, which can wait a long time: a sign-in left in any game's folder shouldn't.
     sp_login_clear(flavors);
     void (^pump)(double) = ^(double seconds) { CFRunLoopRunInMode(kCFRunLoopDefaultMode, seconds, true); };
@@ -734,9 +749,8 @@ int main(int argc, char **argv) {
         stamp = client_build(flavor) ? image_build(library, flavor) : nil;
         if (stamp) break;
         // No client: the device gets it itself, from Blizzard's CDN. With game data (the Mac copied it, or an
-        // upgrade retired the image an older Slashplayed made), the data's own build, in its region; with none,
-        // the current build in the game's region (its region file, chosen in Settings or by an earlier install,
-        // else the device's region: sp_game_region).
+        // upgrade retired the image an older Slashplayed made), the data's own build; with none, the current build.
+        // Either in the game's region (the pick, else the Mac's, else the device's region: sp_game_region).
         NSString *problem = nil;
         NSDictionary<NSString *, NSString *> *data = data_build(flavor);
         NSString *path = sp_patch_install(flavor, sp_game_region_now(flavor), data, picked, &pump, &problem);
@@ -753,10 +767,9 @@ int main(int argc, char **argv) {
     sp_addons_hold();
     [flavor writeToFile:saved atomically:YES encoding:NSUTF8StringEncoding error:nil];
     retire_caught_up(flavor, stamp);
-    // The game's region, once, for the rest of the start (an install just now wrote its region file).
+    // The game's region, once, for the rest of the start (an install just now read what its build ships).
     NSDictionary<NSString *, NSString *> *choice = sp_game_region_now(flavor);
-    say([NSString stringWithFormat:@"region: %@ plays in %@ (%@), text %@, speech %@, from %@", flavor, choice[@"Region"],
-                                   sp_region_name(choice[@"Region"]), choice[@"Text"], choice[@"Speech"], choice[@"Source"]]);
+    say(region_line(flavor, choice));
     region_sync(flavor, choice);
     game_region(flavor, choice);
     default_render_scale(flavor);
@@ -821,7 +834,7 @@ int main(int argc, char **argv) {
         else say([NSString stringWithFormat:@"login: can't import the relayed token: %s", dlerror()]);
     }
     // The game data's row for the build about to load, before the client reads it. An Update just now may
-    // have settled the region file's languages against its build (sppatch.m): read again.
+    // have read what its build ships (spshipped-<flavor>), which can change the languages: read again.
     build_info_for_image(flavor, library, stamp, sp_game_region_now(flavor));
     // Returns only if the client couldn't be loaded (or once its main returns): the reason is spguest's (an
     // unresolved import, a bad opcode, a refused hook), and a file that turned out bad is deleted with its

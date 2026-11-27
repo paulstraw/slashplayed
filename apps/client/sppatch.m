@@ -14,8 +14,8 @@
 // and the client in Library/spgames stays untouched for Play Anyway.
 //
 // The service is https://<region>.version.battle.net/v2/products/<product>/versions: a table shaped like
-// .build.info, one row per region. The region is the game's (sp_game_region in spcdn.m): the stamp's Branch for
-// the Mac's game, Library/spregion-<flavor> for one the device installed. Its row's
+// .build.info, one row per region. The region is the game's (sp_game_region in spcdn.m): the one picked in
+// Settings, else the Mac's, else the device's region. Its row's
 // BuildConfig is the build's identity, the stamp's Build Key; VersionsName is the version to show. Its
 // sibling /cdns names the region's CDN servers. $SP_PATCH_SERVICE replaces the base (everything before
 // /<product>/versions) for tests: a URL, or a path relative to the app's home directory, read as files
@@ -42,8 +42,8 @@ NSString *sp_flavor_name(NSString *flavor);  // launcher.m
 NSDictionary *sp_flavor_entry(NSString *flavor);  // launcher.m
 UIViewController *sp_scene_root(void);  // spvpn.m
 NSString *sp_device_noun(void);  // spjit.m
-NSString *sp_game_region_write(NSString *flavor, NSDictionary<NSString *, NSString *> *choice);  // launcher.m
-NSArray<NSString *> *sp_device_languages(void);  // launcher.m: NSLocale.preferredLanguages, or the test's
+void sp_game_shipped_write(NSString *flavor, NSArray<NSString *> *tags);  // launcher.m
+NSDictionary<NSString *, NSString *> *sp_game_region_now(NSString *flavor);  // launcher.m
 
 static void say(NSString *s) { sp_launch_say([@"patch: " stringByAppendingString:s]); }
 // The update's own lines, and the image chosen: "update: ", as the launcher's after the load.
@@ -365,8 +365,8 @@ static verdict check_new_build(NSString *flavor, NSString *image, NSString *prod
 // loads, on that launch and every later one whose row isn't the client's build (sp_build_info_for_image). So a
 // launch that stops before the client loads (at the sign-in, say, or the JIT helper), or game data emptied
 // under the client, doesn't leave the client streaming with no row for its build (#134, "Invalid schema …
-// StartupFiles", issue #36). `tags`: the kept row's Tags for a game whose region the device decides
-// (sp_region_tags), nil for the Mac's (its own row's are kept). The new client's path, or nil and *why.
+// StartupFiles", issue #36). `tags`: the kept row's Tags, the game's region's (sp_game_region's
+// Tags). The new client's path, or nil and *why.
 static NSString *update(NSString *flavor, NSString *product, NSString *region, NSString *tags, NSDictionary<NSString *, NSString *> *row,
                         NSString *source, void (^pump)(double), NSString **why) {
     NSString *home = NSHomeDirectory(), *name = [@"wow-" stringByAppendingString:flavor];
@@ -450,27 +450,18 @@ static NSString *sentence(NSString *why) {
     return [NSString stringWithFormat:@"%@%@.", [why substringToIndex:1].uppercaseString, [why substringFromIndex:1]];
 }
 
-// A device-decided region (sp_game_region) once the build's install manifest has been read (`shipped`, its tag
-// names; nil when this start didn't read one): its languages checked against what the build ships, the
-// device's next one for the region (sp_region_locale) if it doesn't ship the chosen one, and what it ships kept
-// in the region file for a later change in Settings. Written to Library/spregion-<flavor>.
+// The game's region (`choice`, sp_game_region) once the build's install manifest has been read (`shipped`, its
+// tag names; nil when this start didn't read one): what the build ships kept beside the client
+// (sp_game_shipped_write), and the region read again with it, so the languages are ones the build has. A
+// language a person picked in the game's own options stays theirs (sp_config_with_region).
 static NSDictionary<NSString *, NSString *> *settle_region(NSString *flavor, NSDictionary<NSString *, NSString *> *choice,
                                                            NSArray<NSString *> *shipped) {
-    NSMutableDictionary<NSString *, NSString *> *out = [choice mutableCopy];
-    if (shipped) {
-        NSMutableArray<NSString *> *locales = [NSMutableArray array];
-        for (NSString *t in shipped)
-            if ([t rangeOfString:@"^[a-z]{2}[A-Z]{2}$" options:NSRegularExpressionSearch].location != NSNotFound) [locales addObject:t];
-        out[@"Shipped"] = [locales componentsJoinedByString:@" "];
-        if (!sp_locale_shipped(choice[@"Text"], locales)) {
-            NSString *text = sp_region_locale(choice[@"Region"], sp_device_languages(), locales);
-            say([NSString stringWithFormat:@"region: this build doesn't ship %@: %@ instead", choice[@"Text"], text]);
-            out[@"Text"] = out[@"Speech"] = text;
-        }
-    }
-    NSString *problem = sp_game_region_write(flavor, out);
-    if (problem) say([@"region: " stringByAppendingString:problem]);
-    return out;
+    if (!shipped) return choice;
+    sp_game_shipped_write(flavor, shipped);
+    NSDictionary<NSString *, NSString *> *now = sp_game_region_now(flavor);
+    if (![now[@"Text"] isEqual:choice[@"Text"]])
+        say([NSString stringWithFormat:@"region: this build doesn't ship %@: %@ instead", choice[@"Text"], now[@"Text"]]);
+    return now;
 }
 
 // The patch service's versions row for `product` in `region`, or nil and *why.
@@ -489,17 +480,17 @@ static NSDictionary<NSString *, NSString *> *current_row(NSString *product, NSSt
 }
 
 // Installs a game the device has no client of: with the update's chain from nothing, the patch service's
-// current build in the game's region (`choice`, sp_game_region: the region file, else the device's region and
-// languages), its slice fetched (asking first on a costly network) and its imports checked (check_new_build),
+// current build in the game's region (`choice`, sp_game_region: the pick, else the Mac's, else the device's
+// region), its slice fetched (asking first on a costly network) and its imports checked (check_new_build),
 // then its configs, row, and stamp put in place here (update, as "installed"); the launcher writes the game's
 // .flavor.info (flavor_info). Its screen says each step; there's no Play Anyway, as there's nothing else to
 // play. The screen names the region ("Installing Classic Era for Europe"), and once the build is checked the
-// region and its languages, checked against the locales the build ships, go into Library/spregion-<flavor>
-// (settle_region), which the game follows from then on until Settings changes it.
+// locales it ships are kept beside the client (settle_region), so the languages are ones it has. Nothing saves
+// the region: the next start works it out again.
 //
 // With `data` (the game data's .build.info row: the Mac copied the game's data, or an upgrade retired the image
 // an older Slashplayed made), the client of that build, not the current one: "Getting Classic Era ready". Its
-// region stays the data's (the Mac's, or an earlier install's region file), and the patch check after it
+// region is the game's, as for an install, and the patch check after it
 // offers any newer build as usual. If that build can't be downloaded, the current one is. A Mac's next Play
 // copies the same client, if it gets there first.
 //
@@ -512,7 +503,6 @@ NSString *sp_patch_install(NSString *flavor, NSDictionary<NSString *, NSString *
     *problem = nil;
     NSString *product = sp_flavor_entry(flavor)[@"product"], *game = sp_flavor_name(flavor), *noun = sp_device_noun();
     NSString *region = choice[@"Region"], *where = sp_region_name(region ?: @"");
-    BOOL device = [choice[@"Device"] isEqual:@"1"];
     if (data)
         say([NSString stringWithFormat:@"install: %@ has game data for %@ and no client on this %@: getting that build's in %@ (%@, from %@)",
                                        product ?: flavor, data[@"Version"], noun, region, where, choice[@"Source"]]);
@@ -595,11 +585,10 @@ NSString *sp_patch_install(NSString *flavor, NSDictionary<NSString *, NSString *
     }
     [screen setHeading:heading body:[NSString stringWithFormat:@"Setting it up on this %@.", noun] note:nil buttons:@[]];
     double t = now();
-    // The languages checked against the build's before its row is kept with them, for a game whose region the
-    // device decides (every install); the Mac's game data keeps its own row's (`tags` nil).
-    NSDictionary<NSString *, NSString *> *settled = !data || device ? settle_region(flavor, choice, shipped) : choice;
-    NSString *tags = !data || device ? sp_region_tags(region, settled[@"Text"], settled[@"Speech"]) : nil;
-    NSString *image = update(flavor, product, region, tags, row, @"installed", ui, &why);
+    // The languages checked against the build's before its row is kept with them, in the game's region's Tags
+    // (the Mac row's own in the Mac's region).
+    NSDictionary<NSString *, NSString *> *settled = settle_region(flavor, choice, shipped);
+    NSString *image = update(flavor, product, region, settled[@"Tags"], row, @"installed", ui, &why);
     if (!image) {
         say([NSString stringWithFormat:@"install: failed after %.1f s: %@", now() - t, why]);
         *problem = failed(cant, @"Try again later.", sentence(why));
@@ -617,8 +606,9 @@ NSString *sp_patch_install(NSString *flavor, NSDictionary<NSString *, NSString *
 
 // Whether a newer build is out than the game's client (`image`, Library/spgames/wow-<flavor>, and `stamp`, its
 // build), with the screen if so, once the launch may go on: right away unless a newer build is out, then after
-// Play Anyway or Update. The region is the device's for a game it decides it for (`choice`, sp_game_region),
-// else the stamp's Branch (the Mac's), and an Update keeps its row in that region.
+// Play Anyway or Update. The region is the game's (`choice`, sp_game_region), and an Update keeps its row
+// in that region. A pick in another region than the client's build can make that region's build "newer": the
+// Update then gets it.
 //
 // A newer build out shows the screen. When the new build binds, it offers Update: the new build's slice is
 // put in place here (update) and its stamp returned, its .build.info row kept beside it for the launcher to
@@ -630,8 +620,7 @@ NSString *sp_patch_install(NSString *flavor, NSDictionary<NSString *, NSString *
 // when it shows its screen.
 NSDictionary<NSString *, NSString *> *sp_patch_check(NSString *flavor, NSString *image, NSDictionary<NSString *, NSString *> *stamp,
                                                     NSDictionary<NSString *, NSString *> *choice, void (^*pump)(double)) {
-    BOOL device = [choice[@"Device"] isEqual:@"1"] && choice[@"Region"].length;
-    NSString *product = stamp[@"Product"], *region = device ? choice[@"Region"] : stamp[@"Branch"].lowercaseString;
+    NSString *product = stamp[@"Product"], *region = choice[@"Region"];
     NSDictionary<NSString *, NSString *> * (^use)(NSString *) = ^NSDictionary<NSString *, NSString *> *(NSString *why) {
         say_update([NSString stringWithFormat:@"image: Library/spgames %@ %@ (%@)", product, stamp[@"Version"], why]);
         return stamp;
@@ -705,9 +694,8 @@ NSDictionary<NSString *, NSString *> *sp_patch_check(NSString *flavor, NSString 
                       note:nil
                    buttons:@[]];
         t = now();
-        NSDictionary<NSString *, NSString *> *settled = device ? settle_region(flavor, choice, shipped) : nil;
-        NSString *updated = update(flavor, product, region, device ? sp_region_tags(region, settled[@"Text"], settled[@"Speech"]) : nil,
-                                   row, @"updated", *pump, &why);
+        NSDictionary<NSString *, NSString *> *settled = settle_region(flavor, choice, shipped);
+        NSString *updated = update(flavor, product, region, settled[@"Tags"], row, @"updated", *pump, &why);
         if (updated) {
             say_update([NSString stringWithFormat:@"%@ %@ is Library/spgames/%@, %.1f s in all", product, version,
                                            updated.lastPathComponent, now() - t]);
