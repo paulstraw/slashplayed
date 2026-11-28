@@ -14,7 +14,8 @@
 // Never logged: the email, the password, the file's contents or its size. The screen itself is SwiftUI
 // (spsignin.swift), which hands what's typed straight to the blocks here. The start screen's Settings sheet
 // (spsettings.swift) asks here whether one is saved, shows its email when asked to (Show Email: the only place it's
-// ever shown), forgets it at the tap, and opens this screen to save one before any game starts.
+// ever shown), forgets it at the tap, and opens this screen to save one before any game starts. Each game's
+// WoW account, for a login with several, is here too (the game account, below).
 #import <Foundation/Foundation.h>
 #import <Security/Security.h>
 #import <UIKit/UIKit.h>
@@ -204,6 +205,94 @@ BOOL sp_login_write(NSString *flavor, NSMutableData *bytes) {
     return YES;
 }
 
+// ---- the game account (issue #135)
+
+// Which WoW account (license) of the Battle.net login a game signs in to, for a login with several (WoW1,
+// WoW2, ...). The client takes it from Battle.net's launch options in net.battle, as on the Mac, where
+// Battle.net writes its game account dropdown's choice there: Launch Options/WoW/GAME_ACCOUNT, by the name the
+// game's own account list shows. One key for every flavor (they're all "WoW" there), so it's written before
+// every launch, from this game's choice in Settings. Without a choice it's removed, unless this launch relayed a
+// token: the device's net.battle keeps every key a relayed token ever brought (sp_net_battle_import sets them
+// and deletes none), so the Mac's choice at an old Play with My Mac's Battle.net stayed the device's for good,
+// for every game and every later sign-in. A launch with no choice and no relay leaves it to the game (its
+// account picker); one with a relay gets the Mac's, as the Mac's own launch would.
+//
+// The name is the person's own, but it's account detail: kept in the keychain (one item per flavor, this
+// device only; after the first unlock, so a launch from the Mac with the device locked still reads it), shown
+// only in its own field in Settings, never logged (not even its size). Forget My Sign-In forgets every game's,
+// since the names belong to that Battle.net login.
+
+static NSString *const account_service = @"Slashplayed WoW account";
+static CFStringRef const game_account_key = CFSTR("Launch Options/WoW/GAME_ACCOUNT");
+
+static OSStatus game_account_forget_all(void) {
+    return SecItemDelete((__bridge CFDictionaryRef) @{(__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+                                                      (__bridge id)kSecAttrService: account_service});
+}
+
+// The game's chosen account, or nil (and the OSStatus: errSecItemNotFound when there's none).
+static NSString *game_account_load(NSString *flavor, OSStatus *status) {
+    CFTypeRef out = NULL;
+    *status = SecItemCopyMatching((__bridge CFDictionaryRef) @{
+        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword, (__bridge id)kSecAttrService: account_service,
+        (__bridge id)kSecAttrAccount: flavor, (__bridge id)kSecReturnData: @YES,
+        (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitOne,
+    }, &out);
+    NSData *data = CFBridgingRelease(out);
+    if (*status != errSecSuccess) return nil;
+    NSString *name = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+    return name.length ? name : nil;
+}
+
+// Settings' WoW Account field: the game's choice, or nil for none ("Ask in the Game").
+NSString *sp_game_account(NSString *flavor) {
+    OSStatus status;
+    return game_account_load(flavor, &status);
+}
+
+// Settings' WoW Account field, saved: `name` trimmed, or "" to remove the choice. The game matches the name
+// exactly, so it's one line with no control characters, as the account list shows it. Returns what's wrong
+// with it, for the field, or nil once it's saved.
+NSString *sp_game_account_set(NSString *flavor, NSString *name) {
+    name = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (name.length > 64 || [name rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound)
+        return @"That isn’t a WoW account name. Type it as the game’s account list shows it, such as WoW1.";
+    NSDictionary *item = @{(__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+                           (__bridge id)kSecAttrService: account_service, (__bridge id)kSecAttrAccount: flavor};
+    SecItemDelete((__bridge CFDictionaryRef)item);
+    if (!name.length) {
+        say([NSString stringWithFormat:@"game account %@ (Settings): none, the game asks", flavor]);
+        return nil;
+    }
+    NSMutableDictionary *add = [item mutableCopy];
+    add[(__bridge id)kSecValueData] = [name dataUsingEncoding:NSUTF8StringEncoding];
+    add[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
+    add[(__bridge id)kSecAttrSynchronizable] = @NO;
+    OSStatus status = SecItemAdd((__bridge CFDictionaryRef)add, NULL);
+    say(status == errSecSuccess ? [NSString stringWithFormat:@"game account %@ (Settings): chosen", flavor]
+                                : [NSString stringWithFormat:@"game account %@: couldn't save it: keychain %d", flavor, (int)status]);
+    return status == errSecSuccess ? nil : @"It couldn’t be saved. Try again.";
+}
+
+// Just before the client loads, after a relayed token's import (`relayed`): this game's choice into net.battle,
+// over the Mac's the import brought; with none, the key removed, or with a relay left as the Mac's. A keychain
+// that can't be read leaves the key as it was, as before there was a choice.
+void sp_login_game_account(NSString *flavor, BOOL relayed) {
+    OSStatus status;
+    NSString *name = game_account_load(flavor, &status);
+    if (!name && status != errSecItemNotFound) {
+        say([NSString stringWithFormat:@"game account: couldn't read the choice (keychain %d): net.battle's left as it was", (int)status]);
+        return;
+    }
+    if (!name && relayed) {
+        say(@"game account: none chosen; the relayed token's (the Mac's choice, if any)");
+        return;
+    }
+    CFPreferencesSetAppValue(game_account_key, (__bridge CFStringRef)name, CFSTR("net.battle"));  // nil removes it
+    Boolean ok = CFPreferencesAppSynchronize(CFSTR("net.battle"));
+    say([NSString stringWithFormat:@"game account: %@ (sync %d)", name ? @"the one chosen in Settings" : @"none chosen, so the game asks", ok]);
+}
+
 // ---- the Settings sheet's (spstart.m)
 
 // Whether a sign-in is saved. Asks for neither value: only whether the item is there.
@@ -230,10 +319,11 @@ NSString *sp_login_email(void) {
     return email.length ? email : nil;
 }
 
-// Forget My Sign-In, at the tap: the next game start asks again. NO if the keychain refused.
+// Forget My Sign-In, at the tap: the next game start asks again. Every game's WoW account goes with it (they
+// name accounts of that login). NO if the keychain refused.
 BOOL sp_login_forget(void) {
-    OSStatus s = forget();
-    BOOL ok = s == errSecSuccess || s == errSecItemNotFound;
+    OSStatus s = forget(), a = game_account_forget_all();
+    BOOL ok = (s == errSecSuccess || s == errSecItemNotFound) && (a == errSecSuccess || a == errSecItemNotFound);
     say(ok ? @"forgot the saved sign-in (Settings)" : [NSString stringWithFormat:@"couldn't forget the saved sign-in: keychain %d", (int)s]);
     return ok;
 }

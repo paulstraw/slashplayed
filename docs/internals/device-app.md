@@ -87,6 +87,9 @@ Settings, a stock dark inset-grouped sheet in SwiftUI (`spsettings.swift`), one 
 - **Show Email** is the one place the saved Battle.net email is shown: it's read from the keychain inside
   `splogin.m` at the tap and hidden again when the app goes to the background, the sheet closes, or a game
   starts.
+- **WoW Account**, per game, is the WoW account a Battle.net login with several signs in to, or none (the
+  game asks); [the shims page](shims.md#sandbox-redirects) says how it reaches the client. Forget My Sign-In
+  forgets every game's.
 - **Scale** is the backing scale for every launch on this device ([Render
   scale](shims.md#window-screen-and-scene-tracking)).
 - **Each game's section** names where its client came from, from `spsource-<flavor>` (a client with no

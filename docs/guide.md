@@ -46,6 +46,10 @@ the on-screen keyboard: hold two fingers still on the game for a moment, lift th
 **Keyboard**. To sign in with another
 account, tap **Forget My Sign-In** in Settings on Slashplayed's start screen (the gear).
 
+If your Battle.net account has more than one WoW account (WoW1, WoW2, and so on), type the one to play in
+the game's **WoW Account** in Settings, as the game's account list names it. Left empty, the game asks.
+The device's choice holds for every start, Plays from the Mac included.
+
 If the device's sign-in stops working and the game is installed on the Mac, **Play with My Mac's
 Battle.net** in the menu next to Play signs in through the Mac's Battle.net for that one launch. Click
 the game's Play button in Battle.net when the companion asks. The companion catches the launch, moves
@@ -134,8 +138,8 @@ A paid **Apple Developer Program** membership signs for a year, with none of tho
   the game install, and update checks. Changing the team or bundle ID
   prefix makes a new app on each device, with no game files: they're fetched or copied again.
 - **The device** (the gear on Slashplayed's start screen): the saved sign-in, each game's build and
-  where it came from, its region, its addons, Open in Files, Reset Game Settings, and Display (the render
-  scale).
+  where it came from, its region, its WoW account, its addons, Open in Files, Reset Game Settings, and
+  Display (the render scale).
 
 ## Updates
 

@@ -6,6 +6,15 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- A Battle.net account with more than one WoW account (WoW1, WoW2, and so on) can choose the one each game
+  plays in: its **WoW Account** in the start screen's Settings (#135). It holds for every start, Plays from
+  your Mac included. Left empty, the game asks, and a WoW account your Mac's Battle.net once chose no longer
+  sticks to the device. This field is new and hasn't been tried yet with a Battle.net account that has several
+  WoW accounts: if yours does (WoW1, WoW2, and so on), please tell us on #135 whether the game signed in to the
+  one you named.
+
 ### Changed
 
 - Every game's Region can be changed in the start screen's Settings, including games copied from your Mac.

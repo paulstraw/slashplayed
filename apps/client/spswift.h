@@ -62,6 +62,10 @@ BOOL sp_login_saved(void);
 NSString *_Nullable sp_login_email(void);
 BOOL sp_login_forget(void);
 UIViewController *sp_login_screen(void (^done)(BOOL saved));
+// splogin.m: each game's WoW account, for a Battle.net login with several: Settings' field, nil for none (the game
+// asks), and saving it ("" for none), which returns what's wrong with it, or nil. Shown only in that field, never logged.
+NSString *_Nullable sp_game_account(NSString *flavor);
+NSString *_Nullable sp_game_account_set(NSString *flavor, NSString *name);
 
 // spstart.m: Goodmountain at `size` points for the default text size, scaled like `style` up to `maximum`
 // (the system font when it's missing).
