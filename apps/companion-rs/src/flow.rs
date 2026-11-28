@@ -22,6 +22,8 @@ use isideload::{
 use rootcause::prelude::*;
 use zeroize::Zeroizing;
 
+use crate::profile::Signing;
+
 /// A Frontend's answer, to come: boxed, so the trait stays usable as `&dyn Frontend`, and Send, because the
 /// sign-in's 2FA callback must be.
 pub type Ask<'a, T> = Pin<Box<dyn Future<Output = Result<T, Report>> + Send + 'a>>;
@@ -97,7 +99,8 @@ pub struct Done {
     pub renews: bool,
     /// Only paired again (pair()): no sign-in, so nothing was signed and no token was sent.
     pub pair_only: bool,
-    /// Pairing only found the app's profiles lapsed: the day the last one ended (YYYY-MM-DD).
+    /// Pairing only found the app's signing lapsed: how, as the closing line says it ("its signing ended on
+    /// YYYY-MM-DD", or that no profile lists its certificate).
     pub expired: Option<String>,
 }
 
@@ -110,7 +113,7 @@ impl Done {
             // one Apple refuses, or profiles that lapsed before it could.
             out.push(match &self.expired {
                 Some(day) => format!(
-                    "Its signing wasn't touched, and its provisioning profile ended on {day}: it may not open until you set it up again with your Apple ID."
+                    "Its signing wasn't touched, and {day}: it may not open until you set it up again with your Apple ID."
                 ),
                 None => "Its signing wasn't touched. It renews itself when a game starts only if it has an Apple token Apple still accepts; if it won't open, or its start screen says it can't renew, set it up again with your Apple ID.".into(),
             });
@@ -256,8 +259,8 @@ pub trait Backend {
     -> Result<(), Report>;
     /// The bundle IDs of the Slashplayed apps on the device (user apps whose executable is the launcher's).
     async fn installed(&mut self, d: &DeviceInfo) -> Result<Vec<String>, Report>;
-    /// The latest expiry of the app's provisioning profiles on the device, None when it has none.
-    async fn profile_expiry(&mut self, d: &DeviceInfo, bundle_id: &str) -> Result<Option<SystemTime>, Report>;
+    /// When the app's signing on the device runs out (profile::signing_expiry).
+    async fn profile_expiry(&mut self, d: &DeviceInfo, bundle_id: &str) -> Result<crate::profile::Signing, Report>;
     /// 6. Opens the app's container: whether it has a pairing record.
     async fn has_pairing(&mut self, d: &DeviceInfo, bundle_id: &str) -> Result<bool, Report>;
     /// A new RemotePairing record into the container: its size.
@@ -387,17 +390,22 @@ async fn pair_container(b: &mut impl Backend, ui: &dyn Frontend, d: &DeviceInfo,
     // Pairing doesn't renew the signing, so a lapsed profile is said rather than left for the app to show. It
     // pairs anyway: whether the device still opens the container then is its to say.
     let expired = match b.profile_expiry(d, bundle_id).await {
-        Ok(Some(t)) => {
+        Ok(Signing::Until(t)) => {
             let day = plist::Date::from(t).to_xml_format()[..10].to_string();
-            ui.say(&format!("its provisioning profile lasts until {day}"));
-            (t < SystemTime::now()).then_some(day)
+            ui.say(&format!("its signing lasts until {day}"));
+            (t < SystemTime::now()).then(|| format!("its signing ended on {day}"))
         }
-        Ok(None) => {
+        Ok(Signing::NoneForSigner) => {
+            let why = "none of its provisioning profiles on the device lists the certificate it's signed with";
+            ui.say(why);
+            Some(why.to_string())
+        }
+        Ok(Signing::NoProfile) => {
             ui.say("found no provisioning profile for it on the device");
             None
         }
         Err(e) => {
-            ui.say(&format!("couldn't check its provisioning profile: {}", crate::secret::safe_error(&e)));
+            ui.say(&format!("couldn't check its signing: {}", crate::secret::safe_error(&e)));
             None
         }
     };
@@ -556,8 +564,8 @@ pub(crate) mod fake {
         pub has_pairing: bool,
         /// The Slashplayed apps on the device, by bundle ID.
         pub installed: Vec<String>,
-        /// Its profiles' latest expiry on the device.
-        pub expiry: Option<SystemTime>,
+        /// What the device's profiles say about its signing.
+        pub expiry: crate::profile::Signing,
         pub token: bool,
         /// The person must answer Apple's two-factor step (a text, then the code).
         pub two_factor: bool,
@@ -579,7 +587,7 @@ pub(crate) mod fake {
                 free: true,
                 has_pairing: false,
                 installed: Vec::new(),
-                expiry: None,
+                expiry: Default::default(),
                 token: true,
                 two_factor: true,
                 cert_limit: false,
@@ -680,7 +688,7 @@ pub(crate) mod fake {
         async fn installed(&mut self, _: &DeviceInfo) -> Result<Vec<String>, Report> {
             Ok(self.installed.clone())
         }
-        async fn profile_expiry(&mut self, _: &DeviceInfo, _: &str) -> Result<Option<SystemTime>, Report> {
+        async fn profile_expiry(&mut self, _: &DeviceInfo, _: &str) -> Result<crate::profile::Signing, Report> {
             Ok(self.expiry)
         }
         async fn has_pairing(&mut self, _: &DeviceInfo, bundle_id: &str) -> Result<bool, Report> {
@@ -987,20 +995,25 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn pairing_says_a_lapsed_profile() {
         let day = Duration::from_secs(86_400);
-        let mut b = Fake { installed: vec!["T1.slashplayed".into()], expiry: Some(SystemTime::now() + 30 * day), ..Default::default() };
+        let mut b = Fake { installed: vec!["T1.slashplayed".into()], expiry: Signing::Until(SystemTime::now() + 30 * day), ..Default::default() };
         let done = pair(&mut b, &Person::default(), &opts()).await.unwrap();
         assert_eq!(done.expired, None);
         assert!(done.lines()[1].contains("only if"), "{:?}", done.lines());
 
         let mut b = Fake {
             installed: vec!["T1.slashplayed".into()],
-            expiry: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000)),
+            expiry: Signing::Until(SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000)),
             ..Default::default()
         };
         let done = pair(&mut b, &Person::default(), &opts()).await.unwrap();
         assert!(b.calls().contains(&"pairing".to_string()), "{:?}", b.calls());
-        assert_eq!(done.expired.as_deref(), Some("2023-11-14"));
-        assert!(done.lines()[1].contains("ended on 2023-11-14"), "{:?}", done.lines());
+        assert!(done.lines()[1].contains("its signing ended on 2023-11-14"), "{:?}", done.lines());
+
+        // Profiles for the app, but none for the certificate it's signed with: lapsed too, with no day to give.
+        let mut b = Fake { installed: vec!["T1.slashplayed".into()], expiry: Signing::NoneForSigner, ..Default::default() };
+        let done = pair(&mut b, &Person::default(), &opts()).await.unwrap();
+        assert!(b.calls().contains(&"pairing".to_string()), "{:?}", b.calls());
+        assert!(done.lines()[1].contains("lists the certificate it's signed with"), "{:?}", done.lines());
     }
 
     #[test]

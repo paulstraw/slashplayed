@@ -149,7 +149,7 @@ impl Backend for Live {
         device::installed(self.device(d)?).await
     }
 
-    async fn profile_expiry(&mut self, d: &DeviceInfo, bundle_id: &str) -> Result<Option<std::time::SystemTime>, Report> {
+    async fn profile_expiry(&mut self, d: &DeviceInfo, bundle_id: &str) -> Result<crate::profile::Signing, Report> {
         device::profile_expiry(self.device(d)?, bundle_id).await
     }
 

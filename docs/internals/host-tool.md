@@ -71,8 +71,20 @@ install's flags it would ignore (`--apple-id`, `--team`, `--kit`, `--anisette`, 
 `--revoke-oldest`); the window reaches Pair Only through `flow::install`, so it still downloads the kit
 first. With Slashplayed installed more than once, the window doesn't offer Pair Only and says to use
 `--pair-again --bundle-id`. The record is replaced even when there's one, and the app's signing isn't
-touched: before pairing, misagent gives the app's profiles' latest expiry, and a lapsed one is said in the
-closing lines (it pairs anyway).
+touched: before pairing, `profile::signing_expiry` says when it stops opening, and a lapsed one is said in
+the closing lines (it pairs anyway). iOS opens the app on any installed profile for its App ID, so
+misagent's whole list counts, not only the embedded profile, which the host can't read. But only a profile
+for its exact application-identifier (installation_proxy's) that lists the device and a certificate named
+as its signer (installation_proxy's SignerIdentity), and only until that certificate's notAfter, then the
+earlier of the app's and the helper's, as the launcher's `sp_profile_expiry` does. Profiles for the App ID
+on the device with none for the signer count as lapsed, not as none: the profile the app was installed
+with lists its certificate, so that one is gone. The device test that
+found this (iPhone, 2026-11-28) had twelve profiles for the app and its helper, all Xcode's and all listing
+the signing certificate. The latest ran to 2027-11-12 while the certificate ran out 2027-06-14. The
+name can't pick the certificate out: six of the eight on those profiles had the signer's exact name, so the
+check said 2027-10-28, the latest of them. Taking the earliest instead would say 2026-12-24, another of
+them, which the app isn't signed with, so the date errs late, never early. Only the app's own leaf
+certificate would make it exact, and the host can't read the app's bundle, where it is.
 
 **The signing key** stays between runs in the OS credential store, never a file: the macOS Keychain,
 Windows Credential Manager, or the Secret Service on Linux (`src/keystore.rs`). There's one item per
