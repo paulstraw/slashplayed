@@ -32,10 +32,10 @@ isideload = { path = "vendor/isideload", default-features = false, features = ["
 # zsign and OpenSSL, the app's signer (src/sign.rs): a crate of its own so a version bump here doesn't
 # rebuild them (zsign/Cargo.toml says why).
 spzsign = { path = "zsign" }
-# usbmuxd, lockdown and its pairing, installation_proxy over AFC, house_arrest, amfi, and the RemotePairing
+# usbmuxd, lockdown and its pairing, installation_proxy over AFC, misagent (the profiles' expiry), house_arrest, amfi, and the RemotePairing
 # record. Patched below to the repo's pinned idevice (scripts/build-idevice.sh pins the same commit).
 idevice = { version = "0.1.68", default-features = false, features = [
-  "ring", "usbmuxd", "pair", "afc", "house_arrest", "installation_proxy", "amfi", "remote_pairing",
+  "ring", "usbmuxd", "pair", "afc", "house_arrest", "installation_proxy", "amfi", "remote_pairing", "misagent",
 ] }
 tokio = { version = "1.49", features = ["rt-multi-thread", "macros", "fs", "sync"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }

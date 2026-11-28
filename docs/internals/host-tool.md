@@ -66,8 +66,13 @@ device can't renew its own profiles:
 **Pairing only** (`flow::pair`: `slashplayed-cli --pair-again`, and the window's **Pair Only**, offered at
 the sign-in when the app is installed) is step 2, then step 7's record and image for the installed app,
 which installation_proxy finds as the user app whose executable is `slashplayed` (or `--bundle-id`'s). No
-kit and no sign-in: neither needs the account, so it works when Apple refuses a sign-in (issue #122). The
-record is replaced even when there's one, and the app's signing isn't touched.
+sign-in, so it works when Apple refuses one (issue #122). `--pair-again` skips the kit too and refuses the
+install's flags it would ignore (`--apple-id`, `--team`, `--kit`, `--anisette`, `--server-client-info`,
+`--revoke-oldest`); the window reaches Pair Only through `flow::install`, so it still downloads the kit
+first. With Slashplayed installed more than once, the window doesn't offer Pair Only and says to use
+`--pair-again --bundle-id`. The record is replaced even when there's one, and the app's signing isn't
+touched: before pairing, misagent gives the app's profiles' latest expiry, and a lapsed one is said in the
+closing lines (it pairs anyway).
 
 **The signing key** stays between runs in the OS credential store, never a file: the macOS Keychain,
 Windows Credential Manager, or the Secret Service on Linux (`src/keystore.rs`). There's one item per

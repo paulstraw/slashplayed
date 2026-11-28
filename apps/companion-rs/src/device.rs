@@ -16,6 +16,7 @@ use idevice::{
     house_arrest::HouseArrestClient,
     installation_proxy::InstallationProxyClient,
     lockdown::LockdownClient,
+    misagent::MisagentClient,
     provider::UsbmuxdProvider,
     remote_pairing::{RemotePairingLockdownService, RpPairingFile},
     usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdConnection, UsbmuxdDevice},
@@ -252,6 +253,31 @@ pub async fn installed(d: &Device) -> Result<Vec<String>, Report> {
         .collect();
     ids.sort();
     Ok(ids)
+}
+
+/// The latest expiry of the provisioning profiles on the device for the app `bundle_id` (their
+/// application-identifier is <team>.<bundle_id>), from misagent: those the companion installed and those the
+/// app renewed itself (apps/client/spapple.m). None when the device has none for it. Only each profile's
+/// plist is read, for its entitlement and date; nothing of it is kept or logged.
+pub async fn profile_expiry(d: &Device, bundle_id: &str) -> Result<Option<std::time::SystemTime>, Report> {
+    let fail = |e: IdeviceError| report!("couldn't list the provisioning profiles on {} ({e})", d.name);
+    let mut mis = MisagentClient::connect(&d.provider()).await.map_err(fail)?;
+    let suffix = format!(".{bundle_id}");
+    let mut latest = None;
+    for der in mis.copy_all().await.map_err(fail)? {
+        // A profile is the plist signed in CMS; the plist itself sits unencrypted inside it.
+        let Some(start) = der.windows(5).position(|w| w == b"<?xml") else { continue };
+        let Some(len) = der[start..].windows(8).position(|w| w == b"</plist>") else { continue };
+        let Ok(p) = plist::from_bytes::<plist::Dictionary>(&der[start..start + len + 8]) else { continue };
+        let app = p.get("Entitlements").and_then(|e| e.as_dictionary()).and_then(|e| e.get("application-identifier"));
+        if !app.and_then(|a| a.as_string()).is_some_and(|a| a.ends_with(&suffix)) {
+            continue;
+        }
+        if let Some(t) = p.get("ExpirationDate").and_then(|v| v.as_date()).map(std::time::SystemTime::from) {
+            latest = latest.max(Some(t));
+        }
+    }
+    Ok(latest)
 }
 
 /// The app's data container over AFC.

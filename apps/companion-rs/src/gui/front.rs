@@ -16,13 +16,13 @@ use rootcause::prelude::*;
 use tokio::sync::oneshot;
 use zeroize::Zeroizing;
 
-use crate::flow::{self, Ask, Backend, CertLimit, Choice, DeviceInfo, Done, Event, Frontend, Step, Wait};
+use crate::flow::{self, Ask, Backend, CertLimit, Choice, DeviceInfo, Done, Event, Frontend, PairOnly, Step, Wait};
 
 /// What the flow waits for the person to answer.
 pub enum Question {
-    /// The Apple ID, and the password (kept by Gui until the sign-in asks); or, when installed (the app is
-    /// on the device), pairing only, with no password.
-    SignIn { installed: bool, reply: oneshot::Sender<(Choice, Zeroizing<String>)> },
+    /// The Apple ID, and the password (kept by Gui until the sign-in asks); or, when it's offered, pairing
+    /// only, with no password.
+    SignIn { pair_only: PairOnly, reply: oneshot::Sender<(Choice, Zeroizing<String>)> },
     TwoFactor {
         /// The code came by text message (else to the person's Apple devices).
         sms: bool,
@@ -192,9 +192,9 @@ impl Frontend for Gui {
         true
     }
 
-    fn sign_in(&self, installed: bool) -> Ask<'_, Choice> {
+    fn sign_in(&self, pair_only: PairOnly) -> Ask<'_, Choice> {
         Box::pin(async move {
-            let (sign_in, password) = self.ask(|reply| Question::SignIn { installed, reply }).await?;
+            let (sign_in, password) = self.ask(|reply| Question::SignIn { pair_only, reply }).await?;
             *self.password.lock().unwrap_or_else(|p| p.into_inner()) = Some(password);
             Ok(sign_in)
         })

@@ -8,7 +8,12 @@
 // The password and the 2FA code go from the Frontend straight into the sign-in (account.rs) and are never
 // kept here, logged, or put in an Event; an Event never carries a credential (CLAUDE.md).
 
-use std::{future::Future, path::Path, pin::Pin, time::Duration};
+use std::{
+    future::Future,
+    path::Path,
+    pin::Pin,
+    time::{Duration, SystemTime},
+};
 
 use isideload::{
     auth::apple_account::{TwoFactorCallbackParams, TwoFactorCallbackResponse},
@@ -92,17 +97,25 @@ pub struct Done {
     pub renews: bool,
     /// Only paired again (pair()): no sign-in, so nothing was signed and no token was sent.
     pub pair_only: bool,
+    /// Pairing only found the app's profiles lapsed: the day the last one ended (YYYY-MM-DD).
+    pub expired: Option<String>,
 }
 
 impl Done {
     /// The closing lines, as the command line has always printed them.
     pub fn lines(&self) -> Vec<String> {
         if self.pair_only {
-            return vec![
-                format!("Slashplayed on {} has a new pairing record.", self.device),
-                "Its signing is as it was: it still renews itself when a game starts, and if its start screen says it can't, set it up again with your Apple ID.".into(),
-                "Open Slashplayed and tap a game.".into(),
-            ];
+            let mut out = vec![format!("Slashplayed on {} has a new pairing record.", self.device)];
+            // Not a promise that it renews: it can't with no Apple token (an install with --server-client-info),
+            // one Apple refuses, or profiles that lapsed before it could.
+            out.push(match &self.expired {
+                Some(day) => format!(
+                    "Its signing wasn't touched, and its provisioning profile ended on {day}: it may not open until you set it up again with your Apple ID."
+                ),
+                None => "Its signing wasn't touched. It renews itself when a game starts only if it has an Apple token Apple still accepts; if it won't open, or its start screen says it can't renew, set it up again with your Apple ID.".into(),
+            });
+            out.push("Open Slashplayed and tap a game.".into());
+            return out;
         }
         let mut out = vec![format!("Slashplayed is on {}.", self.device)];
         if self.free {
@@ -142,6 +155,17 @@ pub struct SignIn {
     pub anisette: Option<String>,
 }
 
+/// Whether the sign-in offers pairing only.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PairOnly {
+    /// Slashplayed isn't on the device: nothing to pair.
+    NotInstalled,
+    Offered,
+    /// It can't be offered, and why (Slashplayed is on the device more than once, or its apps couldn't be
+    /// listed), for the person to read where it would be.
+    Unavailable(String),
+}
+
 /// The person's answer at the sign-in.
 pub enum Choice {
     SignIn(SignIn),
@@ -173,8 +197,8 @@ pub trait Frontend: Sync {
     /// Whether to wait for Developer Mode to be turned on, rather than stop (the person runs it again then).
     fn waits_for_developer_mode(&self) -> bool;
 
-    /// The Apple ID, or (when `installed`, Slashplayed is on the device already) pairing only.
-    fn sign_in(&self, installed: bool) -> Ask<'_, Choice>;
+    /// The Apple ID, or pairing only when it's offered.
+    fn sign_in(&self, pair_only: PairOnly) -> Ask<'_, Choice>;
 
     /// The Apple ID's password, for the sign-in only: used once and zeroed (account.rs).
     fn password<'a>(&'a self, apple_id: &'a str) -> Ask<'a, Zeroizing<String>>;
@@ -232,6 +256,8 @@ pub trait Backend {
     -> Result<(), Report>;
     /// The bundle IDs of the Slashplayed apps on the device (user apps whose executable is the launcher's).
     async fn installed(&mut self, d: &DeviceInfo) -> Result<Vec<String>, Report>;
+    /// The latest expiry of the app's provisioning profiles on the device, None when it has none.
+    async fn profile_expiry(&mut self, d: &DeviceInfo, bundle_id: &str) -> Result<Option<SystemTime>, Report>;
     /// 6. Opens the app's container: whether it has a pairing record.
     async fn has_pairing(&mut self, d: &DeviceInfo, bundle_id: &str) -> Result<bool, Report>;
     /// A new RemotePairing record into the container: its size.
@@ -271,11 +297,18 @@ pub async fn install(b: &mut impl Backend, ui: &dyn Frontend, opts: &Options<'_>
     let d = device(b, ui).await?;
 
     // 3. The Apple ID and team, or pairing only: offered when the app is already there, so a sign-in Apple
-    // refuses doesn't keep a device that only needs a new record from its games (issue #122). A device that
-    // can't list its apps just isn't offered it.
-    let pairable = installed_app(b, &d, opts.bundle_id).await.ok();
+    // refuses doesn't keep a device that only needs a new record from its games (issue #122). When it can't be
+    // offered though the app is there (twice, or its apps can't be listed), the person is told why.
+    let (pairable, offer) = match b.installed(&d).await {
+        Ok(apps) if apps.is_empty() => (None, PairOnly::NotInstalled),
+        Ok(apps) => match pick_app(&apps, opts.bundle_id, &d.name) {
+            Ok(id) => (Some(id), PairOnly::Offered),
+            Err(e) => (None, PairOnly::Unavailable(crate::secret::safe_error(&e))),
+        },
+        Err(e) => (None, PairOnly::Unavailable(crate::secret::safe_error(&e))),
+    };
     ui.report(Event::Step(Step::SignIn));
-    let SignIn { apple_id, anisette } = match ui.sign_in(pairable.is_some()).await? {
+    let SignIn { apple_id, anisette } = match ui.sign_in(offer).await? {
         Choice::SignIn(s) => s,
         Choice::PairOnly => {
             let bundle_id = pairable.ok_or_else(|| report!("Slashplayed isn't installed on {}", d.name))?;
@@ -333,7 +366,7 @@ pub async fn install(b: &mut impl Backend, ui: &dyn Frontend, opts: &Options<'_>
         "no Apple token sent (--server-client-info): the app can't renew its own profiles"
     });
 
-    let done = Done { device: d.name.clone(), free, renews, pair_only: false };
+    let done = Done { device: d.name.clone(), free, renews, pair_only: false, expired: None };
     ui.report(Event::Done(done.clone()));
     Ok(done)
 }
@@ -343,13 +376,31 @@ pub async fn install(b: &mut impl Backend, ui: &dyn Frontend, opts: &Options<'_>
 /// neither needs the account, so a sign-in Apple refuses doesn't stop it. Its signing is left as it is.
 pub async fn pair(b: &mut impl Backend, ui: &dyn Frontend, opts: &Options<'_>) -> Result<Done, Report> {
     let d = device(b, ui).await?;
-    let bundle_id = installed_app(b, &d, opts.bundle_id).await?;
+    let apps = b.installed(&d).await?;
+    let bundle_id = pick_app(&apps, opts.bundle_id, &d.name)?;
     pair_container(b, ui, &d, &bundle_id).await
 }
 
 async fn pair_container(b: &mut impl Backend, ui: &dyn Frontend, d: &DeviceInfo, bundle_id: &str) -> Result<Done, Report> {
     ui.report(Event::Step(Step::Container));
     ui.say(&format!("pairing {bundle_id} again, with no sign-in"));
+    // Pairing doesn't renew the signing, so a lapsed profile is said rather than left for the app to show. It
+    // pairs anyway: whether the device still opens the container then is its to say.
+    let expired = match b.profile_expiry(d, bundle_id).await {
+        Ok(Some(t)) => {
+            let day = plist::Date::from(t).to_xml_format()[..10].to_string();
+            ui.say(&format!("its provisioning profile lasts until {day}"));
+            (t < SystemTime::now()).then_some(day)
+        }
+        Ok(None) => {
+            ui.say("found no provisioning profile for it on the device");
+            None
+        }
+        Err(e) => {
+            ui.say(&format!("couldn't check its provisioning profile: {}", crate::secret::safe_error(&e)));
+            None
+        }
+    };
     // Opens the container; a record that's there is replaced, which is the point.
     b.has_pairing(d, bundle_id).await?;
     let size = b.send_pairing(d).await?;
@@ -357,32 +408,50 @@ async fn pair_container(b: &mut impl Backend, ui: &dyn Frontend, d: &DeviceInfo,
     if !b.send_ddi(ui).await? {
         ui.say("the app already has this developer disk image");
     }
-    let done = Done { device: d.name.clone(), free: false, renews: false, pair_only: true };
+    let done = Done { device: d.name.clone(), free: false, renews: false, pair_only: true, expired };
     ui.report(Event::Done(done.clone()));
     Ok(done)
 }
 
-/// Slashplayed's bundle ID on the device: --bundle-id's when that one's installed, else the only one there.
-async fn installed_app(b: &mut impl Backend, d: &DeviceInfo, bundle_id: Option<&str>) -> Result<String, Report> {
-    let apps = b.installed(d).await?;
+/// Slashplayed's bundle ID among `apps`, those on `device`: --bundle-id's when that one's installed, else
+/// the only one there.
+fn pick_app(apps: &[String], bundle_id: Option<&str>, device: &str) -> Result<String, Report> {
     match bundle_id {
         Some(id) if apps.iter().any(|a| a == id) => Ok(id.to_string()),
-        Some(id) => bail!("{id} isn't installed on {}", d.name),
-        None => match apps.as_slice() {
+        Some(id) => bail!("{id} isn't installed on {device}"),
+        None => match apps {
             [one] => Ok(one.clone()),
-            [] => bail!("Slashplayed isn't installed on {}: set it up with your Apple ID first", d.name),
-            several => bail!("{} has Slashplayed installed more than once ({}): name one with --bundle-id", d.name, several.join(", ")),
+            [] => bail!("Slashplayed isn't installed on {device}: set it up with your Apple ID first"),
+            several => bail!(
+                "{device} has Slashplayed installed more than once ({}), so it can't tell which to pair: pair one with slashplayed-cli --pair-again --bundle-id <one of them>",
+                several.join(", ")
+            ),
         },
     }
 }
 
-/// The anisette server's URL, as isideload appends its paths to it: http(s), no trailing slash.
-fn anisette_url(url: &str) -> Result<String, Report> {
-    let url = url.trim().trim_end_matches('/');
-    if !url.split_once("://").is_some_and(|(scheme, host)| matches!(scheme, "https" | "http") && !host.is_empty()) {
-        bail!("the anisette server {url:?} isn't a web address (https://…)");
+/// The anisette server's URL, as isideload appends its paths to it: https (http only to this computer, for a
+/// server run here), a host, maybe a path, no query, fragment, or login, and no trailing slash.
+fn anisette_url(text: &str) -> Result<String, Report> {
+    let text = text.trim();
+    let not = || report!("the anisette server {text:?} isn't a web address (https://…)");
+    // Url lowercases the scheme and host, so HTTPS:// passes as https://.
+    let url = reqwest::Url::parse(text).map_err(|_| not())?;
+    let host = url.host_str().unwrap_or_default();
+    let local = host == "localhost" || host.trim_matches(['[', ']']).parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback());
+    match url.scheme() {
+        "https" => {}
+        "http" if local => {}
+        "http" => bail!("the anisette server {text:?} must use https://: over http://, what it sends could be read or changed on the way"),
+        _ => return Err(not()),
     }
-    Ok(url.to_string())
+    if host.is_empty() || url.cannot_be_a_base() {
+        return Err(not());
+    }
+    if url.query().is_some() || url.fragment().is_some() || !url.username().is_empty() || url.password().is_some() {
+        bail!("the anisette server {text:?} should be only its address, with no ?, #, or login in it");
+    }
+    Ok(url.as_str().trim_end_matches('/').to_string())
 }
 
 /// 2. The device: picked, trusting this computer, and in Developer Mode (waiting through its restart).
@@ -487,6 +556,8 @@ pub(crate) mod fake {
         pub has_pairing: bool,
         /// The Slashplayed apps on the device, by bundle ID.
         pub installed: Vec<String>,
+        /// Its profiles' latest expiry on the device.
+        pub expiry: Option<SystemTime>,
         pub token: bool,
         /// The person must answer Apple's two-factor step (a text, then the code).
         pub two_factor: bool,
@@ -508,6 +579,7 @@ pub(crate) mod fake {
                 free: true,
                 has_pairing: false,
                 installed: Vec::new(),
+                expiry: None,
                 token: true,
                 two_factor: true,
                 cert_limit: false,
@@ -608,6 +680,9 @@ pub(crate) mod fake {
         async fn installed(&mut self, _: &DeviceInfo) -> Result<Vec<String>, Report> {
             Ok(self.installed.clone())
         }
+        async fn profile_expiry(&mut self, _: &DeviceInfo, _: &str) -> Result<Option<SystemTime>, Report> {
+            Ok(self.expiry)
+        }
         async fn has_pairing(&mut self, _: &DeviceInfo, bundle_id: &str) -> Result<bool, Report> {
             self.log(format!("has pairing? {bundle_id}"));
             Ok(self.has_pairing)
@@ -641,8 +716,8 @@ mod tests {
         pair_only: bool,
         /// The anisette server typed at the sign-in.
         anisette: Option<&'static str>,
-        /// Whether the sign-in offered pairing only.
-        offered: Mutex<Option<bool>>,
+        /// What the sign-in said of pairing only.
+        offered: Mutex<Option<PairOnly>>,
         team: usize,
         revoke: bool,
         events: Mutex<Vec<Event>>,
@@ -668,10 +743,11 @@ mod tests {
         fn waits_for_developer_mode(&self) -> bool {
             self.waits
         }
-        fn sign_in(&self, installed: bool) -> Ask<'_, Choice> {
-            *self.offered.lock().unwrap() = Some(installed);
+        fn sign_in(&self, pair_only: PairOnly) -> Ask<'_, Choice> {
+            let offered = pair_only == PairOnly::Offered;
+            *self.offered.lock().unwrap() = Some(pair_only);
             Box::pin(async move {
-                Ok(if self.pair_only && installed {
+                Ok(if self.pair_only && offered {
                     Choice::PairOnly
                 } else {
                     Choice::SignIn(SignIn { apple_id: "x@example.com".into(), anisette: self.anisette.map(str::to_string) })
@@ -707,7 +783,7 @@ mod tests {
         let mut b = Fake::default();
         let ui = Person::default();
         let done = install(&mut b, &ui, &opts()).await.unwrap();
-        assert_eq!(done, Done { device: "iPhone A".into(), free: true, renews: true, pair_only: false });
+        assert_eq!(done, Done { device: "iPhone A".into(), free: true, renews: true, pair_only: false, expired: None });
         assert_eq!(
             b.calls(),
             [
@@ -818,7 +894,7 @@ mod tests {
         assert_eq!(b.calls(), ["trust A", "devmode A", "has pairing? T1.slashplayed", "pairing", "ddi"]);
         assert!(ui.asked.lock().unwrap().is_empty(), "{:?}", ui.asked.lock().unwrap());
         assert_eq!(*ui.offered.lock().unwrap(), None, "no sign-in question");
-        assert_eq!(done, Done { device: "iPhone A".into(), free: false, renews: false, pair_only: true });
+        assert_eq!(done, Done { device: "iPhone A".into(), free: false, renews: false, pair_only: true, expired: None });
         assert!(done.lines()[0].contains("new pairing record"));
     }
 
@@ -846,12 +922,19 @@ mod tests {
     async fn pair_only_is_offered_when_the_app_is_there() {
         let ui = Person { pair_only: true, ..Default::default() };
         install(&mut Fake::default(), &ui, &opts()).await.unwrap();
-        assert_eq!(*ui.offered.lock().unwrap(), Some(false));
+        assert_eq!(*ui.offered.lock().unwrap(), Some(PairOnly::NotInstalled));
+
+        // There twice: not offered, and the person is told why and what to run instead.
+        let mut b = Fake { installed: vec!["T1.slashplayed".into(), "T2.slashplayed".into()], ..Default::default() };
+        let ui = Person { pair_only: true, ..Default::default() };
+        install(&mut b, &ui, &opts()).await.unwrap();
+        let Some(PairOnly::Unavailable(why)) = ui.offered.lock().unwrap().clone() else { panic!("offered") };
+        assert!(why.contains("more than once") && why.contains("--pair-again --bundle-id"), "{why}");
 
         let mut b = Fake { installed: vec!["T1.slashplayed".into()], ..Default::default() };
         let ui = Person { pair_only: true, ..Default::default() };
         let done = install(&mut b, &ui, &opts()).await.unwrap();
-        assert_eq!(*ui.offered.lock().unwrap(), Some(true));
+        assert_eq!(*ui.offered.lock().unwrap(), Some(PairOnly::Offered));
         assert!(done.pair_only);
         assert_eq!(b.calls(), ["kit", "trust A", "devmode A", "has pairing? T1.slashplayed", "pairing", "ddi"]);
         assert!(ui.asked.lock().unwrap().is_empty());
@@ -864,7 +947,7 @@ mod tests {
         let mut b = Fake::default();
         install(&mut b, &Person { anisette: Some(" https://ani.example.org/ "), ..Default::default() }, &opts()).await.unwrap();
         assert!(b.calls().contains(&"anisette https://ani.example.org".to_string()), "{:?}", b.calls());
-        for bad in ["ani.example.org", "https://", "ftp://ani.example.org", ""] {
+        for bad in ["ani.example.org", "https://", "ftp://ani.example.org", "", "https://ani example.org", "mailto:a@example.org"] {
             let mut b = Fake::default();
             let ui = Person { anisette: Some(bad), ..Default::default() };
             let e = install(&mut b, &ui, &opts()).await.unwrap_err();
@@ -873,11 +956,58 @@ mod tests {
         }
     }
 
+    /// What reaches isideload: https in any case, a path kept, http only to this computer; a query, a fragment,
+    /// or a login refused, since isideload appends its own paths to it.
+    #[test]
+    fn anisette_urls() {
+        for (typed, used) in [
+            ("HTTPS://Ani.Example.org/", "https://ani.example.org"),
+            ("https://ani.example.org/v3//", "https://ani.example.org/v3"),
+            ("https://ani.example.org:8443", "https://ani.example.org:8443"),
+            ("http://localhost:6969/", "http://localhost:6969"),
+            ("http://127.0.0.1:6969", "http://127.0.0.1:6969"),
+            ("http://[::1]:6969", "http://[::1]:6969"),
+        ] {
+            assert_eq!(anisette_url(typed).unwrap(), used, "{typed}");
+        }
+        for (typed, says) in [
+            ("http://ani.example.org", "must use https://"),
+            ("http://localhost.example.org", "must use https://"),
+            ("https://ani.example.org/?v=3", "no ?, #, or login"),
+            ("https://ani.example.org/#x", "no ?, #, or login"),
+            ("https://me:pw@ani.example.org", "no ?, #, or login"),
+            ("https://ani..example..org:99999", "isn't a web address"),
+        ] {
+            let e = anisette_url(typed).unwrap_err().to_string();
+            assert!(e.contains(says), "{typed}: {e}");
+        }
+    }
+
+    /// Pairing doesn't promise the app renews itself, and says when its profile has lapsed (pairing anyway).
+    #[tokio::test(start_paused = true)]
+    async fn pairing_says_a_lapsed_profile() {
+        let day = Duration::from_secs(86_400);
+        let mut b = Fake { installed: vec!["T1.slashplayed".into()], expiry: Some(SystemTime::now() + 30 * day), ..Default::default() };
+        let done = pair(&mut b, &Person::default(), &opts()).await.unwrap();
+        assert_eq!(done.expired, None);
+        assert!(done.lines()[1].contains("only if"), "{:?}", done.lines());
+
+        let mut b = Fake {
+            installed: vec!["T1.slashplayed".into()],
+            expiry: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000)),
+            ..Default::default()
+        };
+        let done = pair(&mut b, &Person::default(), &opts()).await.unwrap();
+        assert!(b.calls().contains(&"pairing".to_string()), "{:?}", b.calls());
+        assert_eq!(done.expired.as_deref(), Some("2023-11-14"));
+        assert!(done.lines()[1].contains("ended on 2023-11-14"), "{:?}", done.lines());
+    }
+
     #[test]
     fn closing_words() {
-        let paid = Done { device: "iPad".into(), free: false, renews: true, pair_only: false }.lines();
+        let paid = Done { device: "iPad".into(), free: false, renews: true, pair_only: false, expired: None }.lines();
         assert_eq!(paid, ["Slashplayed is on iPad.", "Open Slashplayed and tap a game to install it on the device."]);
-        let free = Done { device: "iPad".into(), free: true, renews: false, pair_only: false }.lines();
+        let free = Done { device: "iPad".into(), free: true, renews: false, pair_only: false, expired: None }.lines();
         assert!(free[1].contains("VPN & Device Management"));
         assert!(free[2].contains("within 7 days"));
     }

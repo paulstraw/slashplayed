@@ -20,7 +20,7 @@ use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     account::DEFAULT_ANISETTE,
-    flow::{Choice, SignIn, Step, Wait},
+    flow::{Choice, PairOnly, SignIn, Step, Wait},
 };
 use front::{Handle, Question, Shared, Starter, lock};
 use theme::{DIM, ERROR, GOLD, GROUND, WELL};
@@ -330,7 +330,8 @@ impl App {
     }
 
     fn sign_in(&mut self, ui: &mut egui::Ui, s: &mut Shared) {
-        let installed = matches!(s.question, Some(Question::SignIn { installed: true, .. }));
+        let Some(Question::SignIn { pair_only, .. }) = &s.question else { return };
+        let pair_only = pair_only.clone();
         self.header(ui, "Sign in with your Apple ID");
         if let Some(d) = &s.device {
             ui.label(format!("Slashplayed gets signed with your Apple ID, for {}.", d.name));
@@ -368,7 +369,14 @@ impl App {
         }
         // The app is on the device already: a new pairing record needs no Apple ID (issue #122), for when
         // games stop at the pairing step, or a sign-in Apple refuses keeps the rest from running.
-        if installed {
+        if let PairOnly::Unavailable(why) = &pair_only {
+            ui.add_space(20.0);
+            ui.separator();
+            ui.add_space(8.0);
+            ui.label("Slashplayed may already be on this device, but Pair Only can't be offered here:");
+            small(ui, why);
+        }
+        if pair_only == PairOnly::Offered {
             ui.add_space(20.0);
             ui.separator();
             ui.add_space(8.0);
@@ -377,6 +385,8 @@ impl App {
             if ui.button("Pair Only").clicked()
                 && let Some(Question::SignIn { reply, .. }) = s.question.take()
             {
+                // Nothing signs in, so a password typed before choosing this goes, as Install's would.
+                self.password.zeroize();
                 forget_typing(ui.ctx());
                 s.pair_only = true;
                 let _ = reply.send((Choice::PairOnly, Zeroizing::new(String::new())));
