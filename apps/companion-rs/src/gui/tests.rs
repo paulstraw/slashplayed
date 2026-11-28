@@ -170,6 +170,56 @@ fn certificate_limit_cancel_or_revoke() {
     }
 }
 
+/// Pair Only, offered once the app is on the device: no Apple ID, no password, nothing signed.
+#[test]
+fn pair_only_needs_no_apple_id() {
+    let log = Fake::default().calls;
+    let shared = log.clone();
+    let mut h = window(move || Fake { installed: vec!["T1.slashplayed".into()], calls: shared.clone(), ..Default::default() });
+    wait_for(&mut h, "Pair Only");
+    h.get_by_label("Pair Only").click();
+    wait_for(&mut h, "has a new pairing record");
+    let calls = log.lock().unwrap().clone();
+    assert!(calls.contains(&"pairing".to_string()), "{calls:?}");
+    assert!(!calls.iter().any(|c| c.starts_with("anisette") || c.starts_with("provision")), "{calls:?}");
+
+    // A fresh device: there's nothing to pair, so it isn't offered.
+    let mut h = window(Fake::default);
+    wait_for(&mut h, "Sign in with your Apple ID");
+    assert!(h.query_by_label("Pair Only").is_none());
+}
+
+/// The anisette server typed in the window is the one the sign-in uses.
+#[test]
+fn the_anisette_server_can_be_changed() {
+    let log = Fake::default().calls;
+    let shared = log.clone();
+    let mut h = window(move || Fake { two_factor: false, calls: shared.clone(), ..Default::default() });
+    wait_for(&mut h, "Sign in with your Apple ID");
+    h.get_by_label("Anisette server").click();
+    h.run_steps(2);
+    use eframe::egui::{Key, accesskit::Role};
+    let server = |n: &egui_kittest::kittest::AccessKitNode<'_>| n.role() == Role::TextInput && n.label().is_some_and(|l| l == "Server address");
+    assert_eq!(field_value(&h, "Server address"), crate::account::DEFAULT_ANISETTE);
+    h.get_by(server).focus();
+    h.run_steps(2);
+    // Emptied from wherever the cursor landed.
+    for _ in 0..40 {
+        h.key_press(Key::Backspace);
+        h.key_press(Key::Delete);
+    }
+    h.run_steps(2);
+    h.get_by(server).type_text("https://ani.example.org");
+    h.run_steps(2);
+    assert_eq!(field_value(&h, "Server address"), "https://ani.example.org");
+    type_into(&mut h, "Apple ID", "x@example.com");
+    type_into(&mut h, "Password", &password());
+    h.get_by_label("Install").click();
+    wait_for(&mut h, "All set");
+    let calls = log.lock().unwrap().clone();
+    assert!(calls.contains(&"anisette https://ani.example.org".to_string()), "{calls:?}");
+}
+
 #[test]
 fn every_drill_state_opens() {
     for state in super::drill::STATES {
@@ -179,14 +229,15 @@ fn every_drill_state_opens() {
         assert!(h.query_by_label("…").is_some(), "{state}: no menu");
         let title = match *state {
             "device" | "unlock" | "developer-mode" => "Connect your device",
-            "sign-in" => "Sign in with your Apple ID",
+            "sign-in" | "sign-in-installed" => "Sign in with your Apple ID",
             "code" => "Enter the code",
             "team" => "Pick a team",
             "installing" | "cert-limit" => "Installing",
-            "done" => "All set",
+            "done" | "paired" => "All set",
             "error" => "Something went wrong",
             other => panic!("no title for the drill state {other}"),
         };
         assert!(h.query_by_label(title).is_some(), "{state}: not the {title:?} screen");
+        assert_eq!(h.query_by_label("Pair Only").is_some(), *state == "sign-in-installed", "{state}: Pair Only");
     }
 }

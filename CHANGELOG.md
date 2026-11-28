@@ -6,6 +6,20 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- On Windows and Linux, when Slashplayed is already on the device, **Pair Only** on the companion's
+  sign-in screen gives it a new pairing record with no Apple ID, so games can start again even when
+  Apple's sign-in won't take. The window also gets an **Anisette server** field, under the password, for
+  trying another server when the sign-in fails there.
+  ([#122](https://github.com/paulstraw/slashplayed/issues/122))
+
+### Changed
+
+- `slashplayed-cli --pair-again` now only makes a new pairing record for the app on the device: it no
+  longer signs in to the Apple ID or re-signs the app, so it works when the sign-in doesn't.
+  ([#122](https://github.com/paulstraw/slashplayed/issues/122))
+
 ## [1.9.0] - 2026-11-28
 
 ### Added

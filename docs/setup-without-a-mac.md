@@ -90,6 +90,14 @@ never stored.
 
 ![Sign in with your Apple ID: the Apple ID and Password fields, and an Install button](images/companion-sign-in.png)
 
+**Anisette server**, under the password, names the server the sign-in gets its anisette data from (Apple
+asks for it). Leave it as it is unless the sign-in fails there. The window keeps what you type until it
+closes.
+
+When Slashplayed is already on the device, **Pair Only** shows under **Install**. It gives the app a new
+pairing record, with no Apple ID and no password, for when starting games keeps failing at the pairing
+step. It doesn't renew the app's signing, which the app does itself.
+
 Then type the code Apple sends to your Apple devices (allow the sign-in on one of them to see it).
 **Text me instead** sends it by text to one of your trusted numbers, **Resend** sends another, and
 **Cancel** stops the sign-in.
@@ -169,16 +177,17 @@ to turn it on and stops, so run it again once the device has restarted and you'v
 | `--apple-id <email>` | Don't ask for the Apple ID. |
 | `--team <TEAMID>` | Pick the team without asking. |
 | `--udid <UDID>` | Pick the device when several are plugged in (`slashplayed-cli devices` lists them). |
-| `--pair-again` | Make a new pairing record, if starting games keeps failing at the pairing step. |
+| `--pair-again` | Only make a new pairing record for the app on the device, if starting games keeps failing at the pairing step: no Apple ID, and the app's signing isn't touched. |
 | `--revoke-oldest` | With no credential store, at the team's certificate limit: revoke the oldest certificate a Slashplayed tool made, even another computer's. |
 | `--bundle-id <id>` | The app's bundle ID. The default is `<team ID>.slashplayed`, the same as the Mac companion's, so the two sign the same app. |
 | `--anisette <url>` | The anisette server Apple's sign-in needs. The default is `https://mac-ani.jkcoxson.com`. You can run your own. |
 | `--server-client-info` | Send the anisette server's own client identity. The device gets no Apple token then, so it can't renew its own signing. |
 | `--kit <zip>` | A device kit to use instead of this release's. |
 
-The last six are only in `slashplayed-cli`. `slashplayed-cli forget --apple-id <email>` deletes the
-signing key kept for that Apple ID, as the window's **Forget this computer's signing key…** does, and
-`slashplayed-cli --help` lists it all.
+In the window, **Pair Only** does what `--pair-again` does, and **Anisette server** what `--anisette` does.
+`--revoke-oldest`, `--bundle-id`, `--server-client-info`, and `--kit` are only in `slashplayed-cli`.
+`slashplayed-cli forget --apple-id <email>` deletes the signing key kept for that Apple ID, as the
+window's **Forget this computer's signing key…** does, and `slashplayed-cli --help` lists it all.
 
 ## What it keeps
 
@@ -215,14 +224,16 @@ signing key kept for that Apple ID, as the window's **Forget this computer's sig
   [Microsoft Update Catalog](https://www.catalog.update.microsoft.com/Search.aspx?q=Apple+Mobile+Device+USB+Driver),
   then unplug the device and plug it in again.
 - **The sign-in fails with -80045 or "This action cannot be completed at this time":** the anisette
-  server was refused. Try again later, or another server with slashplayed-cli's `--anisette`.
+  server was refused. Try again later, or another server: in the window's **Anisette server**, or with
+  slashplayed-cli's `--anisette`.
 - **The sign-in fails with "503 Service Temporarily Unavailable" from grandslam:** that's Apple's
   sign-in server, not the anisette server, so changing servers doesn't help. Since November 20, 2026,
   Apple refuses the sign-in versions 1.6.1 and earlier make. Update Slashplayed.
 - **"the team can make N more App ID(s)":** a free Apple ID can make 10 App IDs a week, and Slashplayed
   needs 2 the first time. Wait a few days.
-- **Starting games keeps failing at the pairing step:** make a new pairing record with
-  `slashplayed-cli --pair-again`.
+- **Starting games keeps failing at the pairing step:** make a new pairing record with **Pair Only** on the
+  sign-in screen, or `slashplayed-cli --pair-again`. Neither needs your Apple ID, so they work even when
+  the sign-in doesn't.
 - **The start screen says Slashplayed can't renew its signing on its own:** Apple no longer takes the
   token the companion gave the device, or slashplayed-cli ran with `--server-client-info`, which gives
   none. Run the companion again before the day it names, or tap **Sign In to Apple…** under the note.

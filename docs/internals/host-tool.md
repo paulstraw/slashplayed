@@ -23,11 +23,12 @@ device can't renew its own profiles:
    would. If Developer Mode is off, the tool reveals it in Settings (amfi); the window then waits through
    the device's restart and Turn On, while `slashplayed-cli` stops and is run again.
 3. **The Apple ID** (`src/account.rs`), through the vendored isideload: GSA over SRP, 2FA, anisette from
-   `mac-ani.jkcoxson.com` by default (`--anisette` for another), claiming iloader 2.4.2's fixed client
-   identity (`<MacBookPro13,3> <Mac OS X;…>`; GrandSlam's login has answered 503 to a `<macOS;…>` one since
-   about 2026-11-20) unless `--server-client-info`. The password is typed, used for the one
-   login, and zeroed. The whole login lives in memory and ends with the process, so each run asks again.
-   No tracing subscriber is installed, and `DEBUG_SENSITIVE` is cleared at start.
+   `mac-ani.jkcoxson.com` by default (`--anisette`, or the window's **Anisette server**, for another),
+   claiming iloader 2.4.2's fixed client identity (`<MacBookPro13,3> <Mac OS X;…>`; GrandSlam's login has
+   answered 503 to a `<macOS;…>` one since about 2026-11-20) unless `--server-client-info`. The password
+   is typed, used for the one login, and zeroed. The whole login lives in memory and ends with the
+   process, so each run asks again. No tracing subscriber is installed, and `DEBUG_SENSITIVE` is cleared
+   at start.
 4. **Provisioning** (`src/provision.rs`), isideload's low-level developer-services API, not its
    `Sideloader`:
    - The device is registered.
@@ -51,8 +52,7 @@ device can't renew its own profiles:
 6. **Install** over USB: an IPA built from the signed folder, with the Unix modes set by the tool so a
    Windows build is the same, through installation_proxy. That updates in place and keeps the container.
 7. **Into the container** (house_arrest, AFC):
-   - The RemotePairing record (`Library/sppairing.plist`, as `Pairing.send`), when the app has none or
-     with `--pair-again`.
+   - The RemotePairing record (`Library/sppairing.plist`, as `Pairing.send`), when the app has none.
    - The developer disk image (below).
    - The Apple token as `Library/spappletoken.json`, every run: the `xcode.auth` app token from this
      sign-in, its adsid, and the anisette server, machine identity, and client identity it was made on
@@ -62,6 +62,12 @@ device can't renew its own profiles:
 
    Nothing else: the device installs and updates games with no credential on it. The token is only for
    the app's own profiles.
+
+**Pairing only** (`flow::pair`: `slashplayed-cli --pair-again`, and the window's **Pair Only**, offered at
+the sign-in when the app is installed) is step 2, then step 7's record and image for the installed app,
+which installation_proxy finds as the user app whose executable is `slashplayed` (or `--bundle-id`'s). No
+kit and no sign-in: neither needs the account, so it works when Apple refuses a sign-in (issue #122). The
+record is replaced even when there's one, and the app's signing isn't touched.
 
 **The signing key** stays between runs in the OS credential store, never a file: the macOS Keychain,
 Windows Credential Manager, or the Secret Service on Linux (`src/keystore.rs`). There's one item per
