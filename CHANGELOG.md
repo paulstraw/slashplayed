@@ -6,6 +6,14 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- The iPad (A16), the iPhone 14 Pro and 14 Pro Max, and the iPhone 15 and 15 Plus can now run
+  Slashplayed. These have 6 GB of memory, so the companion warns that Retail may close in busy areas on
+  them; the other games use about half of what Retail does. No 6 GB device has been played on yet, so
+  the companion marks them untested: if you try one, please report how it goes, working or not, on
+  GitHub with the zip from Help > Export Diagnostics….
+
 ## [1.8.0] - 2026-11-28
 
 ### Added

@@ -17,7 +17,7 @@ Install these first:
 - Python 3.
 - To change the addons: `cc` and Lua, for `addon/test/test.sh`.
 - For device work: an Apple Account signed in to Xcode (a paid team, or a free Personal Team);
-  a Vision Pro, an M1-or-later iPad or the A17 Pro iPad mini, or an iPhone 15 Pro or later, paired, with Developer Mode on;
+  a Vision Pro, an M1-or-later iPad, the iPad (A16), or the A17 Pro iPad mini, or an iPhone 14 Pro, iPhone 15, or later, paired, with Developer Mode on;
   and [LocalDevVPN](https://apps.apple.com/app/id6755608044) on the device.
 
 Then, from a fresh clone (idevice, spapple, and the font are once, and again after their pins change;

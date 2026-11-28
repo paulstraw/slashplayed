@@ -38,15 +38,15 @@ final class USBLinkTests: XCTestCase {
         for model in ["iPhone16,1", "iPhone16,2", "iPhone17,1", "iPhone17,2", "iPhone18,1", "iPhone18,2"] {
             XCTAssertTrue(USBLink.supportsUSB3(kind: .iPhone, model: model), model)
         }
-        for model in ["iPhone17,3", "iPhone17,4", "iPhone17,5", "iPhone18,3", "iPhone18,4", "iPhone15,4", "iPhone"] {
+        for model in ["iPhone17,3", "iPhone17,4", "iPhone17,5", "iPhone18,3", "iPhone18,4", "iPhone15,2", "iPhone15,4", "iPhone"] {
             XCTAssertFalse(USBLink.supportsUSB3(kind: .iPhone, model: model), model)
         }
         XCTAssertFalse(USBLink.supportsUSB3(kind: .iPhone, model: nil))
         for model in ["iPad14,5", "iPad14,8", "iPad15,3", "iPad16,5", "iPad17,2", "iPad16,1"] {
             XCTAssertTrue(USBLink.supportsUSB3(kind: .iPad, model: model), model)
         }
-        // A-chip iPads the client doesn't run on (the 11th generation is USB 2 anyway), and the old iPad8,1.
-        for model in ["iPad15,7", "iPad14,1", "iPad8,1"] {
+        // The iPad (A16), which the client runs on over USB 2 only; A-chip iPads it doesn't run on; the old iPad8,1.
+        for model in ["iPad15,7", "iPad15,8", "iPad14,1", "iPad8,1"] {
             XCTAssertFalse(USBLink.supportsUSB3(kind: .iPad, model: model), model)
         }
         XCTAssertFalse(USBLink.supportsUSB3(kind: .iPad, model: nil))

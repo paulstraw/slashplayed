@@ -92,6 +92,9 @@ final class Pipeline {
     /// device menus list it disabled, and an action on it stops at once (start). Nil when it can, or before
     /// its model is known.
     func unsupportedReason(_ device: Device) -> String? { device.unsupportedReason(model: models[device.udid]) }
+    /// What to warn about `flavor` on `device` (Device.memoryWarning), by its model as last listed: Settings >
+    /// Games shows it under a ticked Retail on a 6 GB device.
+    func memoryWarning(for flavor: Flavor, on device: Device) -> String? { device.memoryWarning(for: flavor, model: models[device.udid]) }
     /// The device copies game files from this Mac over a USB 2 link it could beat with a USB 3 cable
     /// (USBLink.slowCable): the main window says so by the device's status, whether or not a copy is running.
     var slowCable: Bool {
@@ -577,6 +580,10 @@ final class Pipeline {
                 self.appendLog("[companion] \(self.device.name) (\(self.models[self.device.udid] ?? "?")): \(reason)")
                 throw StepFailure(.device, reason + " Pick another device in the device menu.",
                                   title: "\(self.device.name) can't run Slashplayed")
+            }
+            // A 6 GB model is untested: its log says so, so a report from one does.
+            if let note = self.device.untestedNote(model: self.models[self.device.udid]) {
+                self.appendLog("[companion] \(self.device.name) (\(self.models[self.device.udid] ?? "?")): \(note)")
             }
             // Before the device: its app's data container is named by the bundle ID, from the team.
             do {

@@ -100,12 +100,18 @@ copying on, every game file is copied again. Only change them on purpose.
   - Vision Pro: on the headset open Settings > General > Remote Devices; then in Xcode choose
     Xcode > Open Developer Tool > Device Hub, select the headset, and pair it.
 - **"This iPad can't run Slashplayed"** (or "This iPhone…", or your device's name): Slashplayed needs
-  an iPad with an M1 chip or later or the A17 Pro iPad mini, an iPhone 15 Pro or later, or a Vision
-  Pro. The game is built for the M1's instruction set and stops at once on an older chip, and it needs
-  8 GB of memory, which the other A-chip iPads (the iPad mini 6, the 10th- and 11th-generation iPads,
-  and the 4th-generation iPad Air) and the iPhone 15 don't have. The device menus still list such a
+  an iPad with an M1 chip or later, the iPad (A16), or the A17 Pro iPad mini, an iPhone 14 Pro,
+  iPhone 15, or later, or a Vision Pro. The game is built for the M1's instruction set and stops at
+  once on an older chip, and it needs more than the 4 GB of memory the other A-chip iPads (the iPad
+  mini 6, the 10th-generation iPad, and the 4th-generation iPad Air) have. The device menus still list such a
   device, marked "not supported", but don't let you pick it, and Play stops before building anything
   for one picked earlier: choose another device.
+- **"Retail may close in busy areas on 6 GB devices"**: the iPad (A16), the iPhone 14 Pro and 14 Pro
+  Max, and the iPhone 15 and 15 Plus have 6 GB of memory. Retail uses up to about 4.4 GB in the world on
+  an 8 GB device, about what a 6 GB device lets one app have, so it may close in a busy city or a raid.
+  The other games (Classic Era, TBC Anniversary, Mists of Pandaria Classic, and Forever) use about half
+  that. No 6 GB device has been played on yet, so please report how it goes with Help > Report an
+  Issue… and the zip from Help > Export Diagnostics….
 - **"Developer Mode is off"**: on the device, Settings > Privacy & Security > Developer Mode (it only
   shows there once the device has been paired with Xcode), turn it on, restart when asked and confirm.
 - **"Xcode can't see the device"** (while making the provisioning profile): Xcode couldn't reach the
