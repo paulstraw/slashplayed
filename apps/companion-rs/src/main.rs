@@ -10,6 +10,9 @@
 //   6. the RemotePairing record and the developer disk image (ddi.rs) into its container, for the JIT helper,
 //      and the Apple token, for the app to renew its own profiles (apps/client/spapple.m).
 //
+// --pair-again is step 2 and the record and image only, for the app already installed: no kit and no Apple ID
+// (flow::pair), so it works when a sign-in doesn't.
+//
 // The device does the rest: it installs and updates games itself, with no signing credential on it (it loads each
 // game's unchanged client with spguest, so nothing there is signed), and picks their region (PR #35, #41),
 // so this never writes .build.info, a region, or addons. Vision Pro stays Mac-only.
@@ -23,7 +26,7 @@ use isideload::{
 use rootcause::prelude::*;
 use slashplayed_companion::{
     account, device,
-    flow::{self, Ask, CertLimit, DeviceInfo, Event, Frontend, SignIn, Wait},
+    flow::{self, Ask, CertLimit, Choice, DeviceInfo, Event, Frontend, SignIn, Wait},
     keystore, kit, live, secret,
 };
 use zeroize::Zeroizing;
@@ -46,7 +49,8 @@ Options for install:
   --anisette <url>      the anisette server (default: https://mac-ani.jkcoxson.com)
   --server-client-info  send the anisette server's own client identity rather than iloader's fixed one
   --kit <zip>           a device kit to use instead of this release's
-  --pair-again          make a new pairing record even if the app has one
+  --pair-again          only make a new pairing record (and copy the developer disk image) for the app on
+                        the device: no Apple ID, and its signing isn't touched
   --revoke-oldest       with no credential store, at the team's certificate limit: revoke the oldest
                         certificate a Slashplayed tool made, even another computer's
 
@@ -147,7 +151,12 @@ async fn install(args: &Args) -> Result<(), Report> {
         anisette: args.opt("--anisette").unwrap_or(account::DEFAULT_ANISETTE),
         server_client_info: args.flag("--server-client-info"),
     };
-    flow::install(&mut live::Live::new()?, &Cli(args), &opts).await?;
+    let mut live = live::Live::new()?;
+    if args.flag("--pair-again") {
+        flow::pair(&mut live, &Cli(args), &opts).await?;
+    } else {
+        flow::install(&mut live, &Cli(args), &opts).await?;
+    }
     Ok(())
 }
 
@@ -211,13 +220,14 @@ impl Frontend for Cli<'_> {
         false
     }
 
-    fn sign_in(&self) -> Ask<'_, SignIn> {
+    /// Never pairing only: that's --pair-again, which asks nothing.
+    fn sign_in(&self, _installed: bool) -> Ask<'_, Choice> {
         Box::pin(async move {
             let apple_id = match self.0.opt("--apple-id") {
                 Some(id) => id.to_string(),
                 None => ask("Apple ID (email): ")?,
             };
-            Ok(SignIn { apple_id, pair_again: self.0.flag("--pair-again") })
+            Ok(Choice::SignIn(SignIn { apple_id, anisette: None }))
         })
     }
 
@@ -306,17 +316,16 @@ mod tests {
     /// The flags that answer the window's questions on the command line.
     #[tokio::test]
     async fn flags_answer_the_questions() {
-        let a = p(&["--udid", "B", "--apple-id", "x@example.com", "--pair-again"]).unwrap();
+        let a = p(&["--udid", "B", "--apple-id", "x@example.com"]).unwrap();
         let cli = Cli(&a);
         assert_eq!(cli.choose_device(&phones()).await.unwrap(), Some(1));
-        let s = cli.sign_in().await.unwrap();
-        assert_eq!((s.apple_id.as_str(), s.pair_again), ("x@example.com", true));
+        let Choice::SignIn(s) = cli.sign_in(true).await.unwrap() else { panic!("pairing only, unasked") };
+        assert_eq!((s.apple_id.as_str(), s.anisette), ("x@example.com", None));
         let limit = CertLimit { certificates: "c".into(), oldest: "o".into() };
         assert!(cli.confirm_revoke(&limit).await.is_err(), "no revoke without --revoke-oldest");
 
         let a = p(&["--apple-id", "x@example.com", "--revoke-oldest"]).unwrap();
         let cli = Cli(&a);
-        assert!(!cli.sign_in().await.unwrap().pair_again);
         assert!(cli.confirm_revoke(&limit).await.is_ok());
         assert!(cli.choose_device(&phones()).await.is_err(), "several devices and no --udid");
         let a = p(&["--udid", "C"]).unwrap();

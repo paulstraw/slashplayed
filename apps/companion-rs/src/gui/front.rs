@@ -16,12 +16,13 @@ use rootcause::prelude::*;
 use tokio::sync::oneshot;
 use zeroize::Zeroizing;
 
-use crate::flow::{self, Ask, Backend, CertLimit, DeviceInfo, Done, Event, Frontend, SignIn, Step, Wait};
+use crate::flow::{self, Ask, Backend, CertLimit, Choice, DeviceInfo, Done, Event, Frontend, Step, Wait};
 
 /// What the flow waits for the person to answer.
 pub enum Question {
-    /// The Apple ID, and the password (kept by Gui until the sign-in asks).
-    SignIn(oneshot::Sender<(SignIn, Zeroizing<String>)>),
+    /// The Apple ID, and the password (kept by Gui until the sign-in asks); or, when installed (the app is
+    /// on the device), pairing only, with no password.
+    SignIn { installed: bool, reply: oneshot::Sender<(Choice, Zeroizing<String>)> },
     TwoFactor {
         /// The code came by text message (else to the person's Apple devices).
         sms: bool,
@@ -63,6 +64,8 @@ pub struct Shared {
     pub outcome: Option<Result<Done, String>>,
     /// The person cancelled the sign-in: the run's error is theirs, and it starts again.
     pub cancelled: bool,
+    /// The person chose Pair Only: the checklist leaves out the Apple ID's steps.
+    pub pair_only: bool,
 }
 
 impl Shared {
@@ -189,9 +192,9 @@ impl Frontend for Gui {
         true
     }
 
-    fn sign_in(&self) -> Ask<'_, SignIn> {
+    fn sign_in(&self, installed: bool) -> Ask<'_, Choice> {
         Box::pin(async move {
-            let (sign_in, password) = self.ask(Question::SignIn).await?;
+            let (sign_in, password) = self.ask(|reply| Question::SignIn { installed, reply }).await?;
             *self.password.lock().unwrap_or_else(|p| p.into_inner()) = Some(password);
             Ok(sign_in)
         })

@@ -8,7 +8,8 @@ use super::{App, front::Question, lock};
 use crate::flow::{DeviceInfo, Done, Step, Wait};
 
 pub const STATES: &[&str] = &[
-    "device", "unlock", "developer-mode", "sign-in", "code", "team", "installing", "done", "error", "cert-limit",
+    "device", "unlock", "developer-mode", "sign-in", "sign-in-installed", "code", "team", "installing", "done", "paired", "error",
+    "cert-limit",
 ];
 
 fn phone(udid: &str, name: &str, class: &str, os: &str) -> DeviceInfo {
@@ -44,10 +45,10 @@ pub fn fill(app: &mut App, state: &str) {
             s.device = Some(iphone.clone());
             s.wait = Some(Wait::DeveloperMode { device: iphone.name.clone() });
         }
-        "sign-in" => {
+        "sign-in" | "sign-in-installed" => {
             s.step = Some(Step::SignIn);
             s.device = Some(iphone.clone());
-            s.question = Some(Question::SignIn(oneshot::channel().0));
+            s.question = Some(Question::SignIn { installed: state == "sign-in-installed", reply: oneshot::channel().0 });
             app.apple_id = "alex@example.com".into();
         }
         "code" => {
@@ -71,7 +72,13 @@ pub fn fill(app: &mut App, state: &str) {
         "done" => {
             s.step = Some(Step::Container);
             s.lines = lines.iter().map(|l| l.to_string()).collect();
-            s.outcome = Some(Ok(Done { device: iphone.name.clone(), free: true, renews: true }));
+            s.outcome = Some(Ok(Done { device: iphone.name.clone(), free: true, renews: true, pair_only: false }));
+        }
+        "paired" => {
+            s.step = Some(Step::Container);
+            s.pair_only = true;
+            s.lines = vec![lines[0].to_string(), lines[1].to_string(), "pairing com.example.slashplayed again, with no sign-in".into()];
+            s.outcome = Some(Ok(Done { device: iphone.name.clone(), free: false, renews: false, pair_only: true }));
         }
         "error" => {
             s.step = Some(Step::SignIn);

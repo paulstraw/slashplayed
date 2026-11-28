@@ -14,6 +14,7 @@ use idevice::{
     afc::{AfcClient, opcode::AfcFopenMode},
     amfi::AmfiClient,
     house_arrest::HouseArrestClient,
+    installation_proxy::InstallationProxyClient,
     lockdown::LockdownClient,
     provider::UsbmuxdProvider,
     remote_pairing::{RemotePairingLockdownService, RpPairingFile},
@@ -234,6 +235,23 @@ pub async fn install(d: &Device, ipa: &Path, ui: &dyn Frontend) -> Result<(), Re
         .await
         .map_err(|e| report!("the install failed: {e}"))?;
     Ok(())
+}
+
+/// The bundle IDs of the user apps whose executable is the launcher's (apps/client/Info.plist): Slashplayed,
+/// whichever team signed it. What pairing without a sign-in needs in place of the team's <team>.slashplayed.
+pub async fn installed(d: &Device) -> Result<Vec<String>, Report> {
+    let fail = |e: IdeviceError| report!("couldn't list the apps on {} ({e})", d.name);
+    let mut ip = InstallationProxyClient::connect(&d.provider()).await.map_err(fail)?;
+    let apps = ip.get_apps(Some("User"), None).await.map_err(fail)?;
+    let mut ids: Vec<String> = apps
+        .into_iter()
+        .filter(|(_, info)| {
+            info.as_dictionary().and_then(|i| i.get("CFBundleExecutable")).and_then(|v| v.as_string()) == Some("slashplayed")
+        })
+        .map(|(id, _)| id)
+        .collect();
+    ids.sort();
+    Ok(ids)
 }
 
 /// The app's data container over AFC.

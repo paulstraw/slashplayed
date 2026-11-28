@@ -145,6 +145,10 @@ impl Backend for Live {
         Ok(())
     }
 
+    async fn installed(&mut self, d: &DeviceInfo) -> Result<Vec<String>, Report> {
+        device::installed(self.device(d)?).await
+    }
+
     async fn has_pairing(&mut self, d: &DeviceInfo, bundle_id: &str) -> Result<bool, Report> {
         let mut afc = device::container(self.device(d)?, bundle_id).await?;
         let has = device::size(&mut afc, device::PAIRING_PATH).await.unwrap_or(0) > 0;

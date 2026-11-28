@@ -1,4 +1,5 @@
-// One install, as both programs run it: the order of the six steps (main.rs's list), and every question
+// One install, as both programs run it: the order of the six steps (main.rs's list), pairing only (pair(),
+// with no kit or Apple ID, for the app already on the device), and every question
 // that's the person's to answer, asked through a Frontend (the command line's prompts, or the window's
 // screens). What talks to the device and to Apple is a Backend: live.rs's, or a test's fake. So the order,
 // the waits, and the questions are the same code for both programs, and testable without a device or an
@@ -89,11 +90,20 @@ pub struct Done {
     pub free: bool,
     /// The device got the Apple token, so the app renews its own profiles.
     pub renews: bool,
+    /// Only paired again (pair()): no sign-in, so nothing was signed and no token was sent.
+    pub pair_only: bool,
 }
 
 impl Done {
     /// The closing lines, as the command line has always printed them.
     pub fn lines(&self) -> Vec<String> {
+        if self.pair_only {
+            return vec![
+                format!("Slashplayed on {} has a new pairing record.", self.device),
+                "Its signing is as it was: it still renews itself when a game starts, and if its start screen says it can't, set it up again with your Apple ID.".into(),
+                "Open Slashplayed and tap a game.".into(),
+            ];
+        }
         let mut out = vec![format!("Slashplayed is on {}.", self.device)];
         if self.free {
             out.push(
@@ -126,10 +136,18 @@ pub enum Event {
     Done(Done),
 }
 
-/// The Apple ID to sign in with, and whether to make a new pairing record even if the app has one.
+/// The Apple ID to sign in with, and the anisette server, when the person named one (else Options').
 pub struct SignIn {
     pub apple_id: String,
-    pub pair_again: bool,
+    pub anisette: Option<String>,
+}
+
+/// The person's answer at the sign-in.
+pub enum Choice {
+    SignIn(SignIn),
+    /// Only a new pairing record and the developer disk image for the installed app: no Apple ID. Offered
+    /// only when the app is on the device.
+    PairOnly,
 }
 
 /// The team's certificate limit, reached with no credential store to keep this computer's key in (so it
@@ -155,7 +173,8 @@ pub trait Frontend: Sync {
     /// Whether to wait for Developer Mode to be turned on, rather than stop (the person runs it again then).
     fn waits_for_developer_mode(&self) -> bool;
 
-    fn sign_in(&self) -> Ask<'_, SignIn>;
+    /// The Apple ID, or (when `installed`, Slashplayed is on the device already) pairing only.
+    fn sign_in(&self, installed: bool) -> Ask<'_, Choice>;
 
     /// The Apple ID's password, for the sign-in only: used once and zeroed (account.rs).
     fn password<'a>(&'a self, apple_id: &'a str) -> Ask<'a, Zeroizing<String>>;
@@ -211,7 +230,9 @@ pub trait Backend {
     /// 5. The kit's app, signed for the team and installed.
     async fn sign_and_install(&mut self, d: &DeviceInfo, team: &DeveloperTeam, bundle_id: &str, free: bool, ui: &dyn Frontend)
     -> Result<(), Report>;
-    /// 6. Whether the app's container has a pairing record.
+    /// The bundle IDs of the Slashplayed apps on the device (user apps whose executable is the launcher's).
+    async fn installed(&mut self, d: &DeviceInfo) -> Result<Vec<String>, Report>;
+    /// 6. Opens the app's container: whether it has a pairing record.
     async fn has_pairing(&mut self, d: &DeviceInfo, bundle_id: &str) -> Result<bool, Report>;
     /// A new RemotePairing record into the container: its size.
     async fn send_pairing(&mut self, d: &DeviceInfo) -> Result<usize, Report>;
@@ -247,6 +268,125 @@ pub async fn install(b: &mut impl Backend, ui: &dyn Frontend, opts: &Options<'_>
     ui.say(&format!("device kit {version} from {from}"));
 
     // 2. The device.
+    let d = device(b, ui).await?;
+
+    // 3. The Apple ID and team, or pairing only: offered when the app is already there, so a sign-in Apple
+    // refuses doesn't keep a device that only needs a new record from its games (issue #122). A device that
+    // can't list its apps just isn't offered it.
+    let pairable = installed_app(b, &d, opts.bundle_id).await.ok();
+    ui.report(Event::Step(Step::SignIn));
+    let SignIn { apple_id, anisette } = match ui.sign_in(pairable.is_some()).await? {
+        Choice::SignIn(s) => s,
+        Choice::PairOnly => {
+            let bundle_id = pairable.ok_or_else(|| report!("Slashplayed isn't installed on {}", d.name))?;
+            return pair_container(b, ui, &d, &bundle_id).await;
+        }
+    };
+    if apple_id.is_empty() {
+        bail!("no Apple ID given");
+    }
+    let anisette = anisette_url(anisette.as_deref().unwrap_or(opts.anisette))?;
+    ui.say(&format!("signing in, with anisette from {anisette}"));
+    b.sign_in(&apple_id, &anisette, opts.server_client_info, ui).await?;
+    let mut teams = b.teams().await?;
+    let i = match opts.team {
+        Some(id) => teams.iter().position(|t| t.team_id == id).ok_or_else(|| report!("this Apple ID has no team {id}"))?,
+        None => match only_team(&teams)? {
+            Some(i) => i,
+            None => ui.choose_team(&teams).await?,
+        },
+    };
+    if i >= teams.len() {
+        bail!("not a number from the list");
+    }
+    let team = teams.remove(i);
+    ui.say(&format!("team {} ({})", team.name.as_deref().unwrap_or("?"), team.team_id));
+    let bundle_id = opts.bundle_id.map(str::to_string).unwrap_or_else(|| format!("{}.slashplayed", team.team_id));
+    if !crate::kit::valid_bundle_id(&bundle_id) {
+        bail!("{bundle_id} isn't a valid bundle ID (letters, digits, and hyphens, separated by dots)");
+    }
+
+    // 4. Provisioning.
+    ui.report(Event::Step(Step::Provision));
+    let free = b.provision(&team, &d, &bundle_id, &apple_id, ui).await?;
+
+    // 5. Sign and install.
+    ui.report(Event::Step(Step::Install));
+    b.sign_and_install(&d, &team, &bundle_id, free, ui).await?;
+
+    // 6. Into the container: the pairing record, the developer disk image, and the Apple token (with it the
+    // app gets its own renewed profiles from Apple: apps/client/spapple.m).
+    ui.report(Event::Step(Step::Container));
+    if b.has_pairing(&d, &bundle_id).await? {
+        ui.say("the app already has a pairing record");
+    } else {
+        let size = b.send_pairing(&d).await?;
+        ui.say(&format!("sent {} ({size} bytes)", crate::device::PAIRING_PATH));
+    }
+    if !b.send_ddi(ui).await? {
+        ui.say("the app already has this developer disk image");
+    }
+    let renews = b.send_token().await?;
+    ui.say(if renews {
+        "sent the Apple token, for the app to renew its own profiles"
+    } else {
+        "no Apple token sent (--server-client-info): the app can't renew its own profiles"
+    });
+
+    let done = Done { device: d.name.clone(), free, renews, pair_only: false };
+    ui.report(Event::Done(done.clone()));
+    Ok(done)
+}
+
+/// Pairing only, for the app already on the device (slashplayed-cli --pair-again): the device, then a new
+/// RemotePairing record and the developer disk image into the app's container. No kit and no Apple ID:
+/// neither needs the account, so a sign-in Apple refuses doesn't stop it. Its signing is left as it is.
+pub async fn pair(b: &mut impl Backend, ui: &dyn Frontend, opts: &Options<'_>) -> Result<Done, Report> {
+    let d = device(b, ui).await?;
+    let bundle_id = installed_app(b, &d, opts.bundle_id).await?;
+    pair_container(b, ui, &d, &bundle_id).await
+}
+
+async fn pair_container(b: &mut impl Backend, ui: &dyn Frontend, d: &DeviceInfo, bundle_id: &str) -> Result<Done, Report> {
+    ui.report(Event::Step(Step::Container));
+    ui.say(&format!("pairing {bundle_id} again, with no sign-in"));
+    // Opens the container; a record that's there is replaced, which is the point.
+    b.has_pairing(d, bundle_id).await?;
+    let size = b.send_pairing(d).await?;
+    ui.say(&format!("sent {} ({size} bytes)", crate::device::PAIRING_PATH));
+    if !b.send_ddi(ui).await? {
+        ui.say("the app already has this developer disk image");
+    }
+    let done = Done { device: d.name.clone(), free: false, renews: false, pair_only: true };
+    ui.report(Event::Done(done.clone()));
+    Ok(done)
+}
+
+/// Slashplayed's bundle ID on the device: --bundle-id's when that one's installed, else the only one there.
+async fn installed_app(b: &mut impl Backend, d: &DeviceInfo, bundle_id: Option<&str>) -> Result<String, Report> {
+    let apps = b.installed(d).await?;
+    match bundle_id {
+        Some(id) if apps.iter().any(|a| a == id) => Ok(id.to_string()),
+        Some(id) => bail!("{id} isn't installed on {}", d.name),
+        None => match apps.as_slice() {
+            [one] => Ok(one.clone()),
+            [] => bail!("Slashplayed isn't installed on {}: set it up with your Apple ID first", d.name),
+            several => bail!("{} has Slashplayed installed more than once ({}): name one with --bundle-id", d.name, several.join(", ")),
+        },
+    }
+}
+
+/// The anisette server's URL, as isideload appends its paths to it: http(s), no trailing slash.
+fn anisette_url(url: &str) -> Result<String, Report> {
+    let url = url.trim().trim_end_matches('/');
+    if !url.split_once("://").is_some_and(|(scheme, host)| matches!(scheme, "https" | "http") && !host.is_empty()) {
+        bail!("the anisette server {url:?} isn't a web address (https://…)");
+    }
+    Ok(url.to_string())
+}
+
+/// 2. The device: picked, trusting this computer, and in Developer Mode (waiting through its restart).
+async fn device(b: &mut impl Backend, ui: &dyn Frontend) -> Result<DeviceInfo, Report> {
     ui.report(Event::Step(Step::Device));
     let mut d = loop {
         let devices = b.devices().await?;
@@ -309,63 +449,7 @@ pub async fn install(b: &mut impl Backend, ui: &dyn Frontend, opts: &Options<'_>
         }
         ui.say(&format!("Developer Mode is on on {}", d.name));
     }
-
-    // 3. The Apple ID and team.
-    ui.report(Event::Step(Step::SignIn));
-    let SignIn { apple_id, pair_again } = ui.sign_in().await?;
-    if apple_id.is_empty() {
-        bail!("no Apple ID given");
-    }
-    ui.say(&format!("signing in, with anisette from {}", opts.anisette));
-    b.sign_in(&apple_id, opts.anisette, opts.server_client_info, ui).await?;
-    let mut teams = b.teams().await?;
-    let i = match opts.team {
-        Some(id) => teams.iter().position(|t| t.team_id == id).ok_or_else(|| report!("this Apple ID has no team {id}"))?,
-        None => match only_team(&teams)? {
-            Some(i) => i,
-            None => ui.choose_team(&teams).await?,
-        },
-    };
-    if i >= teams.len() {
-        bail!("not a number from the list");
-    }
-    let team = teams.remove(i);
-    ui.say(&format!("team {} ({})", team.name.as_deref().unwrap_or("?"), team.team_id));
-    let bundle_id = opts.bundle_id.map(str::to_string).unwrap_or_else(|| format!("{}.slashplayed", team.team_id));
-    if !crate::kit::valid_bundle_id(&bundle_id) {
-        bail!("{bundle_id} isn't a valid bundle ID (letters, digits, and hyphens, separated by dots)");
-    }
-
-    // 4. Provisioning.
-    ui.report(Event::Step(Step::Provision));
-    let free = b.provision(&team, &d, &bundle_id, &apple_id, ui).await?;
-
-    // 5. Sign and install.
-    ui.report(Event::Step(Step::Install));
-    b.sign_and_install(&d, &team, &bundle_id, free, ui).await?;
-
-    // 6. Into the container: the pairing record, the developer disk image, and the Apple token (with it the
-    // app gets its own renewed profiles from Apple: apps/client/spapple.m).
-    ui.report(Event::Step(Step::Container));
-    if b.has_pairing(&d, &bundle_id).await? && !pair_again {
-        ui.say("the app already has a pairing record");
-    } else {
-        let size = b.send_pairing(&d).await?;
-        ui.say(&format!("sent {} ({size} bytes)", crate::device::PAIRING_PATH));
-    }
-    if !b.send_ddi(ui).await? {
-        ui.say("the app already has this developer disk image");
-    }
-    let renews = b.send_token().await?;
-    ui.say(if renews {
-        "sent the Apple token, for the app to renew its own profiles"
-    } else {
-        "no Apple token sent (--server-client-info): the app can't renew its own profiles"
-    });
-
-    let done = Done { device: d.name.clone(), free, renews };
-    ui.report(Event::Done(done.clone()));
-    Ok(done)
+    Ok(d)
 }
 
 #[cfg(test)]
@@ -401,6 +485,8 @@ pub(crate) mod fake {
         pub teams: Vec<DeveloperTeam>,
         pub free: bool,
         pub has_pairing: bool,
+        /// The Slashplayed apps on the device, by bundle ID.
+        pub installed: Vec<String>,
         pub token: bool,
         /// The person must answer Apple's two-factor step (a text, then the code).
         pub two_factor: bool,
@@ -421,6 +507,7 @@ pub(crate) mod fake {
                 teams: vec![team("T1")],
                 free: true,
                 has_pairing: false,
+                installed: Vec::new(),
                 token: true,
                 two_factor: true,
                 cert_limit: false,
@@ -464,7 +551,8 @@ pub(crate) mod fake {
             next(&mut self.dev_mode).map_err(|e| report!("{e}"))
         }
         /// As account::sign_in asks: the password once, then the 2FA step until it's answered with a code.
-        async fn sign_in(&mut self, apple_id: &str, _: &str, _: bool, ui: &dyn Frontend) -> Result<(), Report> {
+        async fn sign_in(&mut self, apple_id: &str, anisette: &str, _: bool, ui: &dyn Frontend) -> Result<(), Report> {
+            self.log(format!("anisette {anisette}"));
             let password = ui.password(apple_id).await?;
             // Compared without printing it, as a real password must never be.
             if *password != fake::password() {
@@ -517,8 +605,11 @@ pub(crate) mod fake {
             ui.report(Event::Progress(50));
             Ok(())
         }
-        async fn has_pairing(&mut self, _: &DeviceInfo, _: &str) -> Result<bool, Report> {
-            self.log("has pairing?".into());
+        async fn installed(&mut self, _: &DeviceInfo) -> Result<Vec<String>, Report> {
+            Ok(self.installed.clone())
+        }
+        async fn has_pairing(&mut self, _: &DeviceInfo, bundle_id: &str) -> Result<bool, Report> {
+            self.log(format!("has pairing? {bundle_id}"));
             Ok(self.has_pairing)
         }
         async fn send_pairing(&mut self, _: &DeviceInfo) -> Result<usize, Report> {
@@ -546,7 +637,12 @@ mod tests {
     #[derive(Default)]
     struct Person {
         waits: bool,
-        pair_again: bool,
+        /// Answers the sign-in with pairing only, when it's offered.
+        pair_only: bool,
+        /// The anisette server typed at the sign-in.
+        anisette: Option<&'static str>,
+        /// Whether the sign-in offered pairing only.
+        offered: Mutex<Option<bool>>,
         team: usize,
         revoke: bool,
         events: Mutex<Vec<Event>>,
@@ -572,8 +668,15 @@ mod tests {
         fn waits_for_developer_mode(&self) -> bool {
             self.waits
         }
-        fn sign_in(&self) -> Ask<'_, SignIn> {
-            Box::pin(async move { Ok(SignIn { apple_id: "x@example.com".into(), pair_again: self.pair_again }) })
+        fn sign_in(&self, installed: bool) -> Ask<'_, Choice> {
+            *self.offered.lock().unwrap() = Some(installed);
+            Box::pin(async move {
+                Ok(if self.pair_only && installed {
+                    Choice::PairOnly
+                } else {
+                    Choice::SignIn(SignIn { apple_id: "x@example.com".into(), anisette: self.anisette.map(str::to_string) })
+                })
+            })
         }
         fn password<'a>(&'a self, _: &'a str) -> Ask<'a, Zeroizing<String>> {
             self.asked("password");
@@ -604,12 +707,12 @@ mod tests {
         let mut b = Fake::default();
         let ui = Person::default();
         let done = install(&mut b, &ui, &opts()).await.unwrap();
-        assert_eq!(done, Done { device: "iPhone A".into(), free: true, renews: true });
+        assert_eq!(done, Done { device: "iPhone A".into(), free: true, renews: true, pair_only: false });
         assert_eq!(
             b.calls(),
             [
-                "kit", "trust A", "devmode A", "sms 3", "code 123456 sms=true", "provision T1 T1.slashplayed", "install free=true",
-                "has pairing?", "pairing", "ddi", "token",
+                "kit", "trust A", "devmode A", "anisette https://anisette.example", "sms 3", "code 123456 sms=true",
+                "provision T1 T1.slashplayed", "install free=true", "has pairing? T1.slashplayed", "pairing", "ddi", "token",
             ]
         );
         // One team: never asked. The password once, the code twice (the text, then the code).
@@ -699,20 +802,82 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn the_pairing_record_is_kept_unless_asked() {
+    async fn an_install_keeps_the_pairing_record() {
         let mut b = Fake { has_pairing: true, ..Default::default() };
         install(&mut b, &Person::default(), &opts()).await.unwrap();
-        assert!(!b.calls().contains(&"pairing".to_string()));
-        let mut b = Fake { has_pairing: true, ..Default::default() };
-        install(&mut b, &Person { pair_again: true, ..Default::default() }, &opts()).await.unwrap();
-        assert!(b.calls().contains(&"pairing".to_string()));
+        assert!(!b.calls().contains(&"pairing".to_string()), "{:?}", b.calls());
+    }
+
+    /// slashplayed-cli --pair-again: the device, then a new record (even over one that's there) and the image
+    /// for the installed app. No kit, and nothing of the Apple ID: not asked for, not signed in, no token.
+    #[tokio::test(start_paused = true)]
+    async fn pairing_needs_no_apple_id() {
+        let mut b = Fake { installed: vec!["T1.slashplayed".into()], has_pairing: true, ..Default::default() };
+        let ui = Person::default();
+        let done = pair(&mut b, &ui, &opts()).await.unwrap();
+        assert_eq!(b.calls(), ["trust A", "devmode A", "has pairing? T1.slashplayed", "pairing", "ddi"]);
+        assert!(ui.asked.lock().unwrap().is_empty(), "{:?}", ui.asked.lock().unwrap());
+        assert_eq!(*ui.offered.lock().unwrap(), None, "no sign-in question");
+        assert_eq!(done, Done { device: "iPhone A".into(), free: false, renews: false, pair_only: true });
+        assert!(done.lines()[0].contains("new pairing record"));
+    }
+
+    /// Which app it pairs: --bundle-id's when that one's there, else the only one; never a guess.
+    #[tokio::test(start_paused = true)]
+    async fn pairing_finds_the_installed_app() {
+        let err = async |installed: &[&str], bundle_id: Option<&'static str>| {
+            let mut b = Fake { installed: installed.iter().map(|s| s.to_string()).collect(), ..Default::default() };
+            let e = pair(&mut b, &Person::default(), &Options { bundle_id, ..opts() }).await.unwrap_err().to_string();
+            assert!(!b.calls().contains(&"pairing".to_string()), "{e}: paired anyway");
+            e
+        };
+        assert!(err(&[], None).await.contains("isn't installed"));
+        assert!(err(&["T1.slashplayed", "T2.slashplayed"], None).await.contains("--bundle-id"));
+        assert!(err(&["T1.slashplayed"], Some("T2.slashplayed")).await.contains("T2.slashplayed isn't installed"));
+
+        let mut b = Fake { installed: vec!["T1.slashplayed".into(), "T2.slashplayed".into()], ..Default::default() };
+        pair(&mut b, &Person::default(), &Options { bundle_id: Some("T2.slashplayed"), ..opts() }).await.unwrap();
+        assert!(b.calls().contains(&"has pairing? T2.slashplayed".to_string()), "{:?}", b.calls());
+    }
+
+    /// The window's Pair Only: offered at the sign-in only when the app is there, and then nothing of the
+    /// Apple ID is asked or done.
+    #[tokio::test(start_paused = true)]
+    async fn pair_only_is_offered_when_the_app_is_there() {
+        let ui = Person { pair_only: true, ..Default::default() };
+        install(&mut Fake::default(), &ui, &opts()).await.unwrap();
+        assert_eq!(*ui.offered.lock().unwrap(), Some(false));
+
+        let mut b = Fake { installed: vec!["T1.slashplayed".into()], ..Default::default() };
+        let ui = Person { pair_only: true, ..Default::default() };
+        let done = install(&mut b, &ui, &opts()).await.unwrap();
+        assert_eq!(*ui.offered.lock().unwrap(), Some(true));
+        assert!(done.pair_only);
+        assert_eq!(b.calls(), ["kit", "trust A", "devmode A", "has pairing? T1.slashplayed", "pairing", "ddi"]);
+        assert!(ui.asked.lock().unwrap().is_empty());
+    }
+
+    /// The anisette server typed at the sign-in wins over the default, tidied as isideload needs it; one that
+    /// isn't a web address stops before the sign-in.
+    #[tokio::test(start_paused = true)]
+    async fn the_anisette_server_can_be_named() {
+        let mut b = Fake::default();
+        install(&mut b, &Person { anisette: Some(" https://ani.example.org/ "), ..Default::default() }, &opts()).await.unwrap();
+        assert!(b.calls().contains(&"anisette https://ani.example.org".to_string()), "{:?}", b.calls());
+        for bad in ["ani.example.org", "https://", "ftp://ani.example.org", ""] {
+            let mut b = Fake::default();
+            let ui = Person { anisette: Some(bad), ..Default::default() };
+            let e = install(&mut b, &ui, &opts()).await.unwrap_err();
+            assert!(e.to_string().contains("isn't a web address"), "{bad:?}: {e}");
+            assert!(ui.asked.lock().unwrap().is_empty(), "{bad:?}: the password was asked for");
+        }
     }
 
     #[test]
     fn closing_words() {
-        let paid = Done { device: "iPad".into(), free: false, renews: true }.lines();
+        let paid = Done { device: "iPad".into(), free: false, renews: true, pair_only: false }.lines();
         assert_eq!(paid, ["Slashplayed is on iPad.", "Open Slashplayed and tap a game to install it on the device."]);
-        let free = Done { device: "iPad".into(), free: true, renews: false }.lines();
+        let free = Done { device: "iPad".into(), free: true, renews: false, pair_only: false }.lines();
         assert!(free[1].contains("VPN & Device Management"));
         assert!(free[2].contains("within 7 days"));
     }

@@ -18,7 +18,10 @@ use egui::{Align, Button, Layout, RichText, TextEdit};
 use isideload::auth::apple_account::TwoFactorCallbackResponse;
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::flow::{SignIn, Step, Wait};
+use crate::{
+    account::DEFAULT_ANISETTE,
+    flow::{Choice, SignIn, Step, Wait},
+};
 use front::{Handle, Question, Shared, Starter, lock};
 use theme::{DIM, ERROR, GOLD, GROUND, WELL};
 
@@ -40,6 +43,8 @@ pub struct App {
     /// Goodmountain is loaded (theme::apply).
     face: bool,
     apple_id: String,
+    /// The anisette server field, the default until changed.
+    anisette: String,
     /// The password field's text, until Install hands it to the sign-in. Zeroed on drop.
     password: Zeroizing<String>,
     code: String,
@@ -63,6 +68,7 @@ impl App {
             starter,
             face,
             apple_id: String::new(),
+            anisette: DEFAULT_ANISETTE.to_string(),
             password: Zeroizing::new(String::new()),
             code: String::new(),
             show_numbers: false,
@@ -142,12 +148,13 @@ impl eframe::App for App {
             match (&s.outcome, &s.question) {
                 (Some(Ok(_)), _) => self.done(ui, &mut s),
                 (Some(Err(_)), _) => self.steps(ui, &mut s, "Something went wrong"),
-                (None, Some(Question::SignIn(_))) => self.sign_in(ui, &mut s),
+                (None, Some(Question::SignIn { .. })) => self.sign_in(ui, &mut s),
                 (None, Some(Question::TwoFactor { .. })) => self.two_factor(ui, &mut s),
                 (None, Some(Question::Team { .. })) => self.team(ui, &mut s),
                 (None, _) if s.step.is_none() || s.step == Some(Step::Kit) || s.step == Some(Step::Device) => {
                     self.device(ui, &mut s)
                 }
+                (None, _) if s.pair_only => self.steps(ui, &mut s, "Pairing"),
                 (None, _) => self.steps(ui, &mut s, "Installing"),
             }
         });
@@ -323,6 +330,7 @@ impl App {
     }
 
     fn sign_in(&mut self, ui: &mut egui::Ui, s: &mut Shared) {
+        let installed = matches!(s.question, Some(Question::SignIn { installed: true, .. }));
         self.header(ui, "Sign in with your Apple ID");
         if let Some(d) = &s.device {
             ui.label(format!("Slashplayed gets signed with your Apple ID, for {}.", d.name));
@@ -337,21 +345,44 @@ impl App {
             .add(TextEdit::singleline(&mut *self.password).id(password_id()).password(true).desired_width(f32::INFINITY))
             .labelled_by(pw_label.id);
         small(ui, "Your password is used once, for this sign-in, and never stored.");
-        ui.add_space(16.0);
+        ui.add_space(4.0);
+        // Folded away: the default works for most, and one Apple refuses is the rare reason to change it. Kept
+        // for the window's later runs (Try Again).
+        egui::CollapsingHeader::new("Anisette server").default_open(self.anisette.trim() != DEFAULT_ANISETTE).show(ui, |ui| {
+            let label = ui.label("Server address");
+            ui.add(TextEdit::singleline(&mut self.anisette).desired_width(f32::INFINITY)).labelled_by(label.id);
+            small(ui, "The sign-in gets the anisette data Apple asks for from this server. Change it only if the sign-in fails there.");
+        });
+        ui.add_space(12.0);
         let ready = !self.apple_id.trim().is_empty() && !self.password.is_empty();
         let enter = pw.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         if (self.main_button(ui, "Install", ready) || (enter && ready))
-            && let Some(Question::SignIn(reply)) = s.question.take()
+            && let Some(Question::SignIn { reply, .. }) = s.question.take()
         {
             let password = Zeroizing::new(std::mem::take(&mut *self.password));
             forget_typing(ui.ctx());
-            // No pair-again here: a record the device refuses, the app deletes itself (apps/client/spjit.m), and
-            // the next run sends a new one. slashplayed-cli keeps --pair-again for the rare rest.
-            let sign_in = SignIn { apple_id: self.apple_id.trim().to_string(), pair_again: false };
-            let _ = reply.send((sign_in, password));
+            let anisette = Some(self.anisette.trim().to_string()).filter(|a| a != DEFAULT_ANISETTE);
+            let sign_in = SignIn { apple_id: self.apple_id.trim().to_string(), anisette };
+            let _ = reply.send((Choice::SignIn(sign_in), password));
+            return;
+        }
+        // The app is on the device already: a new pairing record needs no Apple ID (issue #122), for when
+        // games stop at the pairing step, or a sign-in Apple refuses keeps the rest from running.
+        if installed {
+            ui.add_space(20.0);
+            ui.separator();
+            ui.add_space(8.0);
+            ui.label("Slashplayed is already on this device. If its games stop at the pairing step, it can be paired again without an Apple ID. That doesn't renew its signing.");
+            ui.add_space(8.0);
+            if ui.button("Pair Only").clicked()
+                && let Some(Question::SignIn { reply, .. }) = s.question.take()
+            {
+                forget_typing(ui.ctx());
+                s.pair_only = true;
+                let _ = reply.send((Choice::PairOnly, Zeroizing::new(String::new())));
+            }
         }
     }
-
     fn two_factor(&mut self, ui: &mut egui::Ui, s: &mut Shared) {
         let Some(Question::TwoFactor { sms, retry, unknown, numbers, .. }) = &s.question else { return };
         let (sms, retry, unknown, numbers) = (*sms, *retry, *unknown, numbers.clone());
@@ -457,13 +488,17 @@ impl App {
         }
     }
 
-    /// The six steps as a checklist: done, the current one (with its wait, its progress, or its error), and
+    /// The six steps (three for Pair Only) as a checklist: done, the current one (with its wait, its progress, or its error), and
     /// those to come; and the Details below.
     fn steps(&mut self, ui: &mut egui::Ui, s: &mut Shared, title: &str) {
         self.header(ui, title);
         let error = s.outcome.as_ref().and_then(|o| o.as_ref().err().cloned());
         let current = s.step.unwrap_or(Step::Kit);
         for (step, label) in STEPS {
+            // Pair Only skips them: nothing is signed in, signed, or installed.
+            if s.pair_only && matches!(step, Step::SignIn | Step::Provision | Step::Install) {
+                continue;
+            }
             ui.horizontal(|ui| {
                 ui.set_min_height(24.0);
                 if step < current || s.outcome.as_ref().is_some_and(|o| o.is_ok()) {
