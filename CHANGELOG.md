@@ -6,6 +6,8 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-28
+
 ### Added
 
 - A Battle.net account with more than one WoW account (WoW1, WoW2, and so on) can choose the one each game
@@ -28,6 +30,20 @@ All notable changes to Slashplayed are documented here. The format is based on
   iPhone, or Vision Pro, when it was once installed there (#132). The region a device guessed from its own
   is no longer saved, so a region you picked in an earlier version follows your Mac or your device again
   until you pick it again.
+
+### Known issues
+
+- Signing in on the device can still fail with "You have been disconnected. (BLZ51914400)", sometimes
+  after a captcha or an authenticator code, when Battle.net turns the sign-in down after accepting the
+  email and password. Why it does isn't known yet
+  ([#96](https://github.com/paulstraw/slashplayed/issues/96),
+  [#133](https://github.com/paulstraw/slashplayed/issues/133)). Check your email for an "account
+  locked" or suspicious-login message from Blizzard, and don't try again many times in a row. On a
+  device set up from a Mac, Play with My Mac's Battle.net signs in; from Windows or Linux there's no
+  workaround yet.
+- On iOS 27, setting up from Windows or Linux can stop at "Developer Mode is off" with no Developer
+  Mode switch ever appearing in Settings > Privacy & Security on the device
+  ([#140](https://github.com/paulstraw/slashplayed/issues/140)). That issue has a workaround to try.
 
 ## [1.7.0] - 2026-11-24
 
