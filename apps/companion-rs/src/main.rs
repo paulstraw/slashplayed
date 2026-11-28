@@ -26,7 +26,7 @@ use isideload::{
 use rootcause::prelude::*;
 use slashplayed_companion::{
     account, device,
-    flow::{self, Ask, CertLimit, Choice, DeviceInfo, Event, Frontend, SignIn, Wait},
+    flow::{self, Ask, CertLimit, Choice, DeviceInfo, Event, Frontend, PairOnly, SignIn, Wait},
     keystore, kit, live, secret,
 };
 use zeroize::Zeroizing;
@@ -50,7 +50,8 @@ Options for install:
   --server-client-info  send the anisette server's own client identity rather than iloader's fixed one
   --kit <zip>           a device kit to use instead of this release's
   --pair-again          only make a new pairing record (and copy the developer disk image) for the app on
-                        the device: no Apple ID, and its signing isn't touched
+                        the device: no Apple ID, and its signing isn't touched. Takes only --udid and
+                        --bundle-id
   --revoke-oldest       with no credential store, at the team's certificate limit: revoke the oldest
                         certificate a Slashplayed tool made, even another computer's
 
@@ -143,7 +144,26 @@ async fn run(args: &Args) -> Result<(), Report> {
     }
 }
 
+/// The install's flags that pairing only would ignore (it signs nothing and fetches no kit): refused with
+/// --pair-again rather than dropped, so nobody thinks they took.
+const NOT_WITH_PAIR_AGAIN: &[&str] = &["--apple-id", "--team", "--kit", "--anisette", "--server-client-info", "--revoke-oldest"];
+
+fn check_pair_again(args: &Args) -> Result<(), Report> {
+    if !args.flag("--pair-again") {
+        return Ok(());
+    }
+    let given: Vec<&str> = NOT_WITH_PAIR_AGAIN.iter().copied().filter(|f| args.flag(f) || args.opt(f).is_some()).collect();
+    if !given.is_empty() {
+        bail!(
+            "--pair-again only pairs the app on the device, with no Apple ID, kit, or signing, so it doesn't take {}: run it with only --udid or --bundle-id",
+            given.join(", ")
+        );
+    }
+    Ok(())
+}
+
 async fn install(args: &Args) -> Result<(), Report> {
+    check_pair_again(args)?;
     let opts = flow::Options {
         kit: args.opt("--kit").map(std::path::Path::new),
         team: args.opt("--team"),
@@ -221,7 +241,7 @@ impl Frontend for Cli<'_> {
     }
 
     /// Never pairing only: that's --pair-again, which asks nothing.
-    fn sign_in(&self, _installed: bool) -> Ask<'_, Choice> {
+    fn sign_in(&self, _: PairOnly) -> Ask<'_, Choice> {
         Box::pin(async move {
             let apple_id = match self.0.opt("--apple-id") {
                 Some(id) => id.to_string(),
@@ -319,7 +339,7 @@ mod tests {
         let a = p(&["--udid", "B", "--apple-id", "x@example.com"]).unwrap();
         let cli = Cli(&a);
         assert_eq!(cli.choose_device(&phones()).await.unwrap(), Some(1));
-        let Choice::SignIn(s) = cli.sign_in(true).await.unwrap() else { panic!("pairing only, unasked") };
+        let Choice::SignIn(s) = cli.sign_in(PairOnly::Offered).await.unwrap() else { panic!("pairing only, unasked") };
         assert_eq!((s.apple_id.as_str(), s.anisette), ("x@example.com", None));
         let limit = CertLimit { certificates: "c".into(), oldest: "o".into() };
         assert!(cli.confirm_revoke(&limit).await.is_err(), "no revoke without --revoke-oldest");
@@ -330,6 +350,27 @@ mod tests {
         assert!(cli.choose_device(&phones()).await.is_err(), "several devices and no --udid");
         let a = p(&["--udid", "C"]).unwrap();
         assert!(Cli(&a).choose_device(&phones()).await.is_err());
+    }
+
+    /// --pair-again refuses the flags it would ignore, and takes the two that pick the device and the app.
+    #[test]
+    fn pair_again_refuses_install_flags() {
+        assert!(check_pair_again(&p(&["--pair-again", "--udid", "A", "--bundle-id", "T1.slashplayed"]).unwrap()).is_ok());
+        assert!(check_pair_again(&p(&["--apple-id", "x@example.com", "--kit", "k.zip"]).unwrap()).is_ok(), "an install takes them");
+        for extra in [
+            &["--apple-id", "x@example.com"][..],
+            &["--team", "T1"],
+            &["--kit", "k.zip"],
+            &["--anisette", "https://ani.example.org"],
+            &["--server-client-info"],
+            &["--revoke-oldest"],
+        ] {
+            let a = p(&[&["--pair-again"][..], extra].concat()).unwrap();
+            let e = check_pair_again(&a).unwrap_err().to_string();
+            assert!(e.contains(extra[0]), "{extra:?}: {e}");
+        }
+        let e = check_pair_again(&p(&["--pair-again", "--team", "T1", "--revoke-oldest"]).unwrap()).unwrap_err().to_string();
+        assert!(e.contains("--team, --revoke-oldest"), "{e}");
     }
 
     #[test]

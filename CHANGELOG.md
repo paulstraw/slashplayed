@@ -17,7 +17,9 @@ All notable changes to Slashplayed are documented here. The format is based on
 ### Changed
 
 - `slashplayed-cli --pair-again` now only makes a new pairing record for the app on the device: it no
-  longer signs in to the Apple ID or re-signs the app, so it works when the sign-in doesn't.
+  longer signs in to the Apple ID or re-signs the app, so it works when the sign-in doesn't. It refuses
+  the sign-in's options (such as `--apple-id` or `--kit`) instead of quietly ignoring them, and both it and
+  **Pair Only** say when the app's signing has run out, since pairing doesn't renew it.
   ([#122](https://github.com/paulstraw/slashplayed/issues/122))
 
 ## [1.9.0] - 2026-11-28

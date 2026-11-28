@@ -5,10 +5,10 @@
 use tokio::sync::oneshot;
 
 use super::{App, front::Question, lock};
-use crate::flow::{DeviceInfo, Done, Step, Wait};
+use crate::flow::{DeviceInfo, Done, PairOnly, Step, Wait};
 
 pub const STATES: &[&str] = &[
-    "device", "unlock", "developer-mode", "sign-in", "sign-in-installed", "code", "team", "installing", "done", "paired", "error",
+    "device", "unlock", "developer-mode", "sign-in", "sign-in-installed", "sign-in-twice", "code", "team", "installing", "done", "paired", "error",
     "cert-limit",
 ];
 
@@ -45,10 +45,18 @@ pub fn fill(app: &mut App, state: &str) {
             s.device = Some(iphone.clone());
             s.wait = Some(Wait::DeveloperMode { device: iphone.name.clone() });
         }
-        "sign-in" | "sign-in-installed" => {
+        "sign-in" | "sign-in-installed" | "sign-in-twice" => {
             s.step = Some(Step::SignIn);
             s.device = Some(iphone.clone());
-            s.question = Some(Question::SignIn { installed: state == "sign-in-installed", reply: oneshot::channel().0 });
+            let pair_only = match state {
+                "sign-in-installed" => PairOnly::Offered,
+                "sign-in-twice" => PairOnly::Unavailable(format!(
+                    "{} has Slashplayed installed more than once (T1.slashplayed, com.example.slashplayed), so it can't tell which to pair: pair one with slashplayed-cli --pair-again --bundle-id <one of them>",
+                    iphone.name
+                )),
+                _ => PairOnly::NotInstalled,
+            };
+            s.question = Some(Question::SignIn { pair_only, reply: oneshot::channel().0 });
             app.apple_id = "alex@example.com".into();
         }
         "code" => {
@@ -72,13 +80,13 @@ pub fn fill(app: &mut App, state: &str) {
         "done" => {
             s.step = Some(Step::Container);
             s.lines = lines.iter().map(|l| l.to_string()).collect();
-            s.outcome = Some(Ok(Done { device: iphone.name.clone(), free: true, renews: true, pair_only: false }));
+            s.outcome = Some(Ok(Done { device: iphone.name.clone(), free: true, renews: true, pair_only: false, expired: None }));
         }
         "paired" => {
             s.step = Some(Step::Container);
             s.pair_only = true;
             s.lines = vec![lines[0].to_string(), lines[1].to_string(), "pairing com.example.slashplayed again, with no sign-in".into()];
-            s.outcome = Some(Ok(Done { device: iphone.name.clone(), free: false, renews: false, pair_only: true }));
+            s.outcome = Some(Ok(Done { device: iphone.name.clone(), free: false, renews: false, pair_only: true, expired: None }));
         }
         "error" => {
             s.step = Some(Step::SignIn);

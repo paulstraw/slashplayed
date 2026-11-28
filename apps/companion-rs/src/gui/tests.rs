@@ -177,7 +177,12 @@ fn pair_only_needs_no_apple_id() {
     let shared = log.clone();
     let mut h = window(move || Fake { installed: vec!["T1.slashplayed".into()], calls: shared.clone(), ..Default::default() });
     wait_for(&mut h, "Pair Only");
+    // A password typed before choosing Pair Only isn't kept: nothing signs in to use it.
+    type_into(&mut h, "Password", &password());
+    assert!(!h.state().password.is_empty());
     h.get_by_label("Pair Only").click();
+    h.run_steps(1);
+    assert!(h.state().password.is_empty(), "the password outlived Pair Only");
     wait_for(&mut h, "has a new pairing record");
     let calls = log.lock().unwrap().clone();
     assert!(calls.contains(&"pairing".to_string()), "{calls:?}");
@@ -187,6 +192,12 @@ fn pair_only_needs_no_apple_id() {
     let mut h = window(Fake::default);
     wait_for(&mut h, "Sign in with your Apple ID");
     assert!(h.query_by_label("Pair Only").is_none());
+
+    // There twice: not offered, and the window says why.
+    let mut h = window(|| Fake { installed: vec!["T1.slashplayed".into(), "T2.slashplayed".into()], ..Default::default() });
+    wait_for(&mut h, "Sign in with your Apple ID");
+    assert!(h.query_by_label("Pair Only").is_none());
+    assert!(h.query_by_label_contains("--pair-again --bundle-id").is_some(), "no word of why there's no Pair Only");
 }
 
 /// The anisette server typed in the window is the one the sign-in uses.
@@ -229,7 +240,7 @@ fn every_drill_state_opens() {
         assert!(h.query_by_label("…").is_some(), "{state}: no menu");
         let title = match *state {
             "device" | "unlock" | "developer-mode" => "Connect your device",
-            "sign-in" | "sign-in-installed" => "Sign in with your Apple ID",
+            "sign-in" | "sign-in-installed" | "sign-in-twice" => "Sign in with your Apple ID",
             "code" => "Enter the code",
             "team" => "Pick a team",
             "installing" | "cert-limit" => "Installing",

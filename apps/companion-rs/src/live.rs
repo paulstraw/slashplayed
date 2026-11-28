@@ -149,6 +149,10 @@ impl Backend for Live {
         device::installed(self.device(d)?).await
     }
 
+    async fn profile_expiry(&mut self, d: &DeviceInfo, bundle_id: &str) -> Result<Option<std::time::SystemTime>, Report> {
+        device::profile_expiry(self.device(d)?, bundle_id).await
+    }
+
     async fn has_pairing(&mut self, d: &DeviceInfo, bundle_id: &str) -> Result<bool, Report> {
         let mut afc = device::container(self.device(d)?, bundle_id).await?;
         let has = device::size(&mut afc, device::PAIRING_PATH).await.unwrap_or(0) > 0;

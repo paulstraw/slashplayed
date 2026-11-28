@@ -96,7 +96,10 @@ closes.
 
 When Slashplayed is already on the device, **Pair Only** shows under **Install**. It gives the app a new
 pairing record, with no Apple ID and no password, for when starting games keeps failing at the pairing
-step. It doesn't renew the app's signing, which the app does itself.
+step. It doesn't renew the app's signing: the app renews it itself when it can, and if its signing has
+run out, Pair Only says so and you need to set it up again with your Apple ID. The window still downloads
+the device kit first; `slashplayed-cli --pair-again` doesn't. When Slashplayed is on the device more than
+once, Pair Only isn't offered, and the window says to use `slashplayed-cli --pair-again --bundle-id`.
 
 Then type the code Apple sends to your Apple devices (allow the sign-in on one of them to see it).
 **Text me instead** sends it by text to one of your trusted numbers, **Resend** sends another, and
@@ -184,7 +187,9 @@ to turn it on and stops, so run it again once the device has restarted and you'v
 | `--server-client-info` | Send the anisette server's own client identity. The device gets no Apple token then, so it can't renew its own signing. |
 | `--kit <zip>` | A device kit to use instead of this release's. |
 
-In the window, **Pair Only** does what `--pair-again` does, and **Anisette server** what `--anisette` does.
+In the window, **Pair Only** does what `--pair-again` does, except that the window still downloads the
+device kit first and only `--pair-again` skips it; **Anisette server** does what `--anisette` does.
+`--pair-again` takes only `--udid` and `--bundle-id` with it.
 `--revoke-oldest`, `--bundle-id`, `--server-client-info`, and `--kit` are only in `slashplayed-cli`.
 `slashplayed-cli forget --apple-id <email>` deletes the signing key kept for that Apple ID, as the
 window's **Forget this computer's signing key…** does, and `slashplayed-cli --help` lists it all.
