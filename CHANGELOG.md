@@ -6,6 +6,8 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-11-28
+
 ### Added
 
 - On Windows and Linux, when Slashplayed is already on the device, **Pair Only** on the companion's

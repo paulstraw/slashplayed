@@ -4,7 +4,7 @@
 # (zsign/) compiles zsign (scripts/build-zsign.sh source, with scripts/zsign.patch) into it.
 [package]
 name = "slashplayed-companion"
-version = "1.9.0"
+version = "1.10.0"
 edition = "2024"
 publish = false
 license = "MIT"
