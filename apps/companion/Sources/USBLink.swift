@@ -40,10 +40,10 @@ struct USBLink: Equatable {
     }
 
     /// Whether the device can do USB 3 with a USB 3 cable, by model (productType), so the line isn't shown
-    /// to a device that can't do better. Every iPad the client supports can (USB 3 up to 10 Gbit/s on
-    /// the Airs and the A17 Pro mini, Thunderbolt on the Pros), and so can the Pro iPhones from the 15 Pro on, numbered N,1 and N,2
-    /// (iPhone16,1 and 16,2, 17,1 and 17,2, 18,1 and 18,2). The other iPhones the client supports (the 16,
-    /// 16 Plus, 16e, 17, and Air) are USB 2 only. The headset has no USB to copy over. False for an
+    /// to a device that can't do better. Every iPad the client supports but the iPad (A16) can (USB 3 up to
+    /// 10 Gbit/s on the Airs and the A17 Pro mini, Thunderbolt on the Pros), and so can the Pro iPhones from the 15 Pro on, numbered N,1 and N,2
+    /// (iPhone16,1 and 16,2, 17,1 and 17,2, 18,1 and 18,2). The iPad (A16) and the other iPhones the client
+    /// supports (the 14 Pro, 14 Pro Max, 15, 15 Plus, 16, 16 Plus, 16e, 17, and Air) are USB 2 only. The headset has no USB to copy over. False for an
     /// unknown model: better no line than a wrong one.
     static func supportsUSB3(kind: Device.Kind, model: String?) -> Bool {
         guard let model else { return false }
@@ -51,7 +51,7 @@ struct USBLink: Equatable {
         case .headset:
             return false
         case .iPad:
-            return model.hasPrefix("iPad") && Device.isSupportedIPad(model: model)
+            return model.hasPrefix("iPad") && Device.isSupportedIPad(model: model) && !["iPad15,7", "iPad15,8"].contains(model)
         case .iPhone:
             guard let m = model.firstMatch(of: /^iPhone(\d+),(\d+)$/), let major = Int(m.1), let minor = Int(m.2) else { return false }
             return major >= 16 && minor <= 2

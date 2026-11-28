@@ -477,9 +477,12 @@ final class Onboarding {
         return d.device.flavors
     }
 
-    /// What to warn about a device's games: Retail on an iPad or iPhone, and more than the free space once known.
+    /// What to warn about a device's games: Retail on an iPad or iPhone (and on a 6 GB one, its memory), and more than the free space once known.
     func warnings(for d: DeviceInfo) -> [String] {
         var warnings: [String] = []
+        if games(d).contains(.retail), let warning = d.device.memoryWarning(for: .retail, model: d.model) {
+            warnings.append(warning)
+        }
         if d.device.kind != .headset, games(d).contains(.retail), let note = Flavor.retailNote(noun: d.device.noun, free: freeSpace[d.id]) {
             warnings.append(note)
         }

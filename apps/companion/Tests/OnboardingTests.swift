@@ -39,9 +39,9 @@ final class OnboardingTests: XCTestCase {
             XCTAssertTrue(Device.isSupportedIPad(model: model), model)
             XCTAssertFalse(Device.isM1IPad(model: model), model)
         }
-        // Under 8 GB: Air 4 and the 10th generation (A14), mini 6 (A15), the 11th generation (A16). And the
-        // 2018 Pro (A12X), short of the M1's instruction set.
-        for model in ["iPad13,1", "iPad13,2", "iPad13,18", "iPad13,19", "iPad14,1", "iPad14,2", "iPad15,7", "iPad15,8", "iPad8,1"] {
+        // 4 GB: Air 4 and the 10th generation (A14), mini 6 (A15). And the 2018 Pro (A12X), short of the
+        // M1's instruction set.
+        for model in ["iPad13,1", "iPad13,2", "iPad13,18", "iPad13,19", "iPad14,1", "iPad14,2", "iPad8,1"] {
             XCTAssertFalse(Device.isSupportedIPad(model: model), model)
             XCTAssertFalse(Device.isM1IPad(model: model), model)
         }
@@ -71,17 +71,17 @@ final class OnboardingTests: XCTestCase {
     }
 
     func testSupportedIPhones() {
-        // 15 Pro, 15 Pro Max, 16 Pro (the tested one), 16e, 17.
-        for model in ["iPhone16,1", "iPhone16,2", "iPhone17,1", "iPhone17,5", "iPhone18,3"] {
+        // 14 Pro, 14 Pro Max, 15, 15 Plus (6 GB), 15 Pro, 15 Pro Max, 16 Pro (the tested one), 16e, 17.
+        for model in ["iPhone15,2", "iPhone15,3", "iPhone15,4", "iPhone15,5", "iPhone16,1", "iPhone16,2", "iPhone17,1", "iPhone17,5", "iPhone18,3"] {
             XCTAssertTrue(Device.isSupportedIPhone(model: model), model)
         }
-        // 15, 15 Plus, 14 Pro, 13, SE 3, 7.
-        for model in ["iPhone15,4", "iPhone15,5", "iPhone15,2", "iPhone14,5", "iPhone14,6", "iPhone9,1"] {
+        // 14, 14 Plus (A15), 13, SE 3, 7.
+        for model in ["iPhone14,7", "iPhone14,8", "iPhone14,5", "iPhone14,6", "iPhone9,1"] {
             XCTAssertFalse(Device.isSupportedIPhone(model: model), model)
         }
         XCTAssertTrue(Device.isSupportedIPhone(model: nil))
         // Each kind uses its own check.
-        XCTAssertFalse(Device(name: "", udid: "", kind: .iPhone).isSupported(model: "iPhone15,4"))
+        XCTAssertFalse(Device(name: "", udid: "", kind: .iPhone).isSupported(model: "iPhone14,7"))
         XCTAssertFalse(Device(name: "", udid: "", kind: .iPad).isSupported(model: "iPad13,1"))
         XCTAssertTrue(Device(name: "", udid: "", kind: .headset).isSupported(model: "RealityDevice14,1"))
     }
@@ -97,11 +97,36 @@ final class OnboardingTests: XCTestCase {
 
     func testUnsupportedReason() {
         let iPad = Device(name: "", udid: "", kind: .iPad), iPhone = Device(name: "", udid: "", kind: .iPhone)
-        XCTAssertEqual(iPad.unsupportedReason(model: "iPad8,1"), "Not supported: Slashplayed needs an iPad with an M1 chip or later, or the A17 Pro iPad mini.")
-        XCTAssertEqual(iPhone.unsupportedReason(model: "iPhone15,4"), "Not supported: Slashplayed needs an iPhone 15 Pro or later.")
+        XCTAssertEqual(iPad.unsupportedReason(model: "iPad8,1"), "Not supported: Slashplayed needs an iPad with an M1 chip or later, the iPad (A16), or the A17 Pro iPad mini.")
+        XCTAssertEqual(iPhone.unsupportedReason(model: "iPhone14,7"), "Not supported: Slashplayed needs an iPhone 14 Pro, an iPhone 15, or later.")
         XCTAssertNil(iPad.unsupportedReason(model: "iPad14,5"))
         XCTAssertNil(iPad.unsupportedReason(model: nil))
         XCTAssertNil(Device(name: "", udid: "", kind: .headset).unsupportedReason(model: "RealityDevice14,1"))
+    }
+
+    /// The 6 GB models (the iPad (A16), the iPhone 14 Pro, 14 Pro Max, 15, and 15 Plus) run every game,
+    /// Retail with a memory warning, and are marked untested; 8 GB models and an unknown one get neither.
+    func testSixGBModelsWarnAboutRetail() {
+        let iPad = Device(name: "", udid: "", kind: .iPad), iPhone = Device(name: "", udid: "", kind: .iPhone)
+        for (device, model) in [(iPad, "iPad15,7"), (iPad, "iPad15,8"), (iPhone, "iPhone15,2"), (iPhone, "iPhone15,3"),
+                               (iPhone, "iPhone15,4"), (iPhone, "iPhone15,5")] {
+            XCTAssertTrue(device.isSupported(model: model), model)
+            XCTAssertNil(device.unsupportedReason(model: model), model)
+            XCTAssertNotNil(device.memoryWarning(for: .retail, model: model), model)
+            for flavor in Flavor.allCases where flavor != .retail {
+                XCTAssertNil(device.memoryWarning(for: flavor, model: model), "\(model) \(flavor)")
+            }
+            XCTAssertNotNil(device.untestedNote(model: model), model)
+        }
+        XCTAssertEqual(iPad.memoryWarning(for: .retail, model: "iPad15,7"),
+                       "Retail may close in busy areas on 6 GB devices like this iPad.")
+        XCTAssertEqual(iPhone.memoryWarning(for: .retail, model: "iPhone15,2")?.hasSuffix("like this iPhone."), true)
+        // 8 GB: an M2 iPad, the A17 Pro mini, an M1 iPad, the 15 Pro, the 16 Pro; and an unknown model.
+        for (device, model) in [(iPad, "iPad14,5"), (iPad, "iPad16,1"), (iPad, "iPad13,4"), (iPhone, "iPhone16,1"),
+                                (iPhone, "iPhone17,1"), (iPad, nil)] as [(Device, String?)] {
+            XCTAssertNil(device.memoryWarning(for: .retail, model: model), model ?? "nil")
+            XCTAssertNil(device.untestedNote(model: model), model ?? "nil")
+        }
     }
 
     func testChooseDevice() {

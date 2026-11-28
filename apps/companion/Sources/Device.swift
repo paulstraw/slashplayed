@@ -53,8 +53,26 @@ struct Device: Identifiable, Hashable {
     /// chip stops it at its first newer instruction, a moment after it loads (a 2018 iPad Pro did).
     func unsupportedReason(model: String?) -> String? {
         guard !isSupported(model: model) else { return nil }
-        return kind == .iPhone ? "Not supported: Slashplayed needs an iPhone 15 Pro or later."
-            : "Not supported: Slashplayed needs an iPad with an M1 chip or later, or the A17 Pro iPad mini."
+        return kind == .iPhone ? "Not supported: Slashplayed needs an iPhone 14 Pro, an iPhone 15, or later."
+            : "Not supported: Slashplayed needs an iPad with an M1 chip or later, the iPad (A16), or the A17 Pro iPad mini."
+    }
+
+    /// What to warn about `flavor` on this device's model: Retail on a 6 GB model (isSixGB). Retail's
+    /// footprint in the world is 4.2 to 4.4 GB (an iPhone 16 Pro, an M2 iPad), and a 6 GB device's limit
+    /// with increased-memory-limit is about 4 GB (measured by others), against about 6 GB on an 8 GB iPhone,
+    /// so it may be closed for its memory where the game loads the most. The other games stay near 2 GB
+    /// (Classic Era 1.55 to 1.85 GB in the world, Forever 2.2 GB at character select). A warning only: it
+    /// doesn't stop anything. Nil for every other game and model, and an unknown one.
+    func memoryWarning(for flavor: Flavor, model: String?) -> String? {
+        guard flavor == .retail, Self.isSixGB(model: model) else { return nil }
+        return "Retail may close in busy areas on 6 GB devices like this \(noun)."
+    }
+
+    /// What onboarding and the companion's log say about a 6 GB model (isSixGB): allowed, and never played
+    /// on. Nil for every other model. It doesn't stop anything.
+    func untestedNote(model: String?) -> String? {
+        guard Self.isSixGB(model: model) else { return nil }
+        return "Untested: Slashplayed hasn't been played on a 6 GB \(noun) yet. Please tell us how it goes with Help > Report an Issue… and the zip from Help > Export Diagnostics…."
     }
 
     /// The device an action works on: `target` (the one it was started for), else `pin` (the Device menu's
@@ -462,18 +480,26 @@ struct Device: Identifiable, Hashable {
         return details
     }
 
-    /// Whether an iPad model (productType) can run the client: iPad14 and up (M2 or later, and the A17 Pro
-    /// iPad mini, iPad16,1 and 16,2), less the A-chip iPads with under 8 GB numbered among them, plus the
-    /// M1 iPads (isM1IPad). Two limits, as isSupportedIPhone's: the Mac client is built for the M1's
-    /// instruction set, which the A12X/A12Z Pros lack (the client stopped at an undefined instruction on
-    /// one), and it needs 8 GB, as the M2 iPads have, which the mini 6 (iPad14,1 and 14,2, A15, 4 GB), the
-    /// 11th-generation iPad (iPad15,7 and 15,8, A16, 6 GB), and the A14 iPads numbered iPad13 (the
-    /// 4th-generation Air, the 10th-generation iPad, 4 GB) lack. The mini 7 has the iPhone 15 Pro's A17 Pro
-    /// and 8 GB, so it meets both. True for an unknown model, so only a known older one is warned about.
+    /// Whether an iPad model (productType) can run the client: iPad14 and up (M2 or later, the iPad (A16),
+    /// and the A17 Pro iPad mini, iPad16,1 and 16,2), less the 4 GB mini 6 numbered among them, plus the M1
+    /// iPads (isM1IPad). Two limits, as isSupportedIPhone's: the Mac client is built for the M1's instruction
+    /// set, which the A12X/A12Z Pros lack (the client stopped at an undefined instruction on one), and it
+    /// needs 6 GB, which the mini 6 (iPad14,1 and 14,2, A15) and the A14 iPads numbered iPad13 (the
+    /// 4th-generation Air, the 10th-generation iPad) lack with 4 GB: a 4 GB iPhone's limit is about 2.3 GB
+    /// (measured by others), and Classic Era peaks at 2.7 GB. The 11th-generation iPad (iPad15,7 and 15,8,
+    /// A16, 6 GB) runs them, Retail with a warning (memoryWarning). True for an unknown model, so only a known older one is warned about.
     static func isSupportedIPad(model: String?) -> Bool {
         guard let model, let m = model.firstMatch(of: /^iPad(\d+),(\d+)$/), let major = Int(m.1) else { return true }
-        let under8GB: Set<String> = ["iPad14,1", "iPad14,2", "iPad15,7", "iPad15,8"]
-        return (major >= 14 && !under8GB.contains(model)) || isM1IPad(model: model)
+        let under6GB: Set<String> = ["iPad14,1", "iPad14,2"]
+        return (major >= 14 && !under6GB.contains(model)) || isM1IPad(model: model)
+    }
+
+    /// The 6 GB models the client runs on, Retail with a warning (memoryWarning): the iPad (A16), iPad15,7 and
+    /// 15,8, and the iPhone 14 Pro, 14 Pro Max, 15, and 15 Plus (A16), iPhone15,2 to 15,5. Every other
+    /// supported model has 8 GB or more. None has been played on.
+    static func isSixGB(model: String?) -> Bool {
+        guard let model else { return false }
+        return ["iPad15,7", "iPad15,8", "iPhone15,2", "iPhone15,3", "iPhone15,4", "iPhone15,5"].contains(model)
     }
 
     /// The M1 iPads: the 11-inch 3rd-generation Pro (iPad13,4 to 13,7), the 12.9-inch 5th-generation Pro
@@ -487,13 +513,13 @@ struct Device: Identifiable, Hashable {
                 "iPad13,16", "iPad13,17"].contains(model)
     }
 
-    /// Whether an iPhone model (productType) is an iPhone 15 Pro or later: iPhone16,1 and up (15 Pro and
-    /// Pro Max, every iPhone 16 including the 16e, the 17s). All have 8 GB, as the M2 iPads do, and a chip
-    /// at least as recent; the iPhone 15 and 15 Plus (iPhone15,4 and 15,5, A16, 6 GB) are below. Only an
-    /// iPhone 16 Pro (iPhone17,1) is tested. True for an unknown model, as isSupportedIPad.
+    /// Whether an iPhone model (productType) is an iPhone 14 Pro, an iPhone 15, or later: iPhone16,1 and up
+    /// (15 Pro and Pro Max, every iPhone 16 including the 16e, the 17s), with 8 GB, and the iPhone 14 Pro,
+    /// 14 Pro Max, 15, and 15 Plus (iPhone15,2 to 15,5, A16), with 6 GB, Retail with a warning
+    /// (memoryWarning). Only an iPhone 16 Pro (iPhone17,1) is tested. True for an unknown model, as isSupportedIPad.
     static func isSupportedIPhone(model: String?) -> Bool {
         guard let model, let m = model.firstMatch(of: /^iPhone(\d+),(\d+)$/), let major = Int(m.1) else { return true }
-        return major >= 16
+        return major >= 16 || isSixGB(model: model)
     }
 
     func isAvailable() async -> Bool { await Self.paired()?.reachable.contains(udid) ?? false }

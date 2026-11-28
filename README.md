@@ -19,8 +19,10 @@ equivalents. Set up once using your Mac, then play untethered.
 
 Every World of Warcraft game Battle.net offers for the Mac: **Classic Era** (Hardcore and Season of
 Discovery included: switch the game mode in game), **TBC Anniversary**, **Mists of Pandaria
-Classic**, and **Retail**. They run on an **iPad** with M1 or later (or the A17 Pro iPad mini), an
-**iPhone 15 Pro** or later, and **Apple Vision Pro**.
+Classic**, and **Retail**. They run on an **iPad** with M1 or later (or the iPad (A16) or the A17
+Pro iPad mini), an **iPhone 14 Pro**, **iPhone 15**, or later, and **Apple Vision Pro**. The 6 GB
+ones (the iPad (A16), the iPhone 14 Pro and 14 Pro Max, and the iPhone 15 and 15 Plus) haven't been
+played on yet, and Retail may close in busy areas on them.
 In-game voice chat isn't supported on the device yet
 ([#12](https://github.com/paulstraw/slashplayed/issues/12)).
 
@@ -47,8 +49,8 @@ In-game voice chat isn't supported on the device yet
   | Mists of Pandaria Classic | ~150 GB |
   | Retail | ~150 GB |
 
-  A game grows toward these sizes as you play. Retail on an iPad or iPhone needs a 512 GB device
-  with 8 GB of memory.
+  A game grows toward these sizes as you play. Retail on an iPad or iPhone needs a 512 GB device,
+  and on one with 6 GB of memory it may close in busy areas.
 
 ## Get started
 

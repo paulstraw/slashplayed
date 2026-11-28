@@ -332,7 +332,8 @@ built for both platforms; only the clang target differs. The differences:
   (~23 GB) are spread over every archive of the Mac's store, so a copy of it takes all ~150 GB.
 - **Frame rate.** The client isn't capped at 60 fps, so on a ProMotion iPad it renders at 120 fps.
 
-Retail on the iPad needs ~150 GB free and 8 GB of memory. On an M2 iPad (8 GB, streaming from a fresh
+Retail on the iPad needs ~150 GB free and is sized for 8 GB of memory: on the 6 GB iPad (A16) the companion
+allows it with a warning (`Device.memoryWarning`), as a 6 GB device's limit is about 4 GB; untested. On an M2 iPad (8 GB, streaming from a fresh
 start) it reached character select 58 s after launch and played at ~56 fps, with the footprint
 peaking at 4.4 GB: a memory warning at 4.2 GB (4 GB left), thermal state `serious`, and a jetsam event
 that killed another process, not Slashplayed.
@@ -351,7 +352,8 @@ that killed another process, not Slashplayed.
   looks fine. So the backing scale defaults to 2, and the first time each game runs on an iPhone at 2x
   the launcher sets the game's own render scale to 50% in its `Config.wtf` (once, so a change in the
   game's settings sticks): a sharp UI, with the world's GPU cost near 1x's.
-- Supported from the iPhone 15 Pro (8 GB); only the 16 Pro is tested.
+- Supported from the iPhone 14 Pro: the 15 Pro and later have 8 GB; the 14 Pro, 14 Pro Max, 15, and
+  15 Plus (A16, 6 GB) run every game, Retail with a memory warning (`Device.memoryWarning`), untested. Only the 16 Pro is tested.
 
 ## Heat
 
