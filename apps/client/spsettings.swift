@@ -13,7 +13,8 @@
 // forget acts at the tap, after an alert whose default is Cancel. Display: the backing scale (sp_scale). Then a
 // section per game (the start screen's, in its order): the build it starts with and where its client came
 // from (spsource-<flavor>: from the Mac, or updated or installed on this device), its region (a picker for every game, sp_game_set_region: Follow Mac
-// or Automatic, its region without a pick, first, then the regions), Addons (spaddonsscreen.swift's pages, for an installed game), Open in Files,
+// or Automatic, its region without a pick, first, then the regions), its WoW Account (splogin.m's, for a Battle.net
+// login with several), Addons (spaddonsscreen.swift's pages, for an installed game), Open in Files,
 // and Reset Game Settings (after its alert). About: the app's version and
 // Acknowledgements, the licenses of what the app ships.
 import SwiftUI
@@ -87,6 +88,7 @@ struct Snapshot {
     struct Game {
         let flavor: String, name: String, version: String?, source: String?, installed: Bool
         let region: String, regionSource: String, fallback: String, mac: Bool
+        let account: String?  // its WoW account (sp_game_account), nil for none: the game asks
         var picked: Bool { regionSource == "picked" }
     }
     var saved = false
@@ -142,7 +144,8 @@ final class Settings: ObservableObject {
             let region = sp_game_region_now(flavor)
             return .init(flavor: flavor, name: sp_flavor_name(flavor), version: version, source: source as String?,
                          installed: sp_game_has_image(flavor), region: region["Region"] ?? "us",
-                         regionSource: region["Source"] ?? "device", fallback: region["Default"] ?? "us", mac: region["Mac"] != nil)
+                         regionSource: region["Source"] ?? "device", fallback: region["Default"] ?? "us", mac: region["Mac"] != nil,
+                         account: sp_game_account(flavor))
         }
         s.version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         now = s
@@ -154,6 +157,13 @@ final class Settings: ObservableObject {
     func setRegion(_ flavor: String, _ region: String) {
         say(sp_game_set_region(flavor, region))
         reload()
+    }
+
+    // `name` "" removes the choice. What's wrong with it, for the field, or nil once it's saved.
+    func setAccount(_ flavor: String, _ name: String) -> String? {
+        let problem = sp_game_account_set(flavor, name)
+        reload()
+        return problem
     }
 
     // Read here, at the tap, and kept only while it shows. Never logged.
@@ -511,6 +521,7 @@ struct SettingsView: View {
                 .pickerStyle(.menu)
                 .labelsHidden()  // LabeledContent's is the label
             }
+            GameAccountField(settings: settings, flavor: g.flavor, saved: g.account ?? "")
             if g.installed { NavigationLink("Addons", value: Page.addons(g.flavor)) }
             Button("Open in Files") { settings.openInFiles(g.flavor) }
             Button("Reset Game Settings", role: .destructive) { settings.confirmation = .reset(g.flavor) }
@@ -520,7 +531,8 @@ struct SettingsView: View {
             // About the region only: the build row above says where the client came from.
             Text("Region is where your realms are: \(sp_region_name(g.region)), \(regionSourceText(g)). "
                  + (g.region == g.fallback && g.mac ? "The game’s language follows your Mac’s." : "The game’s language follows this \(sp_device_noun())’s.")
-                 + " A change applies the next time the game starts.")
+                 + " A change applies the next time the game starts."
+                 + " WoW Account is the one this game signs in to when your Battle.net account has several, by the name the game’s account list shows, such as WoW1. Leave it empty to choose in the game.")
         }
     }
 
@@ -549,6 +561,39 @@ struct SettingsView: View {
             LabeledContent("Version", value: settings.now.version).id("about")
             NavigationLink("Acknowledgements", value: Page.acknowledgements)
         }
+    }
+}
+
+// A game's WoW Account (splogin.m's sp_game_account): saved on Return or when the field loses focus, "" for
+// none. The name shows only here, the person's own typing; nothing logs it.
+struct GameAccountField: View {
+    @ObservedObject var settings: Settings
+    let flavor: String
+    let saved: String
+    @State private var text = ""
+    @State private var problem: String?
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            LabeledContent("WoW Account") {
+                TextField("Ask in the Game", text: $text)
+                    .multilineTextAlignment(.trailing)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .focused($focused)
+                    .onSubmit(save)
+            }
+            if let problem { Text(problem).font(.subheadline).foregroundStyle(.red) }
+        }
+        .onChange(of: saved, initial: true) { _, now in text = now }
+        .onChange(of: focused) { _, now in if !now { save() } }
+    }
+
+    private func save() {
+        guard text.trimmingCharacters(in: .whitespacesAndNewlines) != saved else { problem = nil; return }
+        problem = settings.setAccount(flavor, text)
     }
 }
 

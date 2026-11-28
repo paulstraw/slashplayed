@@ -72,6 +72,15 @@ nil path, so the app carries an empty `wow.icns` (`build.sh` and `ClientAssembly
   file and skips the saved sign-in; just before the client loads, the AppKit shim imports them into the
   app's preferences and deletes the file. Values are never read, printed or logged; only sizes and
   timestamps are.
+- **The WoW account.** A Battle.net login can hold several WoW accounts (WoW1, WoW2, ...). The client
+  takes the one to sign in to from Battle.net's launch options, `Launch Options/WoW/GAME_ACCOUNT` in
+  `net.battle` (one key for every game). The device decides it: the launcher (`splogin.m`) sets the key
+  before every launch from the game's **WoW Account** in Settings (kept in the keychain, never logged), or
+  removes it when there's none, which leaves the choice to the game's own account picker. A relayed launch
+  also brings the Mac's Battle.net choice (its account dropdown), since the import sets every key and deletes
+  none; the device's choice is written after the import and wins. With none on the device, that launch keeps
+  the Mac's, but nothing on the device depends on it: before this, the Mac's choice stayed in the device's
+  prefs for every later launch of every game.
 - **Sign-in on the device.** The unmodified client signs itself in, with no Battle.net, from a file in
   its game folder; it fills its own logon form from it, and asks for an authenticator's code in the game.
   The launcher (`splogin.m`) asks for the Battle.net email and password once, on a screen of its own

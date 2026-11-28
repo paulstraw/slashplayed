@@ -86,6 +86,7 @@ int sp_guest_main(NSString *path, int argc, char **argv, void (^detached)(void),
 void sp_login_clear(NSArray<NSString *> *flavors);  // splogin.m
 NSMutableData *sp_login_prepare(BOOL token, void (^*pump)(double), NSString **problem);
 BOOL sp_login_write(NSString *flavor, NSMutableData *bytes);
+void sp_login_game_account(NSString *flavor, BOOL relayed);
 UIFont *sp_face(CGFloat size, UIFontTextStyle style, CGFloat maximum, UITraitCollection *traits);  // spstart.m
 NSString *sp_pick_flavor(NSArray<NSString *> *flavors, NSSet<NSString *> *installable, void (^*pump)(double));  // spstart.m
 NSDictionary<NSString *, NSString *> *sp_patch_check(NSString *flavor, NSString *image, NSDictionary<NSString *, NSString *> *stamp,
@@ -833,6 +834,9 @@ int main(int argc, char **argv) {
         if (import) import();
         else say([NSString stringWithFormat:@"login: can't import the relayed token: %s", dlerror()]);
     }
+    // The WoW account to sign in to: Settings' choice for this game, over the Mac's that a relayed token just
+    // brought; with none, the Mac's, else none, so the game asks (splogin.m).
+    sp_login_game_account(flavor, token);
     // The game data's row for the build about to load, before the client reads it. An Update just now may
     // have read what its build ships (spshipped-<flavor>), which can change the languages: read again.
     build_info_for_image(flavor, library, stamp, sp_game_region_now(flavor));
