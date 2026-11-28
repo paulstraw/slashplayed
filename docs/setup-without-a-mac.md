@@ -88,7 +88,7 @@ The companion waits for the device as long as it needs, and goes on by itself:
 Type your Apple ID and its password, then **Install**. The password is used once, for this sign-in, and
 never stored.
 
-![Sign in with your Apple ID: the Apple ID and Password fields, and an Install button](images/companion-sign-in.png)
+![Sign in with your Apple ID: the Apple ID and Password fields, the folded Anisette server field, an Install button, and, since Slashplayed is already on the device, a Pair Only button](images/companion-sign-in.png)
 
 **Anisette server**, under the password, names the server the sign-in gets its anisette data from (Apple
 asks for it). Leave it as it is unless the sign-in fails there. The window keeps what you type until it
