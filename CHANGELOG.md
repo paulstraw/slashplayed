@@ -6,6 +6,8 @@ All notable changes to Slashplayed are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-28
+
 ### Added
 
 - The iPad (A16), the iPhone 14 Pro and 14 Pro Max, and the iPhone 15 and 15 Plus can now run
