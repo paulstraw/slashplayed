@@ -255,29 +255,27 @@ pub async fn installed(d: &Device) -> Result<Vec<String>, Report> {
     Ok(ids)
 }
 
-/// The latest expiry of the provisioning profiles on the device for the app `bundle_id` (their
-/// application-identifier is <team>.<bundle_id>), from misagent: those the companion installed and those the
-/// app renewed itself (apps/client/spapple.m). None when the device has none for it. Only each profile's
-/// plist is read, for its entitlement and date; nothing of it is kept or logged.
-pub async fn profile_expiry(d: &Device, bundle_id: &str) -> Result<Option<std::time::SystemTime>, Report> {
+/// When the installed app `bundle_id` stops opening (profile::signing_expiry): its App ID and signer from
+/// installation_proxy, and every installed profile from misagent, those the companion installed and those the
+/// app renewed itself (apps/client/spapple.m). Only each profile's
+/// plist is read, for its entitlement, devices, certificates, and date; nothing of it is kept or logged.
+pub async fn profile_expiry(d: &Device, bundle_id: &str) -> Result<crate::profile::Signing, Report> {
+    let lookup = |e: IdeviceError| report!("couldn't look up {bundle_id} on {} ({e})", d.name);
+    let mut ip = InstallationProxyClient::connect(&d.provider()).await.map_err(lookup)?;
+    let apps = ip.get_apps(Some("User"), Some(vec![bundle_id.to_string()])).await.map_err(lookup)?;
+    let info = apps.get(bundle_id).and_then(|i| i.as_dictionary()).ok_or_else(|| report!("{bundle_id} isn't installed on {}", d.name))?;
+    // <team>.<bundle_id>, the team being whichever signed it.
+    let app_id = info
+        .get("Entitlements")
+        .and_then(|e| e.as_dictionary())
+        .and_then(|e| e.get("application-identifier"))
+        .and_then(|a| a.as_string())
+        .ok_or_else(|| report!("installation_proxy gives {bundle_id} no application-identifier"))?;
+    let signer = info.get("SignerIdentity").and_then(|s| s.as_string());
     let fail = |e: IdeviceError| report!("couldn't list the provisioning profiles on {} ({e})", d.name);
     let mut mis = MisagentClient::connect(&d.provider()).await.map_err(fail)?;
-    let suffix = format!(".{bundle_id}");
-    let mut latest = None;
-    for der in mis.copy_all().await.map_err(fail)? {
-        // A profile is the plist signed in CMS; the plist itself sits unencrypted inside it.
-        let Some(start) = der.windows(5).position(|w| w == b"<?xml") else { continue };
-        let Some(len) = der[start..].windows(8).position(|w| w == b"</plist>") else { continue };
-        let Ok(p) = plist::from_bytes::<plist::Dictionary>(&der[start..start + len + 8]) else { continue };
-        let app = p.get("Entitlements").and_then(|e| e.as_dictionary()).and_then(|e| e.get("application-identifier"));
-        if !app.and_then(|a| a.as_string()).is_some_and(|a| a.ends_with(&suffix)) {
-            continue;
-        }
-        if let Some(t) = p.get("ExpirationDate").and_then(|v| v.as_date()).map(std::time::SystemTime::from) {
-            latest = latest.max(Some(t));
-        }
-    }
-    Ok(latest)
+    let all = mis.copy_all().await.map_err(fail)?;
+    Ok(crate::profile::signing_expiry(&all, app_id, signer, &d.usb.udid))
 }
 
 /// The app's data container over AFC.

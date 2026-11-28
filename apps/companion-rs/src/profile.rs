@@ -60,6 +60,64 @@ impl Profile {
             .and_then(Value::as_array)
             .is_some_and(|a| a.iter().any(|c| c.as_data() == Some(der)))
     }
+
+    /// The latest notAfter of the profile's certificates whose common name is `name`. None when it has none.
+    fn certificate_named(&self, name: &str) -> Option<std::time::SystemTime> {
+        use x509_cert::der::{Decode, oid::ObjectIdentifier};
+        const CN: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.5.4.3");
+        let certs = self.plist.get("DeveloperCertificates")?.as_array()?;
+        certs
+            .iter()
+            .filter_map(|c| x509_cert::Certificate::from_der(c.as_data()?).ok())
+            .filter(|x| {
+                // UTF8String or PrintableString: either way the value's bytes are the name.
+                x.tbs_certificate.subject.0.iter().flat_map(|rdn| rdn.0.iter()).any(|a| a.oid == CN && a.value.value() == name.as_bytes())
+            })
+            .map(|x| x.tbs_certificate.validity.not_after.to_system_time())
+            .max()
+    }
+}
+
+/// What the device's profiles say about the installed app's signing (signing_expiry).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Signing {
+    /// No profile for its App ID lists this device.
+    #[default]
+    NoProfile,
+    /// Some do, but none lists a certificate named as its signer: the profile it was installed with, which
+    /// lists that certificate, is gone, so it has lapsed (or the app's helper's has, and no game loads).
+    NoneForSigner,
+    /// It opens until then.
+    Until(std::time::SystemTime),
+}
+
+/// When the installed app stops opening, as far as the device's profiles (misagent's list, `profiles`) say:
+/// iOS opens it on any installed profile for its App ID, not only the one it embeds (docs/internals/loading.md),
+/// so a newer one the Mac companion or Xcode installed keeps it opening. But only one that lists the device
+/// and the certificate the app is signed with, and only while that certificate lasts. The host can't read the
+/// app's bundle, so the certificate is known by its name alone (installation_proxy's SignerIdentity, `signer`):
+/// a profile counts with the latest of its certificates of that name. A person's certificates share one, so
+/// this can come out late, never early (docs/internals/host-tool.md). Then the earlier of the app's (`app_id`)
+/// and its helper's (<app_id>.helper), since without the helper no game loads, as the launcher's
+/// sp_profile_expiry takes it; the app's alone when the helper has none for this device.
+pub fn signing_expiry(profiles: &[Vec<u8>], app_id: &str, signer: Option<&str>, udid: &str) -> Signing {
+    let parsed: Vec<Profile> = profiles.iter().filter_map(|b| Profile::parse(b).ok()).collect();
+    // None: no dated profile for `id` lists the device; Some(None): none of those is for the signer.
+    let last = |id: &str| {
+        let mine: Vec<_> = parsed.iter().filter(|p| p.application_identifier() == Some(id) && p.lists_device(udid)).collect();
+        let dates = mine.iter().filter_map(|p| {
+            let until = p.expires()?;
+            // No SignerIdentity (installation_proxy left it out): the profile's own date.
+            let Some(signer) = signer else { return Some(until) };
+            Some(until.min(p.certificate_named(signer)?))
+        });
+        (!mine.is_empty()).then(|| dates.max())
+    };
+    match (last(app_id), last(&format!("{app_id}.helper"))) {
+        (None, _) => Signing::NoProfile,
+        (Some(None), _) | (_, Some(None)) => Signing::NoneForSigner,
+        (Some(Some(app)), helper) => Signing::Until(helper.flatten().map_or(app, |h| app.min(h))),
+    }
 }
 
 fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
@@ -136,5 +194,79 @@ mod tests {
         assert!(check(&p, "T", "T.slashplayed", "U1", &[9], &[], &[]).is_err());
         assert!(check(&p, "T", "T.slashplayed", "U1", &[1, 2, 3], &[eva], &[]).is_err());
         assert!(check(&p, "T", "T.slashplayed", "U1", &[1, 2, 3], &[], &[iml]).is_err());
+    }
+
+    /// A certificate named `cn` that lasts until the start of `until` (year, month, day).
+    fn cert(cn: &str, until: (i32, u8, u8)) -> Vec<u8> {
+        let mut params = rcgen::CertificateParams::new(vec![]).unwrap();
+        params.distinguished_name.push(rcgen::DnType::CommonName, cn);
+        params.not_after = rcgen::date_time_ymd(until.0, until.1, until.2);
+        params.self_signed(&rcgen::KeyPair::generate().unwrap()).unwrap().der().to_vec()
+    }
+
+    fn day(y: i32, m: u8, d: u8) -> Signing {
+        Signing::Until(rcgen::date_time_ymd(y, m, d).into())
+    }
+
+    /// A profile for `app_id` that lists `device` and `certs`, until `until`, in a CMS-like envelope.
+    fn installed(app_id: &str, until: (i32, u8, u8), device: &str, certs: &[&Vec<u8>]) -> Vec<u8> {
+        let mut d = Dictionary::new();
+        let t: std::time::SystemTime = rcgen::date_time_ymd(until.0, until.1, until.2).into();
+        d.insert("ExpirationDate".into(), Value::Date(t.into()));
+        let mut e = Dictionary::new();
+        e.insert("application-identifier".into(), Value::String(app_id.into()));
+        d.insert("Entitlements".into(), Value::Dictionary(e));
+        d.insert("ProvisionedDevices".into(), Value::Array(vec![Value::String(device.into())]));
+        d.insert("DeveloperCertificates".into(), Value::Array(certs.iter().map(|c| Value::Data(c.to_vec())).collect()));
+        let mut out = b"\x30\x80junk".to_vec();
+        plist::to_writer_xml(&mut out, &d).unwrap();
+        out
+    }
+
+    #[test]
+    fn signing_lasts_as_long_as_what_the_app_can_open_on() {
+        const ME: &str = "Apple Development: Pat Doe (ABC123)";
+        let (app, helper) = ("T.T.slashplayed", "T.T.slashplayed.helper");
+        let mine = cert(ME, (2028, 6, 1));
+        let other = cert("Apple Development: Someone Else (XYZ789)", (2028, 6, 1));
+        let others = vec![
+            // Later, but for a certificate the app isn't signed with, or for another device: no help to it.
+            installed(app, (2027, 11, 12), "U1", &[&other]),
+            installed(app, (2027, 12, 1), "U2", &[&mine]),
+            // Another app whose ID merely starts the same.
+            installed("T.T.slashplayed.spike", (2028, 1, 1), "U1", &[&mine]),
+        ];
+        let at = |device: &[Vec<u8>], signer| signing_expiry(device, app, signer, "U1");
+        let with = |extra: Vec<Vec<u8>>| [others.clone(), extra].concat();
+
+        let device = with(vec![installed(app, (2027, 10, 28), "U1", &[&mine]), installed(helper, (2027, 11, 8), "U1", &[&mine])]);
+        assert_eq!(at(&device, Some(ME)), day(2027, 10, 28));
+        // Without a signer to go by, any profile for the app on this device counts (the helper's still caps it).
+        assert_eq!(at(&device, None), day(2027, 11, 8));
+        // No helper profile for this device: the app's alone.
+        assert_eq!(at(&with(vec![installed(app, (2027, 10, 28), "U1", &[&mine])]), Some(ME)), day(2027, 10, 28));
+        // A helper's that runs out first is when games stop loading.
+        let device = with(vec![installed(app, (2027, 10, 28), "U1", &[&mine]), installed(helper, (2027, 10, 22), "U1", &[&mine])]);
+        assert_eq!(at(&device, Some(ME)), day(2027, 10, 22));
+
+        // Profiles for the app on this device, but none for its signer: lapsed, not "no profile".
+        assert_eq!(at(&device, Some("Apple Development: Nobody (000000)")), Signing::NoneForSigner);
+        let device = with(vec![installed(app, (2027, 10, 28), "U1", &[&mine]), installed(helper, (2027, 11, 8), "U1", &[&other])]);
+        assert_eq!(at(&device, Some(ME)), Signing::NoneForSigner, "the helper's for another certificate doesn't count");
+        assert_eq!(signing_expiry(&device, "T.T.other", Some(ME), "U1"), Signing::NoProfile);
+        assert_eq!(signing_expiry(&device, app, Some(ME), "U3"), Signing::NoProfile);
+    }
+
+    #[test]
+    fn signing_ends_with_the_certificate() {
+        const ME: &str = "Apple Development: Pat Doe (ABC123)";
+        let (old, new) = (cert(ME, (2027, 6, 14)), cert(ME, (2027, 11, 3)));
+        let app = "T.T.slashplayed";
+        // One profile with only the certificate that lapses first: it lasts as long as that certificate.
+        let device = vec![installed(app, (2027, 10, 28), "U1", &[&old])];
+        assert_eq!(signing_expiry(&device, app, Some(ME), "U1"), day(2027, 6, 14));
+        // One that also lists a later certificate of the same name: that one may be the app's, so it counts.
+        let device = vec![installed(app, (2027, 11, 12), "U1", &[&old, &new])];
+        assert_eq!(signing_expiry(&device, app, Some(ME), "U1"), day(2027, 11, 3));
     }
 }
